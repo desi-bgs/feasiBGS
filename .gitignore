@@ -1,3 +1,6 @@
 *.pyc
-
+*.png
+*.p
+*.dat
 dat
+

@@ -23,7 +23,7 @@ def dat_dir():
 def fig_dir(): 
     ''' directory for figures 
     '''
-    return os.path.dirname(os.path.dirname(os.path.realpath(__file__)))+'/fig/'
+    return os.path.dirname(os.path.dirname(os.path.realpath(__file__)))+'/figs/'
 
 
 def paper_dir(): 
