@@ -38,9 +38,38 @@ def GAMA_test():
     sub.set_ylim([-3.5, 3.5])
     sub.legend(loc='lower left', markerscale=5, prop={'size':20})
     fig.savefig(UT.fig_dir()+"GAMA_test.png", bbox_inches='tight')
+    plt.close() 
     return None 
 
 
-if __name__=="__main__": 
-    GAMA_test()
+def Legacy_test():  
+    ''' Test that the Legacy object is sensible
+    '''
+    legacy = Legacy() 
+    legacy_data = legacy.Read(silent=False)
+    
+    # some sanity check on the data by comparing it to 
+    # the GAMA footprint 
+    gama = Cat.GAMA() # read in gama
+    gama_data = gama.Read(silent=False)
 
+    fig = plt.figure(figsize=(6,6))
+    bkgd = fig.add_subplot(111, frameon=False)
+    bkgd.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
+    bkgd.set_xlabel('RA', labelpad=10, fontsize=25)
+    bkgd.set_ylabel('Dec', labelpad=10, fontsize=25)
+
+    sub = fig.add_subplot(111)
+    sub.scatter(gama_data['photo']['ra'][::10], gama_data['photo']['dec'][::10], 
+            c='k', s=2, label='GAMA photo+spec')
+    sub.scatter(legacy_data['ra'], legacy_data['dec'], c='C1', s=1, label='Legacy Survey DR5')  
+    sub.set_xlim([110., 240.])
+    sub.set_ylim([-3.5, 3.5])
+    sub.legend(loc='lower left', markerscale=5, prop={'size':20})
+    fig.savefig(UT.fig_dir()+"Legacy_test.png", bbox_inches='tight')
+    plt.close() 
+    return None
+
+
+if __name__=="__main__": 
+    Legacy_test()
