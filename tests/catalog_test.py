@@ -45,7 +45,7 @@ def GAMA_test():
 def Legacy_test():  
     ''' Test that the Legacy object is sensible
     '''
-    legacy = Legacy() 
+    legacy = Cat.Legacy() 
     legacy_data = legacy.Read(silent=False)
     
     # some sanity check on the data by comparing it to 

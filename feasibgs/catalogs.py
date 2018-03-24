@@ -154,7 +154,7 @@ class Legacy(object):
         # loop through the files and only keep ones that spherematch with GAMA objects
         for i_f, f in enumerate(sweep_files): 
             # read in sweep object 
-            sweep = mrdfits(''.join([UT.dat_dir(), 'legacy/sweep/', f)  
+            sweep = mrdfits(''.join([UT.dat_dir(), 'legacy/sweep/', f]))  
         
             # spherematch the sweep objects with GAMA objects 
             # (sweep goes first because it's usually bigger) 
@@ -166,7 +166,7 @@ class Legacy(object):
 
             for key in sweep.__dict__.keys(): 
                 if i_f == 0: 
-                    sweep_dict[key] = getattr(key)[match[0]] 
+                    sweep_dict[key] = getattr(sweep, key)[match[0]] 
                 else: 
                     sweep_dict[key] = np.concatenate([sweep_dict[key], getattr(key)[match[0]]]) 
 
