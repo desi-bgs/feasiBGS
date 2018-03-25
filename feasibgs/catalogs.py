@@ -168,7 +168,8 @@ class Legacy(object):
                 if i_f == 0: 
                     sweep_dict[key] = getattr(sweep, key)[match[0]] 
                 else: 
-                    sweep_dict[key] = np.concatenate([sweep_dict[key], getattr(key)[match[0]]]) 
+                    sweep_dict[key] = np.concatenate([sweep_dict[key], 
+                        getattr(sweep, key)[match[0]]]) 
 
             # save the index of GAMA data 
             sweep_dict['gama_index'] = match[1]
