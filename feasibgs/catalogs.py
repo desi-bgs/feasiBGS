@@ -150,7 +150,7 @@ class GamaLegacy(Catalog):
         for dk, grp in zip(['gama-photo', 'gama-spec', 'legacy-photo'], [grp_gp, grp_gs, grp_lp]):
             data[dk] = {} 
             for key in grp.keys():
-                data[key] = grp[key].value 
+                data[dk][key] = grp[key].value 
 
         return data 
 

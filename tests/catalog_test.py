@@ -93,8 +93,9 @@ def Legacy_mismatch():
     '''
     # read in GAMA-Legacy objects
     legacy = Cat.GamaLegacy() 
-    legacy_data = legacy.Read(silent=False)
-    
+    ld = legacy.Read(silent=False)
+    legacy_data = ld['legacy-photo']
+
     # read in objects from the GAMA footprint 
     gama = Cat.GAMA() 
     gama_data = gama.Read(silent=False)
@@ -128,5 +129,58 @@ def Legacy_mismatch():
     return None
 
 
+def GAMA_Legacy_photo(): 
+    ''' Compare the photometry of GAMA with the photometry of 
+    the Legacy Survey
+    '''
+    # read in GAMA-Legacy objects
+    legacy = Cat.GamaLegacy() 
+    legacy_data = legacy.Read(silent=False)
+    
+    # gama g,r,z
+    gama_photo = np.array([
+            legacy_data['gama-photo']['modelmag_g'], 
+            legacy_data['gama-photo']['modelmag_r'], 
+            legacy_data['gama-photo']['modelmag_z']]) 
+    
+    # legacy g,r,z fluxes in nMgy
+    legacy_photo = np.array([
+            legacy_data['legacy-photo']['flux_g'], 
+            legacy_data['legacy-photo']['flux_r'], 
+            legacy_data['legacy-photo']['flux_z']])
+    
+    fig = plt.figure(figsize=(12,6))
+
+    # g-r color comparison
+    sub = fig.add_subplot(121)
+    gama_gr = gama_photo[0,:] - gama_photo[1,:]
+    # convert the legacy survey model_flux to model_mags? 
+    # m = 22.5 - 2.5 log10(f)... this may be wrong because SDSS uses
+    # m = -2.5/ln(10) * [asinh((f/f0)/(2b)) + ln(b)].
+    # asinh mag 
+    legacy_gr = UT.flux2mag(legacy_photo[0,:], band='g') - UT.flux2mag(legacy_photo[1,:], band='r')
+    sub.scatter(gama_gr, legacy_gr, s=2) 
+    sub.plot([-0.5, 4.5], [-0.5, 4.5], c='k', ls='--') 
+    sub.set_xlabel('GAMA $g-r$', fontsize=20)
+    sub.set_xlim([-0.5, 4.5]) 
+    sub.set_ylabel('Legacy Survey $g-r$', fontsize=20)
+    sub.set_ylim([-0.5, 4.5]) 
+
+    # r-z color comparison
+    sub = fig.add_subplot(122)
+    gama_rz = gama_photo[1,:] - gama_photo[2,:]
+    legacy_rz = UT.flux2mag(legacy_photo[1,:], band='r') - UT.flux2mag(legacy_photo[2,:], band='z')
+    sub.scatter(gama_rz, legacy_rz, s=2) 
+    sub.plot([-0.5, 4.5], [-0.5, 4.5], c='k', ls='--') 
+    sub.set_xlabel('GAMA $r-z$', fontsize=20)
+    sub.set_xlim([-0.5, 1.5]) 
+    sub.set_ylabel('Legacy Survey $r-z$', fontsize=20)
+    sub.set_ylim([-0.5, 1.5]) 
+    fig.savefig(UT.fig_dir()+"GAMA_Legacy_photometry.png", bbox_inches='tight')
+    plt.close() 
+    return None
+
+
 if __name__=="__main__": 
-    Legacy_mismatch()
+    GAMA_Legacy_photo()
+    #Legacy_mismatch()
