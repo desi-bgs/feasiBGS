@@ -14,7 +14,15 @@ from . import util as UT
 from ChangTools.fitstables import mrdfits
 
 
-class GAMA(object):
+class Catalog(object): 
+    ''' parent objects for the GAMA and Legacy class 
+    objects.
+    '''
+    def __init__(self): 
+        pass
+
+
+class GAMA(Catalog):
     '''  class to build/read in photometric and spectroscopic overlap 
     of the GAMA DR2 data. 
     '''
@@ -104,9 +112,10 @@ class GAMA(object):
         return None 
 
 
-class Legacy(object): 
+class GamaLegacy(Catalog): 
     ''' class to build/read in imaging data from the Legacy survey DR 5 for the
-    objects in the GAMA DR2 photo+spec data (.GAMA object)  
+    objects in the GAMA DR2 photo+spec data (.GAMA object). The objects in the 
+    catalog has GAMA photometry, GAMA spectroscopy, and Legacy-survey photometry
     '''
     def __init__(self): 
         pass 
@@ -121,23 +130,30 @@ class Legacy(object):
     
         # read in data and compile onto a dictionary
         f = h5py.File(self._File(), 'r') 
-        grp = f['data'] 
+        grp_gp = f['gama-photo'] 
+        grp_gs = f['gama-spec']
+        grp_lp = f['legacy-photo'] 
 
         if not silent: 
-            print('colums in Legacy Data') 
-            print(sorted(grp.keys()))
+            print('colums in GAMA Photo Data:') 
+            print(sorted(grp_gp.keys()))
+            print('colums in GAMA Spec Data:') 
+            print(sorted(grp_gs.keys()))
+            print('colums in Legacy Data:') 
+            print(sorted(grp_lp.keys()))
             print('========================')
-            print('%i objects' % len(grp['ra'].value)) 
+            print('%i objects' % len(grp_gp['ra'].value)) 
 
         data = {} 
-        for key in grp.keys():
-            data[key] = grp[key].value 
+        for dk, grp in zip(['gama-photo', 'gama-spec', 'legacy-photo'], [grp_gp, grp_gs, grp_lp]):
+            data[dk] = {} 
+            for key in grp.keys():
+                data[key] = grp[key].value 
+
         return data 
 
     def _File(self): 
-        ''' File name of the combined sweep data
-        '''
-        return ''.join([UT.dat_dir(), 'legacy/sweep/legacy_gama_sweeps.hdf5'])
+        return ''.join([UT.dat_dir(), 'gama_legacy.hdf5'])
 
     def _Build(self, silent=True): 
         ''' Get sweep photometry data for objects in GAMA DR2 photo+spec
@@ -145,12 +161,12 @@ class Legacy(object):
         # read in the names of the sweep files 
         sweep_files = np.loadtxt(''.join([UT.dat_dir(), 'legacy/sweep/sweep_list.dat']), 
                 unpack=True, usecols=[0], dtype='S') 
-
         # read in GAMA objects
         gama = GAMA() 
         gama_data = gama.Read(silent=silent)
     
         sweep_dict = {} 
+        gama_photo_dict, gama_spec_dict = {}, {}
         # loop through the files and only keep ones that spherematch with GAMA objects
         for i_f, f in enumerate(sweep_files): 
             # read in sweep object 
@@ -163,7 +179,8 @@ class Legacy(object):
 
             if not silent: 
                 print('%i matches from the %s sweep file' % (len(match[0]), f))
-
+            
+            # save sweep photometry to `sweep_dict`
             for key in sweep.__dict__.keys(): 
                 if i_f == 0: 
                     sweep_dict[key] = getattr(sweep, key)[match[0]] 
@@ -171,22 +188,44 @@ class Legacy(object):
                     sweep_dict[key] = np.concatenate([sweep_dict[key], 
                         getattr(sweep, key)[match[0]]]) 
 
-            # save the index of GAMA data 
-            sweep_dict['gama_index'] = match[1]
+            # save matching GAMA photometry 
+            for key in gama_data['photo'].keys():  
+                if i_f == 0: 
+                    gama_photo_dict[key] = gama_data['photo'][key][match[1]]
+                else: 
+                    gama_photo_dict[key] = \
+                            np.concatenate([gama_photo_dict[key], gama_data['photo'][key][match[1]]])
+            
+            # save matching GAMA spectroscopy 
+            for key in gama_data['spec'].keys():  
+                if i_f == 0: 
+                    gama_spec_dict[key] = gama_data['spec'][key][match[1]]
+                else: 
+                    gama_spec_dict[key] = \
+                            np.concatenate([gama_spec_dict[key], gama_data['spec'][key][match[1]]])
 
             if not silent and (i_f == 0): print(sweep_dict.keys())
             del sweep  # free memory? (apparently not really) 
 
         if not silent: 
             print('========================')
-            print('%i sweep objects' % len(sweep_dict['ra'])) 
-            print('%i GAMA objects' % len(gama_data['photo']['dec'])) 
+            print('%i objects out of %i GAMA objects mached' % (len(sweep_dict['ra']), len(gama_data['photo']['dec'])) )
+
+        assert len(sweep_dict['ra']) == len(gama_photo_dict['ra']) 
+        assert len(sweep_dict['ra']) == len(gama_spec_dict['ra']) 
 
         # save data to hdf5 file
         if not silent: print('writing to %s' % self._File())
         f = h5py.File(self._File(), 'w') 
-        grp = f.create_group('data') 
+        grp_gp = f.create_group('gama-photo') 
+        grp_gs = f.create_group('gama-spec') 
+        grp_lp = f.create_group('legacy-photo') 
+
         for key in sweep_dict.keys():
-            grp.create_dataset(key, data=sweep_dict[key]) 
+            grp_lp.create_dataset(key, data=sweep_dict[key]) 
+        for key in gama_photo_dict.keys(): 
+            grp_gp.create_dataset(key, data=gama_photo_dict[key]) 
+        for key in gama_spec_dict.keys(): 
+            grp_gs.create_dataset(key, data=gama_spec_dict[key]) 
         f.close() 
         return None 
