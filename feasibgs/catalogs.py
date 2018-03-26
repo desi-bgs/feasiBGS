@@ -15,8 +15,8 @@ from ChangTools.fitstables import mrdfits
 
 
 class Catalog(object): 
-    ''' parent objects for the GAMA and Legacy class 
-    objects.
+    ''' parent object for the objects in this module. Currently
+    has no functionality
     '''
     def __init__(self): 
         pass
@@ -24,7 +24,9 @@ class Catalog(object):
 
 class GAMA(Catalog):
     '''  class to build/read in photometric and spectroscopic overlap 
-    of the GAMA DR2 data. 
+    of the GAMA DR2 data. The GAMA DR2 data contains photometry and
+    spectroscopy from GAMA I, which covers three regions of 48 deg^2 
+    area for a total of 144 deg^2. 
     '''
     def __init__(self): 
         pass 
