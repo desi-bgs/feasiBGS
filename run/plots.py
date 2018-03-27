@@ -93,5 +93,40 @@ def GAMA_Legacy_color():
     return None 
 
 
+def GAMA_Legacy_rmag_z():
+    ''' Plot r magnitude versus redshift (z). 
+    '''
+    ''' Plot the redshift distribution of the GAMA-Legacy catalog
+    '''
+    # read in GAMA-Legacy objects
+    legacy = Cat.GamaLegacy() 
+    legacy_data = legacy.Read(silent=True)
+
+    # GAMA Halpha 
+    gama_z = legacy_data['gama-spec']['z_helio']
+    
+    # legacy g,r,z model fluxes in nMgy
+    legacy_rflux = legacy_data['legacy-photo']['flux_g']
+    # legacy photometry color 
+    #legacy_rmag = UT.flux2mag(legacy_data['legacy-photo']['flux_g'], band='g') 
+    legacy_rmag = 22.5 - 2.5*np.log10(legacy_rflux) 
+
+    # gama photometry (for reference) 
+    gama_rmag = legacy_data['gama-photo']['modelmag_r'] 
+
+    fig = plt.figure(figsize=(6,6))
+    sub = fig.add_subplot(111)
+    sub.scatter(gama_z, gama_rmag, s=3, c='C0') 
+    sub.scatter(gama_z, legacy_rmag, s=2, c='C1') 
+    sub.plot([0., 1.], [20., 20.], c='k', ls='--', lw=2) 
+    sub.set_xlabel(r'Redshift', fontsize=20) 
+    sub.set_xlim([0., 0.4])
+    sub.set_ylabel('$r$ (AB mag)', fontsize=20) 
+    sub.set_ylim([13., 21.]) 
+    fig.savefig(UT.fig_dir()+"GAMALegacy_rmag_z.pdf", bbox_inches='tight')
+    plt.close() 
+    return None 
+
+
 if __name__=="__main__":
-    GAMA_Legacy_zdist()
+    GAMA_Legacy_rmag_z()

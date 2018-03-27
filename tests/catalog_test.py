@@ -31,6 +31,9 @@ def GAMA_test():
     '''
     gama = Cat.GAMA() 
     data = gama.Read(silent=False)
+    assert 'kcorr_z0.0' in data.keys() 
+    assert 'kcorr_z0.1' in data.keys() 
+    assert np.array_equal(data['photo']['cataid'], data['kcorr_z0.0']['cataid'])
 
     fig = plt.figure(figsize=(6,6))
     bkgd = fig.add_subplot(111, frameon=False)
@@ -182,5 +185,4 @@ def GAMA_Legacy_photo():
 
 
 if __name__=="__main__": 
-    GAMA_Legacy_photo()
-    #Legacy_mismatch()
+    Legacy_mismatch()

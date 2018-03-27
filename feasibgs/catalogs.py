@@ -7,11 +7,13 @@ submodules to handle Catalogs used in the project
 import os 
 import numpy as np
 import h5py
+from astropy.io import fits 
 from pydl.pydlutils.spheregroup import spherematch
 
 # -- local --
 from . import util as UT
 from ChangTools.fitstables import mrdfits
+from ChangTools.fitstables import FitsTable
 
 
 class Catalog(object): 
@@ -43,6 +45,8 @@ class GAMA(Catalog):
         f = h5py.File(self._File(), 'r') 
         grp_p = f['photo'] # photo data
         grp_s = f['spec'] # spec data
+        grp_k0 = f['kcorr_z0.0']
+        grp_k1 = f['kcorr_z0.1']
 
         if not silent: 
             print('colums in GAMA photometry') 
@@ -51,16 +55,17 @@ class GAMA(Catalog):
             print 'colums in GAMA spectroscopy'
             print(sorted(grp_s.keys()))
             print '========================'
+            print 'colums in GAMA kcorrects'
+            print(sorted(grp_k0.keys()))
+            print '========================'
             print('%i objects' % len(grp_p['ra'].value)) 
+            print '========================'
 
         data = {} 
-        data['photo'] = {} 
-        for key in grp_p.keys():
-            data['photo'][key] = grp_p[key].value 
-            
-        data['spec'] = {} 
-        for key in grp_s.keys(): 
-            data['spec'][key] = grp_s[key].value
+        for dkey, grp in zip(['photo', 'spec', 'kcorr_z0.0', 'kcorr_z0.1'], [grp_p, grp_s, grp_k0, grp_k1]): 
+            data[dkey] = {} 
+            for key in grp.keys():
+                data[dkey][key] = grp[key].value 
         return data 
     
     def _File(self): 
@@ -73,10 +78,14 @@ class GAMA(Catalog):
         ''' Read in the photometric data and the spectroscopic data,
         spherematch them and write the intersecting data to hdf5 file. 
         '''
-        # read in photometry 
-        gama_p = mrdfits(UT.dat_dir()+'InputCatA.fits')
-        # read in spectroscopy 
-        gama_s = mrdfits(UT.dat_dir()+'SpecLines.fits')
+        # read in photometry (GAMA`s master input catalogue; http://www.gama-survey.org/dr2/schema/table.php?id=156)
+        gama_p = mrdfits(UT.dat_dir()+'gama/InputCatA.fits')
+        # read in spectroscopy (http://www.gama-survey.org/dr2/schema/table.php?id=197)
+        gama_s = mrdfits(UT.dat_dir()+'gama/SpecLines.fits')
+        # read in kcorrect z = 0.0 (http://www.gama-survey.org/dr2/schema/table.php?id=177)
+        gama_k0 = self._readKcorrect(UT.dat_dir()+'gama/kcorr_z00.fits')
+        # read in kcorrect z = 0.1 (http://www.gama-survey.org/dr2/schema/table.php?id=178)
+        gama_k1 = self._readKcorrect(UT.dat_dir()+'gama/kcorr_z01.fits')
         if not silent: 
             print('colums in GAMA photometry') 
             print(sorted(gama_p.__dict__.keys()))
@@ -85,10 +94,21 @@ class GAMA(Catalog):
             print 'colums in GAMA spectroscopy'
             print(sorted(gama_s.__dict__.keys()))
             print('%i objects' % len(gama_s.ra)) 
+            print '========================'
+            print 'colums in GAMA k-correct'
+            print(sorted(gama_k0.__dict__.keys()))
+            print('%i objects' % len(gama_k0.mass)) 
+            print '========================'
         
         # impose some common sense cuts 
+        # only keep gama_p that has gama_k0 matches and SDSS photometry
+        assert np.array_equal(gama_p.cataid, np.arange(len(gama_p.cataid)))
+        assert np.array_equal(gama_k0.cataid, gama_k1.cataid) 
+        has_kcorr = np.zeros(len(gama_p.cataid), dtype=bool)
+        has_kcorr[gama_k0.cataid] = True
         cut_photo = ((gama_p.modelmag_u > -9999.) & (gama_p.modelmag_g > -9999.) & (gama_p.modelmag_r > -9999.) &
-                (gama_p.modelmag_i > -9999.) & (gama_p.modelmag_z > -9999.))
+                (gama_p.modelmag_i > -9999.) & (gama_p.modelmag_z > -9999.) & has_kcorr)
+        # only keep gama_s that has Halpha  
         cut_spec = (gama_s.ha > -99.)
         
         # spherematch the catalogs
@@ -98,6 +118,13 @@ class GAMA(Catalog):
         s_match = (np.arange(len(gama_s.ra))[cut_spec])[match[1]] 
         assert len(p_match) == len(s_match)
         if not silent: print('spherematch returns %i matches' % len(p_match))
+        
+        # check that gama_p.cataid[s_match] is subset of gama_k0.cataid
+        assert np.all(np.in1d(gama_p.cataid[p_match], gama_k0.cataid)) 
+         # get ordering for kcorrect data
+        k_match = np.searchsorted(gama_k0.cataid, gama_p.cataid[p_match])
+
+        assert np.array_equal(gama_p.cataid[p_match], gama_k0.cataid[k_match])
     
         # write everything into a hdf5 file 
         f = h5py.File(self._File(), 'w') 
@@ -110,8 +137,31 @@ class GAMA(Catalog):
         grp_s = f.create_group('spec') 
         for key in gama_s.__dict__.keys():
             grp_s.create_dataset(key, data=getattr(gama_s, key)[s_match]) 
+
+        # store kcorrect data in kcorrect groups
+        grp_k0 = f.create_group('kcorr_z0.0') 
+        for key in gama_k0.__dict__.keys():
+            grp_k0.create_dataset(key, data=getattr(gama_k0, key)[k_match]) 
+
+        grp_k1 = f.create_group('kcorr_z0.1') 
+        for key in gama_k1.__dict__.keys():
+            grp_k1.create_dataset(key, data=getattr(gama_k1, key)[k_match]) 
+
         f.close() 
         return None 
+
+    def _readKcorrect(self, fitsfile): 
+        ''' GAMA Kcorrect raises VerifyError if read in the usual fashion.
+        '''
+        kcorr = FitsTable() # same class as mrdfits output for consistency
+
+        f = fits.open(fitsfile)
+        f.verify('fix') 
+        fitsdata = f[1].data
+
+        for name in fitsdata.names: 
+            setattr(kcorr, name.lower(), fitsdata.field(name))
+        return kcorr
 
 
 class GamaLegacy(Catalog): 
@@ -134,6 +184,8 @@ class GamaLegacy(Catalog):
         f = h5py.File(self._File(), 'r') 
         grp_gp = f['gama-photo'] 
         grp_gs = f['gama-spec']
+        grp_k0 = f['gama-kcorr-z0.0']
+        grp_k1 = f['gama-kcorr-z0.1']
         grp_lp = f['legacy-photo'] 
 
         if not silent: 
@@ -147,11 +199,11 @@ class GamaLegacy(Catalog):
             print('%i objects' % len(grp_gp['ra'].value)) 
 
         data = {} 
-        for dk, grp in zip(['gama-photo', 'gama-spec', 'legacy-photo'], [grp_gp, grp_gs, grp_lp]):
+        for dk, grp in zip(['gama-photo', 'gama-spec', 'gama-kcorr-z0.0', 'gama-kcorr-z0.1', 'legacy-photo'], 
+                [grp_gp, grp_gs, grp_k0, grp_k1, grp_lp]):
             data[dk] = {} 
             for key in grp.keys():
                 data[dk][key] = grp[key].value 
-
         return data 
 
     def _File(self): 
@@ -168,16 +220,20 @@ class GamaLegacy(Catalog):
         gama_data = gama.Read(silent=silent)
     
         sweep_dict = {} 
-        gama_photo_dict, gama_spec_dict = {}, {}
+        gama_photo_dict, gama_spec_dict, gama_kcorr0_dict, gama_kcorr1_dict = {}, {}, {}, {} 
         # loop through the files and only keep ones that spherematch with GAMA objects
         for i_f, f in enumerate(sweep_files): 
             # read in sweep object 
             sweep = mrdfits(''.join([UT.dat_dir(), 'legacy/sweep/', f]))  
         
             # spherematch the sweep objects with GAMA objects 
-            # (sweep goes first because it's usually bigger) 
-            match = spherematch(sweep.ra, sweep.dec, 
-                    gama_data['photo']['ra'], gama_data['photo']['dec'], 0.000277778)
+            if len(sweep.ra) > len(gama_data['photo']['ra']):
+                match = spherematch(sweep.ra, sweep.dec, 
+                        gama_data['photo']['ra'], gama_data['photo']['dec'], 0.000277778)
+            else: 
+                match_inv = spherematch(gama_data['photo']['ra'], gama_data['photo']['dec'], 
+                        sweep.ra, sweep.dec, 0.000277778)
+                match = [match_inv[1], match_inv[0], match_inv[2]] 
 
             if not silent: 
                 print('%i matches from the %s sweep file' % (len(match[0]), f))
@@ -190,21 +246,14 @@ class GamaLegacy(Catalog):
                     sweep_dict[key] = np.concatenate([sweep_dict[key], 
                         getattr(sweep, key)[match[0]]]) 
 
-            # save matching GAMA photometry 
-            for key in gama_data['photo'].keys():  
-                if i_f == 0: 
-                    gama_photo_dict[key] = gama_data['photo'][key][match[1]]
-                else: 
-                    gama_photo_dict[key] = \
-                            np.concatenate([gama_photo_dict[key], gama_data['photo'][key][match[1]]])
-            
-            # save matching GAMA spectroscopy 
-            for key in gama_data['spec'].keys():  
-                if i_f == 0: 
-                    gama_spec_dict[key] = gama_data['spec'][key][match[1]]
-                else: 
-                    gama_spec_dict[key] = \
-                            np.concatenate([gama_spec_dict[key], gama_data['spec'][key][match[1]]])
+            # save matching GAMA data ('photo', 'spec', and kcorrects) 
+            for gkey, gdict in zip(['photo', 'spec', 'kcorr_z0.0', 'kcorr_z0.1'],
+                    [gama_photo_dict, gama_spec_dict, gama_kcorr0_dict, gama_kcorr1_dict]): 
+                for key in gama_data[gkey].keys(): 
+                    if i_f == 0: 
+                        gdict[key] = gama_data[gkey][key][match[1]]
+                    else: 
+                        gdict[key] = np.concatenate([gdict[key], gama_data[gkey][key][match[1]]])
 
             if not silent and (i_f == 0): print(sweep_dict.keys())
             del sweep  # free memory? (apparently not really) 
@@ -215,19 +264,27 @@ class GamaLegacy(Catalog):
 
         assert len(sweep_dict['ra']) == len(gama_photo_dict['ra']) 
         assert len(sweep_dict['ra']) == len(gama_spec_dict['ra']) 
+        assert len(sweep_dict['ra']) == len(gama_kcorr0_dict['mass']) 
+        assert len(sweep_dict['ra']) == len(gama_kcorr1_dict['mass']) 
 
         # save data to hdf5 file
         if not silent: print('writing to %s' % self._File())
         f = h5py.File(self._File(), 'w') 
         grp_gp = f.create_group('gama-photo') 
         grp_gs = f.create_group('gama-spec') 
+        grp_k0 = f.create_group('gama-kcorr-z0.0') 
+        grp_k1 = f.create_group('gama-kcorr-z0.1') 
         grp_lp = f.create_group('legacy-photo') 
-
+    
         for key in sweep_dict.keys():
             grp_lp.create_dataset(key, data=sweep_dict[key]) 
         for key in gama_photo_dict.keys(): 
             grp_gp.create_dataset(key, data=gama_photo_dict[key]) 
         for key in gama_spec_dict.keys(): 
             grp_gs.create_dataset(key, data=gama_spec_dict[key]) 
+        for key in gama_kcorr0_dict.keys(): 
+            grp_k0.create_dataset(key, data=gama_kcorr0_dict[key]) 
+        for key in gama_kcorr1_dict.keys(): 
+            grp_k1.create_dataset(key, data=gama_kcorr1_dict[key]) 
         f.close() 
         return None 
