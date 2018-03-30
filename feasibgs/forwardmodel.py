@@ -65,3 +65,41 @@ class BGStree(object):
         '''
         dist, indx = self.tree.query(matrix)
         return indx, dist
+
+
+class BGStemplates(object):
+    '''Generate spectra for BGS templates.  
+    '''
+    def __init__(self, wavemin=None, wavemax=None, dw=0.2):
+        ''' initiate BGS template spectra. Mainly for initializing `desisim.templates.BGS`
+        '''
+        # default (buffered) wavelength vector
+        if wavemin is None: self.wavemin = load_throughput('b').wavemin - 10.0
+        if wavemax is None: self.wavemax = load_throughput('z').wavemax + 10.0
+        self.dw = dw
+        self.wave = np.arange(round(wavemin, 1), wavemax, dw)
+
+        # initialize the templates once:
+        self.bgs_templates = BGS(wave=self.wave, normfilter='decam2014-r') 
+        #normfilter='sdss2010-r') # Need to generalize this!
+        self.bgs_templates.normline = None # no emission lines!
+
+    def Spectra(self, r_mag, zred, vdisp, seed=None, templateid=None, silent=True):
+        ''' Given data in the output format of `feasibgs.catalog.Read`
+        generate spectra given the `templateid`.
+        '''
+        np.random.seed(seed) # set random seed
+
+        # meta data of 'mag', 'redshift', 'vdisp'
+        input_meta = empty_metatable(nmodel=len(r_mag), objtype='BGS')
+        input_meta['SEED'] = np.random.randint(2**32, size=len(r_mag)) 
+        input_meta['MAG'] = r_mag # r band apparent magnitude
+        input_meta['REDSHIFT'] = zred # redshift
+        input_meta['VDISP'] = vdisp 
+        input_meta['TEMPLATEID'] = templateid
+
+        flux, _, meta = self.bgs_templates.make_templates(input_meta=input_meta,
+                                                          nocolorcuts=True, 
+                                                          novdisp=False,
+                                                          verbose=(not silent))
+        return flux, self.wave, meta

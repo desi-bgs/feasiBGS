@@ -6,6 +6,7 @@ Significant plots
 import numpy as np 
 
 # -- local --  
+import env
 from feasibgs import util as UT
 from feasibgs import catalogs as Cat
 

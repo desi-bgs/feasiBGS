@@ -8,6 +8,7 @@ import os
 import numpy as np
 import h5py
 from astropy.io import fits 
+from astropy.cosmology import FlatLambdaCDM
 from pydl.pydlutils.spheregroup import spherematch
 
 # -- local --
@@ -171,6 +172,37 @@ class GamaLegacy(Catalog):
     '''
     def __init__(self): 
         pass 
+
+    def AbsMag(self, data, kcorr=0.1, H0=70, Om0=0.3):  
+        ''' Calculate absolute magnitude in SDSS u, g, r, i, z bands with kcorrect 
+        at z=`kcorr` given the data dictionary from the `GamaLegacy.Read` method. 
+        H0 and Om0 specifies the cosmology for the distance modulus. 
+        '''
+        # check data's structure 
+        for k in ['gama-photo', 'gama-spec','gama-kcorr-z0.0', 'gama-kcorr-z0.1']: 
+            if k not in data.keys(): 
+                raise ValueError('input data does not have the approprite keys') 
+        # check kcorr 
+        if kcorr not in [0.0, 0.1]: raise ValueError('kcorr = 0.0, 0.1 only') 
+    
+        bands_sdss = ['u','g','r','i','z']
+        # apparent magnitude from GAMA photometry
+        mag_ugriz = np.array([data['gama-photo']['modelmag_'+b] for b in bands_sdss]) 
+        #mag_ugriz =np.array([data['gama-kcorr-z0.1'][b+'_model'] for b in bands_sdss]) 
+
+        redshift = data['gama-spec']['z_helio']  # redshift
+        # distance modulus 
+        cosmo = FlatLambdaCDM(H0=H0, Om0=Om0)
+        D_L = cosmo.luminosity_distance(redshift).value # Mpc 
+        DM = 5. * np.log10(1e5*D_L)
+        # k-correct 
+        if kcorr == 0.0: 
+            kcorr = np.array([data['gama-kcorr-z0.0']['kcorr_'+b] for b in bands_sdss]) 
+        elif kcorr == 0.1: 
+            kcorr = np.array([data['gama-kcorr-z0.1']['kcorr_'+b] for b in bands_sdss])
+        
+        absmag_ugriz = mag_ugriz - DM - kcorr
+        return absmag_ugriz
     
     def Read(self, silent=True):
         ''' Read in objects from legacy survey DR 5 that overlap with the 

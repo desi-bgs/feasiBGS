@@ -9,6 +9,7 @@ from pydl.pydlutils.spheregroup import spherematch
 # -- local -- 
 from feasibgs import util as UT
 from feasibgs import catalogs as Cat 
+from ChangTools.fitstables import mrdfits
 
 # -- plotting --
 import matplotlib as mpl
@@ -132,9 +133,51 @@ def Legacy_mismatch():
     return None
 
 
-def GAMA_Legacy_photo(): 
+def GAMA_Legacy_photo_discrepancy(): 
     ''' Compare the photometry of GAMA with the photometry of 
     the Legacy Survey
+    '''
+    # read in GAMA-Legacy objects
+    legacy = Cat.GamaLegacy() 
+    legacy_data = legacy.Read(silent=False)
+
+    # read in GAMA extinctinon data
+    ext = mrdfits(UT.dat_dir()+'gama/GalacticExtinction.fits')
+    
+    # gama u,g,r,i,z
+    bands = ['u', 'g', 'r', 'i', 'z']
+    mag_gama_photo = np.array([legacy_data['gama-photo']['modelmag_'+b] for b in bands]) 
+    mag_gama_kcorr0= np.array([legacy_data['gama-kcorr-z0.0'][b+'_model'] for b in bands]) 
+    mag_gama_kcorr1= np.array([legacy_data['gama-kcorr-z0.1'][b+'_model'] for b in bands]) 
+    
+    # bruteforce match 
+    ext_index = np.zeros(len(ext.cataid), dtype=bool)
+    for icat in legacy_data['gama-photo']['cataid']: 
+        match = (ext.cataid == icat) 
+        if np.sum(match) != 1: 
+            raise ValueError
+        ext_index[match] = True
+    
+    fig = plt.figure(figsize=(20,4))
+    for i, b in enumerate(bands): 
+        sub = fig.add_subplot(1,5,i+1)
+        sub.scatter(mag_gama_photo[i,:]-getattr(ext, 'a_'+b)[ext_index], mag_gama_kcorr0[i,:], 
+                c='k', s=2) 
+        sub.scatter(mag_gama_photo[i,:]-getattr(ext, 'a_'+b)[ext_index], mag_gama_kcorr1[i,:], 
+                c='C0', s=2) 
+        sub.plot([15, 25], [15, 25], c='k', ls='--') 
+        sub.set_xlabel('$'+b+'$ mag from GAMA InputCatA', fontsize=15)
+        sub.set_xlim([15, 25]) 
+        if i == 0: 
+            sub.set_ylabel('mag from GAMA kcorr', fontsize=15)
+        sub.set_ylim([15, 25]) 
+    fig.savefig(UT.fig_dir()+"GAMA_Legacy_photo_discrepancy.png", bbox_inches='tight')
+    plt.close() 
+    return None
+
+
+def GAMA_Legacy_photo(): 
+    ''' Resolve the discrepancy in the magnitudes in 'gama-photo' and 'gama-kcorr'
     '''
     # read in GAMA-Legacy objects
     legacy = Cat.GamaLegacy() 
@@ -185,4 +228,4 @@ def GAMA_Legacy_photo():
 
 
 if __name__=="__main__": 
-    Legacy_mismatch()
+    GAMA_Legacy_photo_discrepancy()
