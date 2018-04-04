@@ -29,6 +29,77 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
+def GamaLegacy_SpectraCond(obvs): 
+    ''' take a random galaxy from the GAMA-Legacy catalog, match it to 
+    BGS templates, then simulate exposure on the templates with varying 
+    atmospheric conditions. This is just to get a taste of what each of 
+    the atmospheric condition parameters do to the spectra. 
+    '''
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read()
+
+    redshift = gleg['gama-spec']['z_helio']  # redshift
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3) # ABSMAG k-correct to z=0.1 
+    
+    # BGS templates
+    bgs3 = FM.BGStree() 
+    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
+
+    # pick a random galaxy from the GAMA-legacy sample and then 
+    # find the closest template
+    i_rand = [1765]# np.random.choice(range(absmag_ugriz.shape[1]), size=1) 
+    
+    # meta data of [z, M_r0.1, 0.1(g-r)]
+    gleg_meta = np.vstack([
+        redshift[i_rand], 
+        absmag_ugriz[2,i_rand], 
+        absmag_ugriz[1,i_rand] - absmag_ugriz[2,i_rand]]).T
+    match, _ = bgs3.Query(gleg_meta)
+    
+    # velocity dispersion 
+    vdisp = np.repeat(100.0, len(i_rand)) # [km/s]
+    
+    flux, wave, meta = bgstemp.Spectra(
+            gleg['gama-photo']['modelmag_r'][i_rand], 
+            redshift[i_rand], 
+            vdisp,
+            seed=1, templateid=match, silent=False) 
+
+    # what conditions do we want to expose it in
+    if obvs == 'exptime': 
+        conditions = [{'exptime': val} for val in np.linspace(100, 1000, 4)]
+    elif obvs == 'airmass': 
+        conditions = [{'airmass': val} for val in np.linspace(1., 10., 4)]
+    elif obvs == 'moonfrac': 
+        conditions = [{'moonfrac': val} for val in np.linspace(0., 1., 4)]
+    
+    # plot the spectra
+    fig = plt.figure(figsize=(12,6))
+    sub = fig.add_subplot(111)
+    for i_c, cond in enumerate(conditions): 
+        # simulate exposure using the dark time default 
+        # observing condition parameters
+        bgs_spectra = bgstemp.simExposure(wave, flux, nonoise=True, **cond) 
+
+        # plot exposed spectra of the three CCDs
+        for b in ['b', 'r', 'z']: 
+            if b == 'z': lbl = '$'+str(cond[obvs])+'$'
+            else: lbl = None
+            sub.plot(bgs_spectra.wave[b], bgs_spectra.flux[b].flatten(), 
+                    c='C'+str(i_c), lw=0.2, alpha=0.5, label=lbl) 
+    # overplot template spectra
+    sub.plot(wave, flux.flatten(), c='k', lw=0.3, label='Template')
+    sub.legend(frameon=True, loc='upper right', prop={'size':20}) 
+    sub.set_xlabel('wavelength', fontsize=20) 
+    sub.set_xlim([3600., 9800.]) 
+    sub.set_ylim([0., 50.]) 
+    fig.savefig(UT.fig_dir()+"GamaLegacy_Spectra."+obvs+".png", bbox_inches='tight')
+    plt.close() 
+    return None
+
+
 def GamaLegacy_expSpectra(): 
     ''' match galaxies from the GAMA-Legacy catalog to 
     BGS templates and simulate exposure on the templates.
@@ -45,9 +116,9 @@ def GamaLegacy_expSpectra():
     bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
     mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
 
-    # pick 10 random galaxies from the GAMA-legacy sample
+    # pick 5 random galaxies from the GAMA-legacy sample
     # and then find the closest template
-    i_rand = np.random.choice(range(absmag_ugriz.shape[1]), size=10) 
+    i_rand = np.random.choice(range(absmag_ugriz.shape[1]), size=5) 
     
     # meta data of [z, M_r0.1, 0.1(g-r)]
     gleg_meta = np.vstack([
@@ -84,13 +155,15 @@ def GamaLegacy_expSpectra():
 
         # plot exposed spectra of the three CCDs
         for b in ['b', 'r', 'z']: 
-            sub2.plot(bgs_spectra.wave[b], bgs_spectra.flux[b].flatten(), c='C'+str(ii)) 
+            sub2.plot(bgs_spectra.wave[b], bgs_spectra.flux[b][ii].flatten(), c='C'+str(ii), lw=0.2, alpha=0.5) 
+        # overplot template spectra
+        sub2.plot(wave, flux[ii], c='k', lw=0.3, label='Template')
     sub1.set_xlabel('$M_{0.1r}$', fontsize=20) 
     sub1.set_xlim([-14., -24]) 
     sub1.set_ylim([-0.2, 1.2])
     sub2.set_xlabel('wavelength', fontsize=20) 
-    sub2.set_xlim([1.5e3, 2e4]) 
-    sub2.set_ylim([0., 25.]) 
+    sub2.set_xlim([3600., 9800.]) 
+    sub2.set_ylim([0., 50.]) 
     fig.savefig(UT.fig_dir()+"GamaLegacy_expSpectra.png", bbox_inches='tight')
     plt.close() 
     return None
@@ -243,4 +316,5 @@ def BGStemplates():
 
 
 if __name__=="__main__": 
-    GamaLegacy_expSpectra()
+    GamaLegacy_SpectraCond('airmass')
+    GamaLegacy_SpectraCond('moonfrac')
