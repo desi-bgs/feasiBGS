@@ -29,6 +29,73 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
+def GamaLegacy_expSpectra(): 
+    ''' match galaxies from the GAMA-Legacy catalog to 
+    BGS templates and simulate exposure on the templates.
+    '''
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read()
+
+    redshift = gleg['gama-spec']['z_helio']  # redshift
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3) # ABSMAG k-correct to z=0.1 
+    
+    # BGS templates
+    bgs3 = FM.BGStree() 
+    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
+
+    # pick 10 random galaxies from the GAMA-legacy sample
+    # and then find the closest template
+    i_rand = np.random.choice(range(absmag_ugriz.shape[1]), size=10) 
+    
+    # meta data of [z, M_r0.1, 0.1(g-r)]
+    gleg_meta = np.vstack([
+        redshift[i_rand], 
+        absmag_ugriz[2,i_rand], 
+        absmag_ugriz[1,i_rand] - absmag_ugriz[2,i_rand]]).T
+    match, _ = bgs3.Query(gleg_meta)
+    
+    # velocity dispersion 
+    vdisp = np.repeat(100.0, len(i_rand)) # [km/s]
+    
+    flux, wave, meta = bgstemp.Spectra(
+            gleg['gama-photo']['modelmag_r'][i_rand], 
+            redshift[i_rand], 
+            vdisp,
+            seed=1, templateid=match, silent=False) 
+    
+    # simulate exposure using the dark time default 
+    # observing condition parameters
+    bgs_spectra = bgstemp.simExposure(wave, flux) 
+    
+    # plot the spectra
+    fig = plt.figure(figsize=(12,6))
+    sub1 = fig.add_subplot(121)
+    sub2 = fig.add_subplot(122)
+    sub1.scatter(absmag_ugriz[2,:], absmag_ugriz[1,:] - absmag_ugriz[2,:], c='k', s=2) 
+    for ii, i in enumerate(i_rand): 
+        sub1.scatter(mabs_temp[match[ii],2], mabs_temp[match[ii],1] - mabs_temp[match[ii],2],
+                color='C'+str(ii), s=30, edgecolors='k', marker='^', label='Template')
+        sub1.scatter(absmag_ugriz[2,i], absmag_ugriz[1,i] - absmag_ugriz[2,i], 
+                color='C'+str(ii), s=30, edgecolors='k', marker='s', label='GAMA object')
+        if ii == 0: 
+            sub1.legend(loc='lower left', markerscale=3, handletextpad=0., prop={'size':20})
+
+        # plot exposed spectra of the three CCDs
+        for b in ['b', 'r', 'z']: 
+            sub2.plot(bgs_spectra.wave[b], bgs_spectra.flux[b].flatten(), c='C'+str(ii)) 
+    sub1.set_xlabel('$M_{0.1r}$', fontsize=20) 
+    sub1.set_xlim([-14., -24]) 
+    sub1.set_ylim([-0.2, 1.2])
+    sub2.set_xlabel('wavelength', fontsize=20) 
+    sub2.set_xlim([1.5e3, 2e4]) 
+    sub2.set_ylim([0., 25.]) 
+    fig.savefig(UT.fig_dir()+"GamaLegacy_expSpectra.png", bbox_inches='tight')
+    plt.close() 
+    return None
+
+
 def GamaLegacy_matchSpectra(): 
     ''' match galaxies from the GAMA-Legacy catalog to 
     BGS templates and then plot their spectra
@@ -176,4 +243,4 @@ def BGStemplates():
 
 
 if __name__=="__main__": 
-    GamaLegacy_matchSpectra()
+    GamaLegacy_expSpectra()
