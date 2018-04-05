@@ -119,7 +119,7 @@ class BGStemplates(object):
         return flux, self.wave, meta
 
     def simExposure(self, wave, flux, airmass=1.0, exptime=1000, moonalt=-60, moonsep=180, moonfrac=0.0, seeing=1.1, 
-            seed=1, skyerr=0.0, nonoise=False): 
+            seed=1, skyerr=0.0): 
         ''' insert description here 
         '''
         nspec, _ = flux.shape # number of spectra 
@@ -177,8 +177,7 @@ class BGStemplates(object):
         
         # put in random noise 
         random_state = np.random.RandomState(seed)
-        if not nonoise: 
-            sim.generate_random_noise(random_state)
+        sim.generate_random_noise(random_state)
 
         scale=1e17
         specdata = None

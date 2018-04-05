@@ -81,7 +81,7 @@ def GamaLegacy_SpectraCond(obvs):
     for i_c, cond in enumerate(conditions): 
         # simulate exposure using the dark time default 
         # observing condition parameters
-        bgs_spectra = bgstemp.simExposure(wave, flux, nonoise=True, **cond) 
+        bgs_spectra = bgstemp.simExposure(wave, flux, **cond) 
 
         # plot exposed spectra of the three CCDs
         for b in ['b', 'r', 'z']: 
