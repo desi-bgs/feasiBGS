@@ -119,7 +119,7 @@ class BGStemplates(object):
         return flux, self.wave, meta
 
     def simExposure(self, wave, flux, airmass=1.0, exptime=1000, moonalt=-60, moonsep=180, moonfrac=0.0, seeing=1.1, 
-            seed=1, skyerr=0.0): 
+            seed=1, skyerr=0.0, nonoise=False): 
         ''' insert description here 
         '''
         nspec, _ = flux.shape # number of spectra 
@@ -177,7 +177,8 @@ class BGStemplates(object):
         
         # put in random noise 
         random_state = np.random.RandomState(seed)
-        sim.generate_random_noise(random_state)
+        if not nonoise: 
+            sim.generate_random_noise(random_state)
 
         scale=1e17
         specdata = None
@@ -190,7 +191,6 @@ class BGStemplates(object):
         skyscale = skyerr * random_state.normal(size=sim.num_fibers)
 
         for table in sim.camera_output :
-            
             wave = table['wavelength'].astype(float)
             flux = (table['observed_flux']+table['random_noise_electrons']*table['flux_calibration']).T.astype(float)
             if np.any(skyscale):
@@ -262,12 +262,11 @@ class BGStemplates(object):
         # Generate specsim config object for a given wavelength grid
         config = desisim.simexp._specsim_config_for_wave(wave.to('Angstrom').value, 
                 dwave_out=dwave_out, specsim_config_file=specsim_config_file)
+        print('config', config.atmosphere)
 
         #- Create simulator
         desi = specsim.simulator.Simulator(config, nspec,
             camera_output=psfconvolve)
-        #desisim.specsim.get_simulator(config, num_fibers=nspec,
-        #    camera_output=psfconvolve)
 
         if obsconditions is None: raise ValueError
 
@@ -364,4 +363,97 @@ class BGStemplates(object):
                       source_position_angle=None)
         np.random.set_state(randstate)
         return desi
+
+    def _skyflux(self, wave, flux, airmass=1.0, exptime=1000, moonalt=-60, moonsep=180, moonfrac=0.0, seeing=1.1, 
+            seed=1, skyerr=0.0, nonoise=False): 
+        ''' run through the exposure simulation but only output the sky
+        '''
+        nspec, _ = flux.shape # number of spectra 
+
+        # observation conditions
+        obvs_dict = dict(
+                AIRMASS=airmass, 
+                EXPTIME=exptime, # s 
+                MOONALT=moonalt, # deg
+                MOONFRAC=moonfrac,
+                MOONSEP=moonsep, # deg
+                SEEING=seeing)   # arc sec
+
+        tileid  = 0
+        dateobs = time.gmtime()
+        night   = get_night(utc=dateobs)
         
+        frame_fibermap = desispec.io.fibermap.empty_fibermap(nspec) # empty fibermap ndarray
+        frame_fibermap.meta["FLAVOR"] = "custom"
+        frame_fibermap.meta["NIGHT"] = night
+        frame_fibermap.meta["EXPID"] = 0 
+        # add DESI_TARGET
+        tm = desitarget.targetmask.desi_mask
+        frame_fibermap['DESI_TARGET'] = tm.BGS_ANY
+        frame_fibermap['TARGETID'] =  np.arange(nspec).astype(int)
+    
+        # spectra fibermap has two extra fields : night and expid
+        # This would be cleaner if desispec would provide the spectra equivalent
+        # of desispec.io.empty_fibermap()
+        spectra_fibermap = desispec.io.empty_fibermap(nspec)
+        spectra_fibermap = desispec.io.util.add_columns(spectra_fibermap,
+                           ['NIGHT', 'EXPID', 'TILEID'],
+                           [np.int32(night), np.int32(0), np.int32(tileid)],
+                           )
+        for s in range(nspec):
+            for tp in frame_fibermap.dtype.fields:
+                spectra_fibermap[s][tp] = frame_fibermap[s][tp]
+
+        # ccd wavelength limit 
+        params = desimodel.io.load_desiparams()
+        wavemin = params['ccd']['b']['wavemin']
+        wavemax = params['ccd']['z']['wavemax']
+
+        if wave[0] > wavemin or wave[-1] < wavemax:
+            raise ValueError
+
+        wlim = (wavemin <= wave) & (wave <= wavemax) # wavelength limit 
+        wave = wave[wlim]*u.Angstrom
+
+        flux_unit = 1e-17 * u.erg / (u.Angstrom * u.s * u.cm ** 2 )
+        flux = flux[:,wlim]*flux_unit
+
+        sim = self._simulate_spectra(wave, flux, fibermap=frame_fibermap,
+            obsconditions=obvs_dict, redshift=None, seed=seed, psfconvolve=True)
+        
+        # put in random noise 
+        random_state = np.random.RandomState(seed)
+        if not nonoise: 
+            sim.generate_random_noise(random_state)
+
+        scale=1e17
+        specdata = None
+
+        resolution={}
+        for camera in sim.instrument.cameras:
+            R = Resolution(camera.get_output_resolution_matrix())
+            resolution[camera.name] = np.tile(R.to_fits_array(), [nspec, 1, 1])
+
+        skyscale = skyerr * random_state.normal(size=sim.num_fibers)
+        
+        waves, fluxes, skyfluxes = [], [], [] 
+        for table in sim.camera_output :
+            wave = table['wavelength'].astype(float)
+            flux = (table['observed_flux']+table['random_noise_electrons']*table['flux_calibration']).T.astype(float)
+            skyflux = ((table['num_sky_electrons']*skyscale)*table['flux_calibration']).T.astype(float)
+
+            ivar = table['flux_inverse_variance'].T.astype(float)
+            
+            band  = table.meta['name'].strip()[0]
+            
+            flux = flux * scale
+            skyflux = skyflux * scale
+            ivar = ivar / scale**2
+            mask  = np.zeros(flux.shape).astype(int)
+
+            waves.append(np.array(wave))
+            fluxes.append(np.array(flux.flatten()))
+            skyfluxes.append(np.array(skyflux.flatten()))
+
+        return waves, fluxes, skyfluxes 
+

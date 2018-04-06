@@ -29,6 +29,151 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
+def GamaLegacy_skyflux(obvs): 
+    ''' take a random galaxy from the GAMA-Legacy catalog, match it to 
+    BGS templates, then simulate exposure on the templates with varying 
+    atmospheric conditions. This is just to get a taste of what each of 
+    the atmospheric condition parameters do to the spectra. 
+    '''
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read()
+
+    redshift = gleg['gama-spec']['z_helio']  # redshift
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3) # ABSMAG k-correct to z=0.1 
+    
+    # BGS templates
+    bgs3 = FM.BGStree() 
+    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
+
+    # pick a random galaxy from the GAMA-legacy sample and then 
+    # find the closest template
+    i_rand = [1765]# np.random.choice(range(absmag_ugriz.shape[1]), size=1) 
+    
+    # meta data of [z, M_r0.1, 0.1(g-r)]
+    gleg_meta = np.vstack([
+        redshift[i_rand], 
+        absmag_ugriz[2,i_rand], 
+        absmag_ugriz[1,i_rand] - absmag_ugriz[2,i_rand]]).T
+    match, _ = bgs3.Query(gleg_meta)
+    
+    # velocity dispersion 
+    vdisp = np.repeat(100.0, len(i_rand)) # [km/s]
+    
+    flux, wave, meta = bgstemp.Spectra(
+            gleg['gama-photo']['modelmag_r'][i_rand], 
+            redshift[i_rand], 
+            vdisp,
+            seed=1, templateid=match, silent=False) 
+
+    # what conditions do we want to expose it in
+    if obvs == 'exptime': 
+        conditions = [{'exptime': val} for val in np.linspace(100, 1000, 4)]
+    elif obvs == 'airmass': 
+        conditions = [{'airmass': val} for val in np.linspace(1., 10., 4)]
+    elif obvs == 'moonfrac': 
+        conditions = [{'moonfrac': val} for val in np.linspace(0., 1., 4)]
+    elif obvs == 'moonalt': 
+        conditions = [{'moonalt': val, 'moonfrac':1.} for val in [-60., -30., 0., 30., 60.]]
+    elif obvs == 'moonsep': 
+        conditions = [{'moonsep': val, 'moonalt': 20, 'moonfrac':1.} for val in [0., 30., 60., 90.]]
+    
+    # plot the spectra
+    fig = plt.figure(figsize=(12,6))
+    sub = fig.add_subplot(111)
+    for i_c, cond in enumerate(conditions): 
+        # simulate exposure using the dark time default 
+        # observing condition parameters
+        waves, fluxes, skyfluxes  = bgstemp._skyflux(wave, flux, skyerr=1., **cond) 
+        
+        for i in range(len(waves)): 
+            if i == 0: 
+                lbl = '$'+str(cond[obvs])+'$'
+            else: 
+                lbl = None
+            sub.plot(waves[i], skyfluxes[i], c='C'+str(i_c), lw=1, label=lbl) 
+    sub.legend(frameon=True, loc='upper right', prop={'size':20}) 
+    sub.set_xlabel('wavelength', fontsize=20) 
+    sub.set_xlim([3600., 9800.]) 
+    #sub.set_ylim([-50., 50.]) 
+    fig.savefig(UT.fig_dir()+"GamaLegacy_skyflux."+obvs+".png", bbox_inches='tight')
+    plt.close() 
+    return None
+
+
+def GamaLegacy_residualSpectraCond(obvs): 
+    ''' take a galaxy from the GAMA-Legacy catalog, match it to 
+    BGS templates, then simulate exposure on the templates with varying 
+    atmospheric conditions. This is just to get a taste of what each of 
+    the atmospheric condition parameters do to the spectra. 
+    '''
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read()
+
+    redshift = gleg['gama-spec']['z_helio']  # redshift
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3) # ABSMAG k-correct to z=0.1 
+    
+    # BGS templates
+    bgs3 = FM.BGStree() 
+    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
+
+    # pick a random galaxy from the GAMA-legacy sample and then 
+    # find the closest template
+    i_rand = [1765]# np.random.choice(range(absmag_ugriz.shape[1]), size=1) 
+    
+    # meta data of [z, M_r0.1, 0.1(g-r)]
+    gleg_meta = np.vstack([
+        redshift[i_rand], 
+        absmag_ugriz[2,i_rand], 
+        absmag_ugriz[1,i_rand] - absmag_ugriz[2,i_rand]]).T
+    match, _ = bgs3.Query(gleg_meta)
+    
+    # velocity dispersion 
+    vdisp = np.repeat(100.0, len(i_rand)) # [km/s]
+    
+    flux, wave, meta = bgstemp.Spectra(
+            gleg['gama-photo']['modelmag_r'][i_rand], 
+            redshift[i_rand], 
+            vdisp,
+            seed=1, templateid=match, silent=False) 
+
+    # what conditions do we want to expose it in
+    if obvs == 'exptime': 
+        conditions = [{'exptime': val} for val in np.linspace(100, 1000, 4)]
+    elif obvs == 'airmass': 
+        conditions = [{'airmass': val} for val in np.linspace(1., 10., 4)]
+    elif obvs == 'moonfrac': 
+        conditions = [{'moonfrac': val} for val in np.linspace(0., 1., 4)]
+    
+    noiseless_spectra = bgstemp.simExposure(wave, flux, skyerr=1., nonoise=True) 
+
+    # plot the spectra
+    fig = plt.figure(figsize=(12,6))
+    sub = fig.add_subplot(111)
+    for i_c, cond in enumerate(conditions): 
+        # simulate exposure using the dark time default 
+        # observing condition parameters
+        bgs_spectra = bgstemp.simExposure(wave, flux, skyerr=1., **cond) 
+
+        # plot exposed spectra of the three CCDs
+        for b in ['b', 'r', 'z']: 
+            if b == 'z': lbl = '$'+str(cond[obvs])+'$'
+            else: lbl = None
+            sub.plot(bgs_spectra.wave[b], 
+                    bgs_spectra.flux[b].flatten() - noiseless_spectra.flux[b].flatten(), 
+                    c='C'+str(i_c), lw=0.2, alpha=0.5, label=lbl) 
+    sub.legend(frameon=True, loc='upper right', prop={'size':20}) 
+    sub.set_xlabel('wavelength', fontsize=20) 
+    sub.set_xlim([3600., 9800.]) 
+    sub.set_ylim([-50., 50.]) 
+    fig.savefig(UT.fig_dir()+"GamaLegacy_residualSpectra."+obvs+".png", bbox_inches='tight')
+    plt.close() 
+    return None
+
+
 def GamaLegacy_SpectraCond(obvs): 
     ''' take a random galaxy from the GAMA-Legacy catalog, match it to 
     BGS templates, then simulate exposure on the templates with varying 
@@ -316,5 +461,4 @@ def BGStemplates():
 
 
 if __name__=="__main__": 
-    GamaLegacy_SpectraCond('airmass')
-    GamaLegacy_SpectraCond('moonfrac')
+    GamaLegacy_skyflux('moonsep')
