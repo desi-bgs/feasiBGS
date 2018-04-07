@@ -3,4 +3,7 @@
 *.p
 *.dat
 dat
-
+*.aux
+*.blg
+*.log
+*.out
