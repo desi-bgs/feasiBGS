@@ -173,7 +173,7 @@ class GamaLegacy(Catalog):
     def __init__(self): 
         pass 
 
-    def AbsMag(self, data, kcorr=0.1, H0=70, Om0=0.3):  
+    def AbsMag(self, data, kcorr=0.1, H0=70, Om0=0.3, galext=False):  
         ''' Calculate absolute magnitude in SDSS u, g, r, i, z bands with kcorrect 
         at z=`kcorr` given the data dictionary from the `GamaLegacy.Read` method. 
         H0 and Om0 specifies the cosmology for the distance modulus. 
@@ -187,8 +187,10 @@ class GamaLegacy(Catalog):
     
         bands_sdss = ['u','g','r','i','z']
         # apparent magnitude from GAMA photometry
-        mag_ugriz = np.array([data['gama-photo']['modelmag_'+b] for b in bands_sdss]) 
-        #mag_ugriz =np.array([data['gama-kcorr-z0.1'][b+'_model'] for b in bands_sdss]) 
+        if not galext: 
+            mag_ugriz = np.array([data['gama-photo']['modelmag_'+b] for b in bands_sdss]) 
+        else: 
+            mag_ugriz =np.array([data['gama-kcorr-z0.1'][b+'_model'] for b in bands_sdss]) 
 
         redshift = data['gama-spec']['z_helio']  # redshift
         # distance modulus 

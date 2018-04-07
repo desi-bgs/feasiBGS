@@ -118,6 +118,43 @@ class BGStemplates(object):
                                                           verbose=(not silent))
         return flux, self.wave, meta
 
+    def addEmissionLines(self, wave, flux, gama_data, gama_indices): 
+        ''' add emission lines to spectra
+        '''
+        assert flux.shape[0] == len(gama_indices)
+        # emission lines
+        emline_keys = ['oiib', 'hb',  'oiiib', 'oiiir', 'niib', 'ha', 'niir', 'siib']
+        emline_lambda = [3727, 4861, 4959, 5007, 6548, 6563, 6584, 6716]
+    
+        # gama spectra data
+        gama_sdata = gama_data['gama-spec']
+
+        # get median emission line widths for case where the emission line is measured 
+        # but the width is not... 
+        emline_sigmed = [] 
+        for k in emline_keys: 
+            emline_sigmed.append(np.median(gama_sdata[k+'sig'][gama_sdata[k+'sig'] > 0]))
+
+        # loop through emission lines and add them on! 
+        for i_k, k in enumerate(emline_keys): 
+            hasem = (gama_sdata[k][gama_indices] != -99.) # galaxies with measured emission line
+            
+            # width of Gaussian emission line 
+            em_sig = gama_sdata[k+'sig'][gama_indices][hasem] 
+            # fit the width of the emission line is not fit 
+            # accurately, then use the median value of the data  
+            nosig = (em_sig < 0.) 
+            em_sig[nosig] = emline_sigmed[i_k]
+
+            # normalization of the Gaussian
+            A = gama_sdata[k][gama_indices][hasem]/np.sqrt(2. * np.pi * em_sig**2)
+            
+            for iflx in range(np.sum(hasem)): 
+                emline_flux = A[iflx] * np.exp(-0.5*(wave - emline_lambda[i_k])**2/em_sig[iflx]**2)
+                flux[gama_indices][hasem][iflx] += emline_flux 
+
+        return wave, flux 
+
     def simExposure(self, wave, flux, airmass=1.0, exptime=1000, moonalt=-60, moonsep=180, moonfrac=0.0, seeing=1.1, 
             seed=1, skyerr=0.0, nonoise=False): 
         ''' insert description here 
@@ -174,6 +211,7 @@ class BGStemplates(object):
 
         sim = self._simulate_spectra(wave, flux, fibermap=frame_fibermap,
             obsconditions=obvs_dict, redshift=None, seed=seed, psfconvolve=True)
+        print('fiberarea', sim.fiber_area)
         
         # put in random noise 
         random_state = np.random.RandomState(seed)
