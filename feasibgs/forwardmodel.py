@@ -18,7 +18,7 @@ from astropy.table import vstack
 import astropy.units as u 
 from astropy.coordinates import SkyCoord
 from astropy.cosmology import FlatLambdaCDM
-# -- local -- 
+# -- desi -- 
 from speclite import filters
 import specsim.simulator
 import specsim.config
@@ -35,6 +35,9 @@ import desitarget
 from desispec.spectra import Spectra
 from desispec.resolution import Resolution
 from desitarget.cuts import isBGS_bright, isBGS_faint
+
+# -- local -- 
+from feasibgs import catalogs as Cat 
 
 os.environ['DESI_BASIS_TEMPLATES']='/Volumes/chang_eHDD/projects/desi/spectro/templates/basis_templates/v2.3'
 
@@ -80,6 +83,32 @@ class BGStree(object):
         dist, indx = self.tree.query(matrix)
         return indx, dist
 
+    def _GamaLegacy(self, gleg, index=False): 
+        ''' Given `catalogs.GamaLegacy` class object, return matches to  
+        template 
+        '''
+        # extract necessary meta data 
+        redshift = gleg['gama-spec']['z_helio']  # redshift
+        # calculate ABSMAG k-correct to z=0.1 
+        cata = Cat.GamaLegacy()
+        absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3) 
+
+        if not index: # match all galaxies in the GamaLegacy object
+            ind = np.ones(absmag_ugriz.shape[1], dtype=bool) 
+        else: # match only specified galaxies
+            ind = np.zeros(absmag_ugriz.shape[1], dtype=bool) 
+            ind[index] = True 
+        
+        # stack meta data -- [z, M_r0.1, 0.1(g-r)]
+        gleg_meta = np.vstack([
+            redshift[ind], 
+            absmag_ugriz[2,ind], 
+            absmag_ugriz[1,ind] - absmag_ugriz[2,ind]]).T
+
+        # match to templates 
+        match, _ = self.Query(gleg_meta)
+        return match 
+
 
 class BGStemplates(object):
     '''Generate spectra for BGS templates.  
@@ -118,16 +147,19 @@ class BGStemplates(object):
                                                           verbose=(not silent))
         return flux, self.wave, meta
 
-    def addEmissionLines(self, wave, flux, gama_data, gama_indices): 
+    def addEmissionLines(self, wave, flux, gama_data, gama_indices, silent=True): 
         ''' add emission lines to spectra
         '''
         assert flux.shape[0] == len(gama_indices)
         # emission lines
         emline_keys = ['oiib', 'hb',  'oiiib', 'oiiir', 'niib', 'ha', 'niir', 'siib']
-        emline_lambda = [3727, 4861, 4959, 5007, 6548, 6563, 6584, 6716]
+        emline_lambda = [3727., 4861., 4959., 5007., 6548., 6563., 6584., 6716.]
     
         # gama spectra data
         gama_sdata = gama_data['gama-spec']
+
+        # redshifts 
+        z_gama = gama_data['gama-spec']['z_helio'][gama_indices]
 
         # get median emission line widths for case where the emission line is measured 
         # but the width is not... 
@@ -137,7 +169,10 @@ class BGStemplates(object):
 
         # loop through emission lines and add them on! 
         for i_k, k in enumerate(emline_keys): 
-            hasem = (gama_sdata[k][gama_indices] != -99.) # galaxies with measured emission line
+            hasem = np.where(gama_sdata[k][gama_indices] != -99.)[0] # galaxies with measured emission line
+            if len(hasem) == 0: 
+                if not silent: print('no galaxies with emission line %s' % k) 
+                continue
             
             # width of Gaussian emission line 
             em_sig = gama_sdata[k+'sig'][gama_indices][hasem] 
@@ -148,10 +183,11 @@ class BGStemplates(object):
 
             # normalization of the Gaussian
             A = gama_sdata[k][gama_indices][hasem]/np.sqrt(2. * np.pi * em_sig**2)
-            
-            for iflx in range(np.sum(hasem)): 
-                emline_flux = A[iflx] * np.exp(-0.5*(wave - emline_lambda[i_k])**2/em_sig[iflx]**2)
-                flux[gama_indices][hasem][iflx] += emline_flux 
+
+            for iflx in range(len(hasem)): 
+                lambda_eml_red = emline_lambda[i_k] * (1.+z_gama[hasem][iflx]) 
+                emline_flux = A[iflx] * np.exp(-0.5*(wave - lambda_eml_red)**2/em_sig[iflx]**2)
+                flux[hasem[iflx]] += emline_flux 
 
         return wave, flux 
 

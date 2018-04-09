@@ -373,4 +373,5 @@ def matchGamaLegacy():
 
 
 if __name__=="__main__": 
-    BGStemplates()
+    GamaLegacy_emlineSpectra()
+    #BGStemplates()
