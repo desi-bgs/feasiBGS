@@ -336,7 +336,21 @@ class BGStemplates(object):
         # Generate specsim config object for a given wavelength grid
         config = desisim.simexp._specsim_config_for_wave(wave.to('Angstrom').value, 
                 dwave_out=dwave_out, specsim_config_file=specsim_config_file)
-        print('config', config.atmosphere)
+        #dwave = round(np.mean(np.diff(wave.to('Angstrom').value)), 3)
+        #assert np.allclose(dwave, np.diff(wave), rtol=1e-6, atol=1e-3)
+
+        #config = specsim.config.load_config(specsim_config_file)
+        #config.wavelength_grid.min = wave[0]
+        #config.wavelength_grid.max = wave[-1] + dwave/2.0
+        #config.wavelength_grid.step = dwave
+
+        #if dwave_out is None:
+        #    dwave_out = 1.0
+
+        #config.instrument.cameras.b.constants.output_pixel_size = "{:.3f} Angstrom".format(dwave_out)
+        #config.instrument.cameras.r.constants.output_pixel_size = "{:.3f} Angstrom".format(dwave_out)
+        #config.instrument.cameras.z.constants.output_pixel_size = "{:.3f} Angstrom".format(dwave_out)
+        #config.update()
 
         #- Create simulator
         desi = specsim.simulator.Simulator(config, nspec,
@@ -494,6 +508,7 @@ class BGStemplates(object):
 
         sim = self._simulate_spectra(wave, flux, fibermap=frame_fibermap,
             obsconditions=obvs_dict, redshift=None, seed=seed, psfconvolve=True)
+        print('fiberarea', sim.fiber_area)
         
         # put in random noise 
         random_state = np.random.RandomState(seed)

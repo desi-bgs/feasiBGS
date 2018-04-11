@@ -265,22 +265,24 @@ def GamaLegacy_emlineSpectra():
             sub1.legend(loc='upper left', markerscale=3, handletextpad=0., prop={'size':20})
 
         # plot template spectra w/ emission lines
-        sub2.plot(wave, flux_eml[ii], c='C'+str(ii)) 
+        sub2.plot(wave, flux_eml[ii], c='C'+str(ii), label='Template w/ Em.Lines') 
         # plot template spectra
-        sub2.plot(wave, flux0[ii], c='k', ls='--', lw=0.5) 
+        sub2.plot(wave, flux0[ii], c='k', ls=':', lw=0.5, label='Template') 
     sub1.set_xlabel('$M_{0.1r}$', fontsize=20) 
     sub1.set_xlim([-14., -24]) 
     sub1.set_ylabel(r'$^{0.1}(g-r)$ color', fontsize=20) 
     sub1.set_ylim([-0.2, 1.6])
     sub1.set_yticks([-0.2, 0.2, 0.6, 1.0, 1.4]) 
 
-    for zlambda in emline_zlambda: 
+    for i_l, zlambda in enumerate(emline_zlambda): 
         sub2.vlines(zlambda, 0., 2.*flux_eml[0].max(), color='k', linestyle=':', linewidth=1) 
-    sub2.text(0.9, 0.9, 'Template Spectra', ha='right', va='center', transform=sub2.transAxes, fontsize=20)
+        sub2.text(zlambda, flux_eml[0].max()*float(28-i_l)/20., emline_keys[i_l], ha='left', va='top', fontsize=12) 
+    sub2.legend(loc='upper right', prop={'size': 15})
+    #sub2.text(0.9, 0.9, 'Template Spectra', ha='right', va='center', transform=sub2.transAxes, fontsize=20)
     sub2.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
-    sub2.set_xlim([3e3, 1e4]) 
+    sub2.set_xlim([3.5e3, 1e4]) 
     sub2.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
-    sub2.set_ylim([0., 2.*flux_eml[0].max()]) 
+    sub2.set_ylim([0., 1.8*flux_eml[0].max()]) 
     fig.subplots_adjust(wspace=0.3) 
     fig.savefig(UT.doc_dir()+"figs/GLeg_EmLineSpectra.pdf", bbox_inches='tight')
     plt.close() 

@@ -373,5 +373,4 @@ def matchGamaLegacy():
 
 
 if __name__=="__main__": 
-    GamaLegacy_emlineSpectra()
-    #BGStemplates()
+    GamaLegacy_skyflux('exptime')
