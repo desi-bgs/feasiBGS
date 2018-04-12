@@ -342,8 +342,9 @@ class GamaLegacy(Catalog):
         apflux_resids = np.zeros((3, len(brickname), 8)) 
     
         n_brick = 0 
-        for AAA, brick in zip(AAAs, bricks_uniq): 
+        for ii, AAA, brick in zip(range(len(AAAs)), AAAs, bricks_uniq): 
             name = ''.join([dir, AAA, '/tractor-', brick, '.fits'])
+            print('%i of %i unique bricks' & (ii, len(AAAs))) 
             if not os.path.isfile(name): raise ValueError('%s tractor file not available' % name)
             f_tractor = fits.open(name) 
             tractor = f_tractor[1].data
@@ -395,5 +396,3 @@ def _GamaLegacy_TractorAPFLUX():
 
     f_gleg.close()  
     return None 
-
-

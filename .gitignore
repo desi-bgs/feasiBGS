@@ -2,12 +2,15 @@
 *.pyc
 __pycache__
 
-*.png
-*.p
-*.dat
-
 # tex
 *.aux
 *.blg
 *.log
 *.out
+
+# other 
+*.png
+*.p
+*.dat
+*.o
+
