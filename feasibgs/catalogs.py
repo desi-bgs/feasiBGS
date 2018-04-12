@@ -323,12 +323,77 @@ class GamaLegacy(Catalog):
         f.close() 
         return None 
 
-    def _appendfromTractor(self, brickid, cols, dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/'): 
+    def _getTractorApflux(self, brickname, objids, dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/'): 
         ''' The catalog is constructed from the sweep catalog and the 
         GAMA DR2 photo+spec data. The sweep catalog does not include 
         all the photometric data from the legacy survey. This methods 
-        appends extra columns from the tractor files. 
+        appends 'apflux_g', 'apflux_r', 'apflux_z' and relevant columsn 
+        from the tractor files. 
+        
+        This can (and probably should) be extended to other columns 
         '''
+        bricks_uniq = np.unique(brickname)  # unique bricks
+        AAAs = np.array([brick[:3] for brick in bricks_uniq]) 
+        
+        # apfluxes in 'g', 'r', and 'z' bands 
+        bands = ['g', 'r', 'z']
+        apfluxes = np.zeros((3, len(brickname), 8)) 
+        apflux_ivars = np.zeros((3, len(brickname), 8)) 
+        apflux_resids = np.zeros((3, len(brickname), 8)) 
+    
+        n_brick = 0 
+        for AAA, brick in zip(AAAs, bricks_uniq): 
+            name = ''.join([dir, AAA, '/tractor-', brick, '.fits'])
+            if not os.path.isfile(name): raise ValueError('%s tractor file not available' % name)
+            f_tractor = fits.open(name) 
+            tractor = f_tractor[1].data
 
+            inbrick = (brickname == brick) 
+            for i_k, key in enumerate(bands):
+                apfluxes[i_k, inbrick, :] = tractor.field('apflux_'+key)[objids[inbrick]]
+                apflux_ivars[i_k, inbrick, :] = tractor.field('apflux_ivar_'+key)[objids[inbrick]]
+                apflux_resids[i_k, inbrick, :] = tractor.field('apflux_resid_'+key)[objids[inbrick]]
+
+            n_brick += np.sum(inbrick)
+
+        assert n_brick == len(brickname) 
+
+        # return dictionary with appropriate keys 
+        apflux_dict = {} 
+        for i_k, key in enumerate(bands):
+            apflux_dict['apflux_'+key] = apfluxes[i_k,:,:]
+            apflux_dict['apflux_ivar_'+key] = apflux_ivars[i_k,:,:]
+            apflux_dict['apflux_resid_'+key] = apflux_resids[i_k,:,:]
+
+        return apflux_dict
+
+
+def _GamaLegacy_TractorAPFLUX(): 
+    ''' Retroactively add apflux columns from the tractor catalogs 
+    to the GamaLegacy catalog constructed and saved to file. 
+    '''
+    gleg = GamaLegacy() 
+
+    # open saved gama-legacy catalog for appending
+    f_gleg = h5py.File(gleg._File(), 'r+') 
+    # legacy photometry group 
+    grp_lp = f_gleg['legacy-photo'] 
+
+    if 'apflux_g' in grp_lp.keys(): 
+        # check that the columsn dont' already exist 
+        f_gleg.close() 
+        raise ValueError('apfluxes already in the catalog') 
+
+    # read apfluxes from tractor catalogs 
+    apflux_dict = gleg._getTractorApflux(grp_lp['brickname'], grp_lp['objid'], 
+            dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/') 
+    assert apflux_dict['apflux_g'].shape[0] == len(grp_lp['brickname']) 
+    
+    # save fluxes to the dataset 
+    for key in apflux_dict.keys(): 
+        grp_lp.create_dataset(key, data=apflux_dict[key]) 
+
+    f_gleg.close()  
+    return None 
 
 

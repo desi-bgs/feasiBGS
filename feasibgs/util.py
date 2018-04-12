@@ -8,6 +8,12 @@ import sys
 import numpy as np
 
 
+def check_env(): 
+    if os.environ.get('FEASIBGS_DIR') is None: 
+        raise ValueError("set $FESIBGS_DIR in bashrc file!") 
+    return None
+
+
 def flux2mag(flux, band='g', method='asinh'): 
     ''' given flux calculate SDSS asinh magnitude  
     '''

@@ -228,4 +228,5 @@ def GAMA_Legacy_photo():
 
 
 if __name__=="__main__": 
-    GAMA_Legacy_photo_discrepancy()
+    Cat._GamaLegacy_TractorAPFLUX()
+    #GAMA_Legacy_photo_discrepancy()

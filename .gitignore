@@ -1,8 +1,12 @@
+# python
 *.pyc
+__pycache__
+
 *.png
 *.p
 *.dat
-dat
+
+# tex
 *.aux
 *.blg
 *.log
