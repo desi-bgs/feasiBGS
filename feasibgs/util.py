@@ -10,7 +10,7 @@ import numpy as np
 
 def check_env(): 
     if os.environ.get('FEASIBGS_DIR') is None: 
-        raise ValueError("set $FESIBGS_DIR in bashrc file!") 
+        raise ValueError("set $FEASIBGS_DIR in bashrc file!") 
     return None
 
 
@@ -30,31 +30,28 @@ def flux2mag(flux, band='g', method='asinh'):
         return 22.5 - 2.5 * np.log10(flux) 
 
 
-def code_dir(): 
-    ''' Directory where all the code is located (i.e. the directory that this file is in!)
-    '''
-    return os.path.dirname(os.path.realpath(__file__))
-
-
 def dat_dir(): 
     ''' dat directory is symlinked to a local path where the data files are located
     '''
-    return os.path.dirname(os.path.dirname(os.path.realpath(__file__)))+'/dat/'
+    return os.environ.get('FEASIBGS_DIR') 
 
 
 def fig_dir(): 
     ''' directory for figures 
     '''
-    return os.path.dirname(os.path.dirname(os.path.realpath(__file__)))+'/figs/'
+    if os.environ.get('FEASIBGS_FIGDIR') is None: 
+        return dat_dir()+'/figs/'
+    else: 
+        return os.environ.get('FEASIBGS_FIGDIR')
 
 
 def doc_dir(): 
     ''' directory for paper related stuff 
     '''
-    return os.path.dirname(os.path.dirname(os.path.realpath(__file__)))+'/doc/'
+    return fig_dir().split('fig')[0]+'doc/'
 
 
 def paper_dir(): 
     ''' directory for paper related stuff 
     '''
-    return os.path.dirname(os.path.dirname(os.path.realpath(__file__)))+'/paper/'
+    return fig_dir().split('fig')[0]+'paper/'
