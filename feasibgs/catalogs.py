@@ -322,3 +322,13 @@ class GamaLegacy(Catalog):
             grp_k1.create_dataset(key, data=gama_kcorr1_dict[key]) 
         f.close() 
         return None 
+
+    def _appendfromTractor(self, brickid, cols, dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/'): 
+        ''' The catalog is constructed from the sweep catalog and the 
+        GAMA DR2 photo+spec data. The sweep catalog does not include 
+        all the photometric data from the legacy survey. This methods 
+        appends extra columns from the tractor files. 
+        '''
+
+
+
