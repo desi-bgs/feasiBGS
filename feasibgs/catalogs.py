@@ -344,7 +344,7 @@ class GamaLegacy(Catalog):
         n_brick = 0 
         for ii, AAA, brick in zip(range(len(AAAs)), AAAs, bricks_uniq): 
             name = ''.join([dir, AAA, '/tractor-', brick, '.fits'])
-            print('%i of %i unique bricks' & (ii, len(AAAs))) 
+            print('%i of %i unique bricks' % (ii, len(AAAs))) 
             if not os.path.isfile(name): raise ValueError('%s tractor file not available' % name)
             f_tractor = fits.open(name) 
             tractor = f_tractor[1].data
