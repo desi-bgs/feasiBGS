@@ -4,11 +4,12 @@ Test `feasibgs.forwardmodel`
 
 
 '''
+import h5py
 import numpy as np 
+import astropy.units as u 
 from astropy.cosmology import FlatLambdaCDM
 
 # -- local -- 
-import env
 from feasibgs import util as UT
 from feasibgs import catalogs as Cat 
 from feasibgs import forwardmodel as FM
@@ -27,6 +28,52 @@ mpl.rcParams['ytick.labelsize'] = 'x-large'
 mpl.rcParams['ytick.major.size'] = 5
 mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
+
+
+def skySufBright(): 
+    ''' test the method fakeDESIspec.skySurfBright on the 
+    sky fluxes provided by Parker.
+    '''
+    # ccd wavelength limit
+    wavemin, wavemax = 3533., 9913. 
+
+    # read in bright sky flux measured in BOSS by Parker
+    f = UT.dat_dir()+'sky/moon_sky_spectrum.hdf5'
+    f_hdf5 = h5py.File(f, 'r')
+    ws, ss = [], []
+    for i in range(4):
+        ws.append(f_hdf5['sky'+str(i)+'/wave'].value)
+        ss.append(f_hdf5['sky'+str(i)+'/sky'].value)
+    # convert sky fluxes to surface brightnesses by dividing by the 
+    # fiber area of pi arcsec^2
+    bright_sky_sbright0 = [10.*ws[2], ss[2]/np.pi]
+    bright_sky_sbright1 = [10.*ws[3], ss[3]/np.pi]
+    
+    # this is just to get wavelenghts 
+    ww, _ = np.loadtxt(UT.dat_dir()+'sky/spec-sky.dat', 
+            unpack=True, skiprows=2, usecols=[0,1])
+    waves = ww[(ww > wavemin) & (ww < wavemax)] * u.Angstrom
+    
+    # get our fit sky surface brightness
+    fDESI = FM.fakeDESIspec()
+    bright_sbright = fDESI.skySurfBright(waves) 
+
+    # now lets compare
+    fig = plt.figure(figsize=(8,4))
+    sub = fig.add_subplot(111)
+    sub.scatter(bright_sky_sbright0[0], bright_sky_sbright0[1], c='C1', lw=0, s=1., label='Bright Sky')
+    sub.scatter(bright_sky_sbright1[0], bright_sky_sbright1[1], c='C1', lw=0, s=1.)
+
+    sub.scatter(waves.value, bright_sbright, c='k', lw=0, s=0.5, label="Model Bright Sky")
+    sub.set_xlabel('Wavelength', fontsize=20)
+    sub.set_xlim([3600., 9800.])
+    sub.set_ylabel('Surface Brightness [$10^{-17} erg/\AA/cm^2/s/arcsec^2$]', fontsize=20)
+    sub.set_yscale("log")
+    sub.set_ylim([0.5, 3e1])
+    sub.legend(loc='lower left', markerscale=10, prop={'size':20})
+    fig.savefig(UT.fig_dir()+"model_skySurfBright.png", bbox_inches='tight')
+    plt.close() 
+    return None
 
 
 def GamaLegacy_skyflux(obvs): 
@@ -373,4 +420,4 @@ def matchGamaLegacy():
 
 
 if __name__=="__main__": 
-    GamaLegacy_skyflux('exptime')
+    skySufBright()

@@ -201,21 +201,33 @@ class fakeDESIspec(object):
         pass
 
     def skySurfBright(self, wave): 
-        ''' realistic surface brightnesses of the sky 
+        ''' given wavelengths return realistic surface brightnesses 
+        of the sky. 
+
+        notes
+        -----
+        * at the moment, surface brightness of the sky is determined 
+            by some crude fit of the surface brightness residual between 
+            a bright sky measured from BOSS and the DESI dark sky default
+            surface brightness. 
         '''
         # Generate specsim config object for a given wavelength grid
         config = desisim.simexp._specsim_config_for_wave(wave.to('Angstrom').value,
                 specsim_config_file='desi')
+        # load surface brightness dictionary 
+        surface_brightness_dict = config.load_table(config.atmosphere.sky, 'surface_brightness', as_dict=True)
+    
+        # dark sky surface brightness 
+        dark_sbright = surface_brightness_dict['dark'] 
         
-        # implement (residual surface-brightness fit) + (dark sky surface brightness)
-        # implement (residual surface-brightness fit) + (dark sky surface brightness)
-        # implement (residual surface-brightness fit) + (dark sky surface brightness)
-        # implement (residual surface-brightness fit) + (dark sky surface brightness)
-        # implement (residual surface-brightness fit) + (dark sky surface brightness)
-        # implement (residual surface-brightness fit) + (dark sky surface brightness)
-        # implement (residual surface-brightness fit) + (dark sky surface brightness)
+        # hacked together implementation of birght sky 
+        # (residual surface-brightness fit) + (dark sky surface brightness)
+        # see notebook.notes_sky_brightness.ipynb for details on how the 
+        # values are calculated
+        SBright_resid = lambda x: np.exp(-0.000488 * (x - 5071.) + 1.388)
+        sbright_unit = 1e-17 * u.erg / (u.arcsec**2 * u.Angstrom * u.s * u.cm ** 2 )
 
-
+        return dark_sbright + SBright_resid(config.wavelength.value) * sbright_unit
 
     def simExposure(self, wave, flux, airmass=1.0, exptime=1000, moonalt=-60, moonsep=180, moonfrac=0.0, seeing=1.1, 
             seed=1, skyerr=0.0, nonoise=False): 
@@ -574,7 +586,7 @@ class fakeDESIspec(object):
 
 
 class SimulatorHacked(Simulator): 
-    def __init__(self config, num_fibers=2, camera_output=True, verbose=False):
+    def __init__(self, config, num_fibers=2, camera_output=True, verbose=False):
         super(SimulatorHacked, self).__init__(self, 
                 config, num_fibers=num_fibers, camera_output=camera_output, 
                 verbose=verbose) 
