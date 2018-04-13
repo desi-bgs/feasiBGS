@@ -21,6 +21,7 @@ from astropy.cosmology import FlatLambdaCDM
 # -- desi -- 
 from speclite import filters
 import specsim.simulator
+from specsim.simulator import Simulator 
 import specsim.config
 from desimodel.io import load_throughput
 from desisim.io import empty_metatable
@@ -190,6 +191,31 @@ class BGStemplates(object):
                 flux[hasem[iflx]] += emline_flux 
 
         return wave, flux 
+
+
+class fakeDESIspec(object): 
+    ''' simulate exposure for DESI spectrograph. 
+    This is sort of a giant wrapper for specsim. 
+    '''
+    def __init__(self): 
+        pass
+
+    def skySurfBright(self, wave): 
+        ''' realistic surface brightnesses of the sky 
+        '''
+        # Generate specsim config object for a given wavelength grid
+        config = desisim.simexp._specsim_config_for_wave(wave.to('Angstrom').value,
+                specsim_config_file='desi')
+        
+        # implement (residual surface-brightness fit) + (dark sky surface brightness)
+        # implement (residual surface-brightness fit) + (dark sky surface brightness)
+        # implement (residual surface-brightness fit) + (dark sky surface brightness)
+        # implement (residual surface-brightness fit) + (dark sky surface brightness)
+        # implement (residual surface-brightness fit) + (dark sky surface brightness)
+        # implement (residual surface-brightness fit) + (dark sky surface brightness)
+        # implement (residual surface-brightness fit) + (dark sky surface brightness)
+
+
 
     def simExposure(self, wave, flux, airmass=1.0, exptime=1000, moonalt=-60, moonsep=180, moonfrac=0.0, seeing=1.1, 
             seed=1, skyerr=0.0, nonoise=False): 
@@ -546,3 +572,257 @@ class BGStemplates(object):
 
         return waves, fluxes, skyfluxes 
 
+
+class SimulatorHacked(Simulator): 
+    def __init__(self config, num_fibers=2, camera_output=True, verbose=False):
+        super(SimulatorHacked, self).__init__(self, 
+                config, num_fibers=num_fibers, camera_output=camera_output, 
+                verbose=verbose) 
+
+    def simulated(self, sky_surface_brightness, sky_positions=None, focal_positions=None,
+            source_fluxes=None, source_types=None, source_fraction=None,
+            source_half_light_radius=None,
+            source_minor_major_axis_ratio=None, source_position_angle=None,
+            save_fiberloss=None):
+        ''' The main function that I'm going to hack. 
+        
+        notes
+        ----- 
+        * calibration feature removed
+        * fiberloss calculation also removed #commented out 
+        '''
+        # Get references to our results columns. Since table rows index
+        # wavelength, the shape of each column is (nwlen, nfiber) and
+        # therefore some transposes are necessary to match with the shape
+        # (nfiber, nwlen) of source_fluxes and fiber_acceptance_fraction,
+        # and before calling the camera downsample() and apply_resolution()
+        # methods (which expect wavelength in the last index).
+        wavelength = self.simulated['wavelength']
+        source_flux = self.simulated['source_flux']
+        fiberloss = self.simulated['fiberloss']
+        source_fiber_flux = self.simulated['source_fiber_flux']
+        sky_fiber_flux = self.simulated['sky_fiber_flux']
+        num_source_photons = self.simulated['num_source_photons']
+        num_sky_photons = self.simulated['num_sky_photons']
+        nwlen = len(wavelength)
+
+        # Position each fiber.
+        if focal_positions is not None:
+            if len(focal_positions) != self.num_fibers:
+                raise ValueError(
+                    'Expected {0:d} focal_positions.'.format(self.num_fibers))
+            try:
+                focal_positions = focal_positions.to(u.mm)
+            except (AttributeError, u.UnitConversionError):
+                raise ValueError('Invalid units for focal_positions.')
+            self.focal_x, self.focal_y = focal_positions.T
+            on_sky = False
+            if self.verbose:
+                print('Fibers positioned with focal_positions array.')
+        elif sky_positions is not None:
+            if len(sky_positions) != self.num_fibers:
+                raise ValueError(
+                    'Expected {0:d} sky_positions.'.format(self.num_fibers))
+            self.focal_x, self.focal_y = self.observation.locate_on_focal_plane(
+                sky_positions, self.instrument)
+            on_sky = True
+            if self.verbose:
+                print('Fibers positioned with sky_positions array.')
+        elif self.source.focal_xy is not None:
+            self.focal_x, self.focal_y = np.tile(
+                self.source.focal_xy, [self.num_fibers, 1]).T
+            on_sky = False
+            if self.verbose:
+                print('All fibers positioned at config (x,y).')
+        elif self.source.sky_position is not None:
+            focal_x, focal_y = self.observation.locate_on_focal_plane(
+                self.source.sky_position, self.instrument)
+            self.focal_x = np.tile(focal_x, [self.num_fibers])
+            self.focal_y = np.tile(focal_y, [self.num_fibers])
+            on_sky = True
+            if self.verbose:
+                print('All fibers positioned at config (ra,dec).')
+        else:
+            raise RuntimeError('No fiber positioning info available.')
+
+        if on_sky:
+            # Set the observing airmass in the atmosphere model using
+            # Eqn.3 of Krisciunas & Schaefer 1991.
+            obs_zenith = 90 * u.deg - self.observation.boresight_altaz.alt
+            obs_airmass = (1 - 0.96 * np.sin(obs_zenith) ** 2) ** -0.5
+            self.atmosphere.airmass = obs_airmass
+            if self.verbose:
+                print('Calculated alt={0:.1f} az={1:.1f} airmass={2:.3f}'
+                      .format(self.observation.boresight_altaz.alt,
+                              self.observation.boresight_altaz.az, obs_airmass))
+
+        # Check that all sources are within the field of view.
+        focal_r = np.sqrt(self.focal_x ** 2 + self.focal_y ** 2)
+        if np.any(focal_r > self.instrument.field_radius):
+            raise RuntimeError(
+                'A source is located outside the field of view: r > {0:.1f}'
+                .format(self.instrument.field_radius))
+
+        # Calculate the on-sky fiber areas at each focal-plane location.
+        radial_fiber_size = (
+            0.5 * self.instrument.fiber_diameter /
+            self.instrument.radial_scale(focal_r))
+        azimuthal_fiber_size = (
+            0.5 * self.instrument.fiber_diameter /
+            self.instrument.azimuthal_scale(focal_r))
+        self.fiber_area = np.pi * radial_fiber_size * azimuthal_fiber_size
+
+        # Get the source fluxes incident on the atmosphere.
+        if source_fluxes is None:
+            source_fluxes = self.source.flux_out.to(
+                source_flux.unit)[np.newaxis, :]
+        elif source_fluxes.shape != (self.num_fibers, nwlen):
+            raise ValueError('Invalid shape for source_fluxes.')
+        try:
+            source_flux[:] = source_fluxes.to(source_flux.unit).T
+        except AttributeError:
+            raise ValueError('Missing units for source_fluxes.')
+        except u.UnitConversionError:
+            raise ValueError('Invalid units for source_fluxes.')
+
+        # Calculate fraction of source illumination entering the fiber.
+        if save_fiberloss is not None:
+            saved_images_file = save_fiberloss + '.fits'
+            saved_table_file = save_fiberloss + '.ecsv'
+        else:
+            saved_images_file, saved_table_file = None, None
+
+        # Calculate the source flux entering a fiber.
+        source_fiber_flux[:] = (
+            source_flux *
+            self.atmosphere.extinction[:, np.newaxis] #* fiberloss
+            ).to(source_fiber_flux.unit)
+    
+        # check that input sky_surface_brightness is the same size 
+        # as the source_flux 
+        assert source_flux.shape[0] == sky_surface_brightness.shape[0] 
+        assert source_flux.shape[1] == sky_surface_brightness.shape[1] 
+
+
+        # Calculate the sky flux entering a fiber from input 
+        # sky surface_brightness  
+        sky_fiber_flux[:] = (
+            sky_surface_brightness[:, np.newaxis] *
+            self.fiber_area
+            ).to(sky_fiber_flux.unit)
+
+        # Calculate the calibration from constant unit source flux above
+        # the atmosphere to number of source photons entering the fiber.
+        # We use this below to calculate the flux inverse variance in
+        # each camera.
+        source_flux_to_photons = (
+            self.atmosphere.extinction[:, np.newaxis] * # fiberloss *
+            self.instrument.photons_per_bin[:, np.newaxis] *
+            self.observation.exposure_time
+            ).to(source_flux.unit ** -1).value
+
+        # Calculate the mean number of source photons entering the fiber
+        # per simulation bin.
+        num_source_photons[:] = (
+            source_fiber_flux *
+            self.instrument.photons_per_bin[:, np.newaxis] *
+            self.observation.exposure_time
+            ).to(1).value
+
+        # Calculate the mean number of sky photons entering the fiber
+        # per simulation bin.
+        num_sky_photons[:] = (
+            sky_fiber_flux *
+            self.instrument.photons_per_bin[:, np.newaxis] *
+            self.observation.exposure_time
+            ).to(1).value
+
+        # Calculate the high-resolution inputs to each camera.
+        for camera in self.instrument.cameras:
+            # Get references to this camera's columns.
+            num_source_electrons = self.simulated[
+                'num_source_electrons_{0}'.format(camera.name)]
+            num_sky_electrons = self.simulated[
+                'num_sky_electrons_{0}'.format(camera.name)]
+            num_dark_electrons = self.simulated[
+                'num_dark_electrons_{0}'.format(camera.name)]
+            read_noise_electrons = self.simulated[
+                'read_noise_electrons_{0}'.format(camera.name)]
+
+            # Calculate the mean number of source electrons detected in the CCD
+            # without any resolution applied.
+            num_source_electrons[:] = (
+                num_source_photons * camera.throughput[:, np.newaxis])
+
+            # Calculate the mean number of sky electrons detected in the CCD
+            # without any resolution applied.
+            num_sky_electrons[:] = (
+                num_sky_photons * camera.throughput[:, np.newaxis])
+
+            # Calculate the mean number of dark current electrons in the CCD.
+            num_dark_electrons[:] = (
+                camera.dark_current_per_bin[:, np.newaxis] *
+                self.observation.exposure_time).to(u.electron).value
+
+            # Copy the read noise in units of electrons.
+            read_noise_electrons[:] = (
+                camera.read_noise_per_bin[:, np.newaxis].to(u.electron).value)
+
+        if not self.camera_output:
+            # All done since no camera output was requested.
+            return
+
+        # Loop over cameras to calculate their individual responses
+        # with resolution applied and downsampling to output pixels.
+        for output, camera in zip(self.camera_output, self.instrument.cameras):
+
+            # Get references to this camera's columns.
+            num_source_electrons = self.simulated[
+                'num_source_electrons_{0}'.format(camera.name)]
+            num_sky_electrons = self.simulated[
+                'num_sky_electrons_{0}'.format(camera.name)]
+            num_dark_electrons = self.simulated[
+                'num_dark_electrons_{0}'.format(camera.name)]
+            read_noise_electrons = self.simulated[
+                'read_noise_electrons_{0}'.format(camera.name)]
+
+            # Apply resolution to the source and sky detected electrons on
+            # the high-resolution grid.
+            num_source_electrons[:] = camera.apply_resolution(
+                num_source_electrons.T).T
+            num_sky_electrons[:] = camera.apply_resolution(
+                num_sky_electrons.T).T
+
+            # Calculate the corresponding downsampled output quantities.
+            output['num_source_electrons'][:] = (
+                camera.downsample(num_source_electrons.T)).T
+            output['num_sky_electrons'][:] = (
+                camera.downsample(num_sky_electrons.T)).T
+            output['num_dark_electrons'][:] = (
+                camera.downsample(num_dark_electrons.T)).T
+            output['read_noise_electrons'][:] = np.sqrt(
+                camera.downsample(read_noise_electrons.T ** 2)).T
+            output['variance_electrons'][:] = (
+                output['num_source_electrons'] +
+                output['num_sky_electrons'] +
+                output['num_dark_electrons'] +
+                output['read_noise_electrons'] ** 2)
+
+            # Calculate the effective calibration from detected electrons to
+            # source flux above the atmosphere, downsampled to output pixels.
+            output['flux_calibration'][:] = 1.0 / camera.downsample(
+                camera.apply_resolution(
+                    source_flux_to_photons.T * camera.throughput)).T
+
+            # Calculate the calibrated flux in this camera.
+            output['observed_flux'][:] = (
+                output['flux_calibration'] * output['num_source_electrons'])
+
+            # Calculate the corresponding flux inverse variance.
+            output['flux_inverse_variance'][:] = (
+                output['flux_calibration'] ** -2 *
+                output['variance_electrons'] ** -1)
+
+            # Zero our random noise realization column.
+            output['random_noise_electrons'][:] = 0.
+        return None 
