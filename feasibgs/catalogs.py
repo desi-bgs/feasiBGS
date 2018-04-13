@@ -340,11 +340,11 @@ class GamaLegacy(Catalog):
         apfluxes = np.zeros((3, len(brickname), 8)) 
         apflux_ivars = np.zeros((3, len(brickname), 8)) 
         apflux_resids = np.zeros((3, len(brickname), 8)) 
-    
+
         n_brick = 0 
         for ii, AAA, brick in zip(range(len(AAAs)), AAAs, bricks_uniq): 
             name = ''.join([dir, AAA, '/tractor-', brick, '.fits'])
-            print('%i of %i unique bricks' % (ii, len(AAAs))) 
+            print('%i of %i unique bricks -- %s' % (ii, len(AAAs), brick)) 
             if not os.path.isfile(name): raise ValueError('%s tractor file not available' % name)
             f_tractor = fits.open(name) 
             tractor = f_tractor[1].data
@@ -354,7 +354,6 @@ class GamaLegacy(Catalog):
                 apfluxes[i_k, inbrick, :] = tractor.field('apflux_'+key)[objids[inbrick]]
                 apflux_ivars[i_k, inbrick, :] = tractor.field('apflux_ivar_'+key)[objids[inbrick]]
                 apflux_resids[i_k, inbrick, :] = tractor.field('apflux_resid_'+key)[objids[inbrick]]
-
             n_brick += np.sum(inbrick)
 
         assert n_brick == len(brickname) 
@@ -386,9 +385,9 @@ def _GamaLegacy_TractorAPFLUX():
         raise ValueError('apfluxes already in the catalog') 
 
     # read apfluxes from tractor catalogs 
-    apflux_dict = gleg._getTractorApflux(grp_lp['brickname'], grp_lp['objid'], 
+    apflux_dict = gleg._getTractorApflux(grp_lp['brickname'].value, grp_lp['objid'].value, 
             dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/') 
-    assert apflux_dict['apflux_g'].shape[0] == len(grp_lp['brickname']) 
+    assert apflux_dict['apflux_g'].shape[0] == len(grp_lp['brickname'].value) 
     
     # save fluxes to the dataset 
     for key in apflux_dict.keys(): 

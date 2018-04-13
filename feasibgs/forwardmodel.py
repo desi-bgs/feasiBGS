@@ -200,7 +200,7 @@ class fakeDESIspec(object):
     def __init__(self): 
         pass
 
-    def skySurfBright(self, wave): 
+    def skySurfBright(self, wave, cond='bright'): 
         ''' given wavelengths return realistic surface brightnesses 
         of the sky. 
 
@@ -219,15 +219,17 @@ class fakeDESIspec(object):
     
         # dark sky surface brightness 
         dark_sbright = surface_brightness_dict['dark'] 
-        
-        # hacked together implementation of birght sky 
-        # (residual surface-brightness fit) + (dark sky surface brightness)
-        # see notebook.notes_sky_brightness.ipynb for details on how the 
-        # values are calculated
-        SBright_resid = lambda x: np.exp(-0.000488 * (x - 5071.) + 1.388)
-        sbright_unit = 1e-17 * u.erg / (u.arcsec**2 * u.Angstrom * u.s * u.cm ** 2 )
-
-        return dark_sbright + SBright_resid(config.wavelength.value) * sbright_unit
+        if cond == 'dark': 
+            # desi dark sky is pretty accurate? 
+            return dark_sbright 
+        elif cond == 'bright':  
+            # hacked together implementation of birght sky 
+            # (residual surface-brightness fit) + (dark sky surface brightness)
+            # see notebook.notes_sky_brightness.ipynb for details on how the 
+            # values are calculated
+            SBright_resid = lambda x: np.exp(-0.000488 * (x - 5071.) + 1.388)
+            sbright_unit = 1e-17 * u.erg / (u.arcsec**2 * u.Angstrom * u.s * u.cm ** 2 )
+            return dark_sbright + SBright_resid(config.wavelength.value) * sbright_unit
 
     def simExposure(self, wave, flux, airmass=1.0, exptime=1000, moonalt=-60, moonsep=180, moonfrac=0.0, seeing=1.1, 
             seed=1, skyerr=0.0, nonoise=False): 

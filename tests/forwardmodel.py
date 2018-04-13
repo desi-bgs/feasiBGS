@@ -56,7 +56,8 @@ def skySufBright():
     
     # get our fit sky surface brightness
     fDESI = FM.fakeDESIspec()
-    bright_sbright = fDESI.skySurfBright(waves) 
+    dark_sbright = fDESI.skySurfBright(waves, cond='dark')
+    bright_sbright = fDESI.skySurfBright(waves, cond='bright') 
 
     # now lets compare
     fig = plt.figure(figsize=(8,4))
@@ -64,7 +65,8 @@ def skySufBright():
     sub.scatter(bright_sky_sbright0[0], bright_sky_sbright0[1], c='C1', lw=0, s=1., label='Bright Sky')
     sub.scatter(bright_sky_sbright1[0], bright_sky_sbright1[1], c='C1', lw=0, s=1.)
 
-    sub.scatter(waves.value, bright_sbright, c='k', lw=0, s=0.5, label="Model Bright Sky")
+    sub.scatter(waves.value, dark_sbright, c='k', lw=0, s=0.5, label="Model Dark Sky")
+    sub.scatter(waves.value, bright_sbright, c='C0', lw=0, s=0.5, label="Model Bright Sky")
     sub.set_xlabel('Wavelength', fontsize=20)
     sub.set_xlim([3600., 9800.])
     sub.set_ylabel('Surface Brightness [$10^{-17} erg/\AA/cm^2/s/arcsec^2$]', fontsize=20)
