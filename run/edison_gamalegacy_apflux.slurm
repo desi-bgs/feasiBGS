@@ -1,8 +1,7 @@
 #!/bin/bash -l 
 #SBATCH -p regular 
 #SBATCH -N 1 
-#SBATCH -C haswell
-#SBATCH -t 02:00:00 
+#SBATCH -t 01:00:00 
 #SBATCH -J gamalegacy_apflux 
 #SBATCH -o gamalegacy_apflux.o 
 #SBATCH -L SCRATCH,project 
