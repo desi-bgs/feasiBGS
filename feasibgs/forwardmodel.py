@@ -86,7 +86,7 @@ class BGStree(object):
 
     def _GamaLegacy(self, gleg, index=False): 
         ''' Given `catalogs.GamaLegacy` class object, return matches to  
-        template 
+        template. This is purely for convenience. 
         '''
         # extract necessary meta data 
         redshift = gleg['gama-spec']['z_helio']  # redshift
