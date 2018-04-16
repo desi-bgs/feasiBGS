@@ -231,9 +231,12 @@ class fakeDESIspec(object):
             sbright_unit = 1e-17 * u.erg / (u.arcsec**2 * u.Angstrom * u.s * u.cm ** 2 )
             return dark_sbright + SBright_resid(config.wavelength.value) * sbright_unit
 
-    def simExposure(self, wave, flux, airmass=1.0, exptime=1000, moonalt=-60, moonsep=180, moonfrac=0.0, seeing=1.1, 
-            seed=1, skyerr=0.0, nonoise=False): 
-        ''' insert description here 
+    def simExposure(self, wave, flux, airmass=1.0, exptime=1000, 
+            moonalt=-60, moonsep=180, moonfrac=0.0, seeing=1.1, 
+            seed=1, skyerr=0.0, skycondition='bright', nonoise=False, filename=None): 
+        ''' simulate exposure for input source flux(wavelength). keyword arguments (airmass, seeing) 
+        specify a number of observational conditions. These are used to calculate the extinction
+        factor. The sky surface brightness is dictated by `skyconditions` kwarg. 
         '''
         nspec, _ = flux.shape # number of spectra 
 
@@ -285,9 +288,9 @@ class fakeDESIspec(object):
         flux_unit = 1e-17 * u.erg / (u.Angstrom * u.s * u.cm ** 2 )
         flux = flux[:,wlim]*flux_unit
 
-        sim = self._simulate_spectra(wave, flux, fibermap=frame_fibermap,
-            obsconditions=obvs_dict, redshift=None, seed=seed, psfconvolve=True)
-        print('fiberarea', sim.fiber_area)
+        sim = self._simulate_spectra(wave, flux, fibermap=frame_fibermap, 
+                skycondition=skycondition, obsconditions=obvs_dict, 
+                redshift=None, seed=seed, psfconvolve=True)
         
         # put in random noise 
         random_state = np.random.RandomState(seed)
@@ -302,14 +305,15 @@ class fakeDESIspec(object):
             R = Resolution(camera.get_output_resolution_matrix())
             resolution[camera.name] = np.tile(R.to_fits_array(), [nspec, 1, 1])
 
-        skyscale = skyerr * random_state.normal(size=sim.num_fibers)
+        #skyscale = skyerr * random_state.normal(size=sim.num_fibers)
+        skyscale = skyerr
 
         for table in sim.camera_output :
             wave = table['wavelength'].astype(float)
             flux = (table['observed_flux']+table['random_noise_electrons']*table['flux_calibration']).T.astype(float)
-            if np.any(skyscale):
-                flux += ((table['num_sky_electrons']*skyscale)*table['flux_calibration']).T.astype(float)
-
+            #if np.any(skyscale):
+            flux += ((table['num_sky_electrons']*skyscale)*table['flux_calibration']).T.astype(float)
+            
             ivar = table['flux_inverse_variance'].T.astype(float)
             
             band  = table.meta['name'].strip()[0]
@@ -328,11 +332,14 @@ class fakeDESIspec(object):
                 specdata = spec
             else:
                 specdata.update(spec)
-        return specdata  
+        if filename is None: 
+            return specdata  
+        else: 
+            desispec.io.write_spectra(filename, specdata)
+            return specdata  
 
-    def _simulate_spectra(self, wave, flux, fibermap=None, obsconditions=None, redshift=None,
-                     dwave_out=None, seed=None, psfconvolve=True,
-                     specsim_config_file = "desi"):
+    def _simulate_spectra(self, wave, flux, fibermap=None, skycondition='bright', obsconditions=None, 
+            redshift=None, dwave_out=None, seed=None, psfconvolve=True, specsim_config_file = "desi"):
         '''
         A more streamlined BGS version of the method `desisim.simexp.simulate_spectra`, which 
         simulates an exposure 
@@ -344,6 +351,11 @@ class fakeDESIspec(object):
 
         Optional:
             fibermap: table from fiberassign or fibermap; uses X/YFOCAL_DESIGN, TARGETID, DESI_TARGET
+
+            skycondition: (str) 
+                specifies the sky condition. At the moment only supports 'bright' or 'dark'. 
+                Default is 'bright'
+
             obsconditions: (dict-like) observation metadata including
                 SEEING (arcsec), EXPTIME (sec), AIRMASS,
                 MOONFRAC (0-1), MOONALT (deg), MOONSEP (deg)
@@ -377,8 +389,11 @@ class fakeDESIspec(object):
         config = desisim.simexp._specsim_config_for_wave(wave.to('Angstrom').value, 
                 dwave_out=dwave_out, specsim_config_file=specsim_config_file)
 
+        # get sky surface brightness
+        sky_surface_brightness = self.skySurfBright(wave, cond=skycondition)
+        
         #- Create simulator
-        desi = SimulatorHacked(config, nspec, camera_output=psfconvolve)
+        desi = SimulatorHacked(config, num_fibers=nspec, camera_output=psfconvolve)
 
         if obsconditions is None: raise ValueError
 
@@ -468,11 +483,11 @@ class fakeDESIspec(object):
         #- See https://github.com/desihub/specsim/issues/83
         randstate = np.random.get_state()
         np.random.seed(seed)
-        desi.simulate(source_fluxes=flux, focal_positions=xy, source_types=source_types,
-                      source_fraction=source_fraction,
-                      source_half_light_radius=source_half_light_radius,
-                      source_minor_major_axis_ratio=None,
-                      source_position_angle=None)
+        desi.simulate(sky_surface_brightness, source_fluxes=flux, focal_positions=xy, source_types=source_types,
+                source_fraction=source_fraction,
+                source_half_light_radius=source_half_light_radius,
+                source_minor_major_axis_ratio=None,
+                source_position_angle=None)
         np.random.set_state(randstate)
         return desi
 
@@ -546,7 +561,9 @@ class fakeDESIspec(object):
         for camera in sim.instrument.cameras:
             R = Resolution(camera.get_output_resolution_matrix())
             resolution[camera.name] = np.tile(R.to_fits_array(), [nspec, 1, 1])
-
+    
+        if skyerr == 0.: 
+            raise ValueError("should skyerr... ever be?") 
         skyscale = skyerr * random_state.normal(size=sim.num_fibers)
         
         waves, fluxes, skyfluxes = [], [], [] 
@@ -573,11 +590,10 @@ class fakeDESIspec(object):
 
 class SimulatorHacked(Simulator): 
     def __init__(self, config, num_fibers=2, camera_output=True, verbose=False):
-        super(SimulatorHacked, self).__init__(self, 
-                config, num_fibers=num_fibers, camera_output=camera_output, 
+        super(SimulatorHacked, self).__init__(config, num_fibers=num_fibers, camera_output=camera_output, 
                 verbose=verbose) 
 
-    def simulated(self, sky_surface_brightness, sky_positions=None, focal_positions=None,
+    def simulate(self, sky_surface_brightness, sky_positions=None, focal_positions=None,
             source_fluxes=None, source_types=None, source_fraction=None,
             source_half_light_radius=None,
             source_minor_major_axis_ratio=None, source_position_angle=None,
@@ -683,13 +699,6 @@ class SimulatorHacked(Simulator):
         except u.UnitConversionError:
             raise ValueError('Invalid units for source_fluxes.')
 
-        # Calculate fraction of source illumination entering the fiber.
-        if save_fiberloss is not None:
-            saved_images_file = save_fiberloss + '.fits'
-            saved_table_file = save_fiberloss + '.ecsv'
-        else:
-            saved_images_file, saved_table_file = None, None
-
         # Calculate the source flux entering a fiber.
         source_fiber_flux[:] = (
             source_flux *
@@ -699,7 +708,6 @@ class SimulatorHacked(Simulator):
         # check that input sky_surface_brightness is the same size 
         # as the source_flux 
         assert source_flux.shape[0] == sky_surface_brightness.shape[0] 
-        assert source_flux.shape[1] == sky_surface_brightness.shape[1] 
 
         # Calculate the sky flux entering a fiber from input 
         # sky surface_brightness  

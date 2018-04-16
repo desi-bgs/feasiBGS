@@ -9,6 +9,7 @@ from pylab import cm
 import healpy as HP
 import fitsio as FitsIO
 import astropy.units as u
+from astropy.table import Table
 from astropy.cosmology import FlatLambdaCDM
 
 # -- local -- 
@@ -420,6 +421,160 @@ def rMag_normalize():
     return None
 
 
+def expSpectra():
+    ''' simulate exposure of the DESI spectrograph for some source flux
+    determined by templates. 
+    '''
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read()
+
+    redshift = gleg['gama-spec']['z_helio'] # redshift 
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
+
+    # pick a random galaxy from the GAMA-legacy sample
+    i_rand = np.random.choice(range(len(redshift)), size=1) 
+    #i_rand = [36415]
+    #print('i_rand = %i' % i_rand[0]) 
+
+    # match random galaxy to BGS templates
+    bgs3 = FM.BGStree() 
+    match = bgs3._GamaLegacy(gleg, index=i_rand) 
+    mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
+
+    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    vdisp = np.repeat(100.0, len(i_rand)) # velocity dispersions [km/s]
+    
+    # r-band aperture magnitude from Legacy photometry 
+    r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][i_rand,1], method='log')  
+    assert np.isfinite(r_mag)
+    print('r_mag = %f' % r_mag)
+
+    flux, wave, meta = bgstemp.Spectra(
+            r_mag, 
+            redshift[i_rand], 
+            vdisp,
+            seed=1, templateid=match, silent=False) 
+    flux0 = flux.copy()  
+    wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, i_rand, silent=False) 
+
+    # simulate exposure using 
+    fdesi = FM.fakeDESIspec() 
+    bgs_spectra_bright = fdesi.simExposure(wave, flux_eml, skyerr=1., skycondition='bright') 
+    bgs_spectra_dark = fdesi.simExposure(wave, flux_eml, skyerr=1., skycondition='dark') 
+    # write out simulated spectra
+    for b in ['b', 'r', 'z']: 
+        tbl_bright = Table([bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten()], names=('lambda', 'flux')) 
+        tbl_bright.write('brightsky_test_'+b+'.fits', format='fits') 
+        tbl_dark = Table([bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten()], names=('lambda', 'flux'))
+        tbl_dark.write('darksky_test_'+b+'.fits', format='fits') 
+    
+    # plot the spectra
+    fig, (sub1, sub2) = plt.subplots(1,2, figsize=(12,4), gridspec_kw={'width_ratios':[1,3]})
+    sub1.scatter(absmag_ugriz[2,:][::10], absmag_ugriz[1,:][::10] - absmag_ugriz[2,:][::10], c='k', s=2) 
+    i = i_rand[0]
+    sub1.scatter(mabs_temp[match[0],2], mabs_temp[match[0],1] - mabs_temp[match[0],2],
+            color='C0', s=30, edgecolors='k', marker='^', label='Template')
+    sub1.scatter(absmag_ugriz[2,i], absmag_ugriz[1,i] - absmag_ugriz[2,i], 
+            color='C0', s=30, edgecolors='k', marker='s', label='GAMA object')
+    sub1.legend(loc='lower left', markerscale=3, handletextpad=0., prop={'size':15})
+
+    # plot exposed spectra of the three CCDs
+    for b in ['b', 'r', 'z']: 
+        lbl0, lbl1 = None, None
+        if b == 'z': lbl0, lbl1 = 'Simulated Exposure (Dark Sky)', 'Bright Sky'
+        sub2.plot(bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten(), 
+                c='C0', lw=0.2, alpha=0.7, label=lbl0) 
+        sub2.plot(bgs_spectra_bright.wave[b], bgs_spectra_bright.flux[b][0].flatten(), 
+                c='C1', lw=0.2, alpha=0.7, label=lbl1) 
+    # plot template spectra
+    sub2.plot(wave, flux[0], c='k', lw=0.3, ls=':', label='Template')
+
+    sub1.set_xlabel('$M_{0.1r}$', fontsize=20) 
+    sub1.set_xlim([-14., -24]) 
+    sub1.set_ylabel(r'$^{0.1}(g-r)$ color', fontsize=20) 
+    sub1.set_ylim([-0.2, 1.6])
+    sub1.set_yticks([-0.2, 0.2, 0.6, 1.0, 1.4]) 
+    sub2.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
+    sub2.set_xlim([3600., 9800.]) 
+    sub2.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
+    sub2.set_ylim([0., 50.]) 
+    #sub2.set_ylim([0., 1.8*flux_eml[0].max()]) 
+    sub2.legend(loc='upper left', prop={'size': 15}) 
+    fig.savefig(UT.doc_dir()+"figs/Gleg_expSpectra.pdf", bbox_inches='tight')
+    plt.close() 
+    return None
+
+
+def expSpectra_emline():
+    '''
+    '''
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read()
+
+    redshift = gleg['gama-spec']['z_helio'] # redshift 
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
+
+    # pick a random galaxy from the GAMA-legacy sample
+    i_rand = np.random.choice(range(len(redshift)), size=1) 
+    print('i_rand = %i' % i_rand[0]) 
+
+    # match random galaxy to BGS templates
+    bgs3 = FM.BGStree() 
+    match = bgs3._GamaLegacy(gleg, index=i_rand) 
+    mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
+
+    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    vdisp = np.repeat(100.0, len(i_rand)) # velocity dispersions [km/s]
+    
+    # r-band aperture magnitude from Legacy photometry 
+    r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][i_rand,1], method='log')  
+    print('r_mag = %f' % r_mag)
+
+    flux, wave, meta = bgstemp.Spectra(
+            r_mag, 
+            redshift[i_rand], 
+            vdisp,
+            seed=1, templateid=match, silent=False) 
+    flux0 = flux.copy()  
+    wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, i_rand, silent=False) 
+
+    # simulate exposure using 
+    fdesi = FM.fakeDESIspec() 
+    bgs_spectra_bright = fdesi.simExposure(wave, flux_eml, skyerr=1., skycondition='bright') 
+    bgs_spectra_dark = fdesi.simExposure(wave, flux_eml, skyerr=1., skycondition='dark') 
+    
+    # plot the spectra
+    fig = plt.figure(figsize=(12,6))
+    sub = fig.add_subplot(111)
+    # plot exposed spectra of the three CCDs
+    for b in ['b', 'r', 'z']: 
+        lbl0, lbl1 = None, None
+        if b == 'z': lbl0, lbl1 = 'Simulated Exposure (Dark Sky)', 'Bright Sky'
+        sub.plot(bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten(), 
+                c='C0', lw=0.2, alpha=0.7, label=lbl0) 
+        sub.plot(bgs_spectra_bright.wave[b], bgs_spectra_bright.flux[b][0].flatten(), 
+                c='C1', lw=0.2, alpha=0.7, label=lbl1) 
+    
+    emline_keys = ['[OII]', r'$\mathrm{H}_\beta$',  r'[OIII]$_b$', r'[OIII]$_r$', 'NII', r'$\mathrm{H}_\alpha$', '[NII]', '[SII]']
+    emline_lambda = [3727., 4861., 4959., 5007., 6548., 6563., 6584., 6716.]
+    emline_zlambda = (1.+redshift[i_rand]) * np.array(emline_lambda)
+    
+    for i_l, zlambda in enumerate(emline_zlambda): 
+        sub.vlines(zlambda, 0., 2.*flux_eml[0].max(), color='k', linestyle=':', linewidth=1) 
+        sub.text(zlambda, 30.*float(28-i_l)/20., emline_keys[i_l], ha='left', va='top', fontsize=12) 
+
+    sub.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
+    sub.set_xlim([3600., 9800.]) 
+    sub.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
+    sub.set_ylim([0., 50.]) 
+    sub.legend(loc='upper left', prop={'size': 15}) 
+    fig.savefig(UT.doc_dir()+"figs/Gleg_expSpectra_emline.pdf", bbox_inches='tight')
+    plt.close() 
+    return None
+
+
 if __name__=="__main__": 
     #GAMALegacy_Halpha_color()
     #BGStemplates()
@@ -427,4 +582,6 @@ if __name__=="__main__":
     #GamaLegacy_matchSpectra()
     #GamaLegacy_emlineSpectra()
     #skySurfaceBrightness()
-    rMag_normalize()
+    #rMag_normalize()
+    expSpectra()
+    #expSpectra_emline()
