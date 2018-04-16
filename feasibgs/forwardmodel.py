@@ -376,25 +376,9 @@ class fakeDESIspec(object):
         # Generate specsim config object for a given wavelength grid
         config = desisim.simexp._specsim_config_for_wave(wave.to('Angstrom').value, 
                 dwave_out=dwave_out, specsim_config_file=specsim_config_file)
-        #dwave = round(np.mean(np.diff(wave.to('Angstrom').value)), 3)
-        #assert np.allclose(dwave, np.diff(wave), rtol=1e-6, atol=1e-3)
-
-        #config = specsim.config.load_config(specsim_config_file)
-        #config.wavelength_grid.min = wave[0]
-        #config.wavelength_grid.max = wave[-1] + dwave/2.0
-        #config.wavelength_grid.step = dwave
-
-        #if dwave_out is None:
-        #    dwave_out = 1.0
-
-        #config.instrument.cameras.b.constants.output_pixel_size = "{:.3f} Angstrom".format(dwave_out)
-        #config.instrument.cameras.r.constants.output_pixel_size = "{:.3f} Angstrom".format(dwave_out)
-        #config.instrument.cameras.z.constants.output_pixel_size = "{:.3f} Angstrom".format(dwave_out)
-        #config.update()
 
         #- Create simulator
-        desi = specsim.simulator.Simulator(config, nspec,
-            camera_output=psfconvolve)
+        desi = SimulatorHacked(config, nspec, camera_output=psfconvolve)
 
         if obsconditions is None: raise ValueError
 
@@ -716,7 +700,6 @@ class SimulatorHacked(Simulator):
         # as the source_flux 
         assert source_flux.shape[0] == sky_surface_brightness.shape[0] 
         assert source_flux.shape[1] == sky_surface_brightness.shape[1] 
-
 
         # Calculate the sky flux entering a fiber from input 
         # sky surface_brightness  

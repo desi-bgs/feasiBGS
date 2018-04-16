@@ -30,7 +30,6 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
-
 def GamaLegacy_skyflux(obvs): 
     ''' take a random galaxy from the GAMA-Legacy catalog, match it to 
     BGS templates, then simulate exposure on the templates with varying 
@@ -375,4 +374,4 @@ def matchGamaLegacy():
 
 
 if __name__=="__main__": 
-    skySufBright()
+    pass
