@@ -8,7 +8,9 @@ import h5py
 import numpy as np 
 import astropy.units as u 
 from astropy.io import fits
+from astropy.table import Table
 from astropy.cosmology import FlatLambdaCDM
+from redrock import plotspec as RRplotspec
 from redrock.external.desi import rrdesi
 
 # -- local -- 
@@ -30,6 +32,7 @@ mpl.rcParams['ytick.labelsize'] = 'x-large'
 mpl.rcParams['ytick.major.size'] = 5
 mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
+
 
 def GamaLegacy_skyflux(obvs): 
     ''' take a random galaxy from the GAMA-Legacy catalog, match it to 

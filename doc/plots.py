@@ -630,8 +630,8 @@ def expSpectra_redshift(ngal=10):
         f_zdark = fits.open(''.join([f_dark.split('.fits')[0]+'_zbest.fits']))
         z_bright = f_zbright[1].data
         z_dark = f_zdark[1].data
-        zbright.append(z_bright.field('z')) 
-        zdark.append(z_dark.field('z')) 
+        zbright.append(z_bright.field('z')[0]) 
+        zdark.append(z_dark.field('z')[0]) 
 
     fig, (sub1, sub2, sub3) = plt.subplots(1,3, figsize=(12,4), gridspec_kw={'width_ratios':[1,1,1]})
     sub1.scatter(absmag_ugriz[2,:][::10], absmag_ugriz[1,:][::10] - absmag_ugriz[2,:][::10], c='k', s=2) 
@@ -656,16 +656,16 @@ def expSpectra_redshift(ngal=10):
     sub1.set_ylim([-0.2, 1.6])
     sub1.set_yticks([-0.2, 0.2, 0.6, 1.0, 1.4]) 
     
-    sub2.set_xlabel(r'$z_\mathrm{true}$', fontsize=20) 
+    sub2.set_xlabel(r'$z_\mathrm{GAMA}$', fontsize=20) 
     sub2.set_xlim([0.,0.4]) 
     sub2.set_ylabel(r'$z_\mathrm{redrock}$', fontsize=20) 
     sub2.set_ylim([0.,0.4]) 
 
-    sub3.scatter(redshift[rands], (zdark - redhsift[rands])/(1.+redhsift[rands])) 
-    sub3.scatter(redshift[rands], (zbright - redhsift[rands])/(1.+redhsift[rands]), marker='s') 
-    sub3.set_xlabel(r'$z_\mathrm{true}$', fontsize=20) 
+    sub3.scatter(redshift[rands], (np.array(zdark) - redshift[rands])/(1.+redshift[rands]), s=30)
+    sub3.scatter(redshift[rands], (np.array(zbright) - redshift[rands])/(1.+redshift[rands]), s=15, marker='s') 
+    sub3.set_xlabel(r'$z_\mathrm{GAMA}$', fontsize=20) 
     sub3.set_xlim([0., 0.4]) 
-    sub3.set_ylabel(r'$\Delta z/(1+z_\mathrm{true})$', fontsize=20) 
+    sub3.set_ylabel(r'$\Delta z/(1+z_\mathrm{GAMA})$', fontsize=20) 
     #sub3.set_ylim([0., 0.4]) 
         
     fig.subplots_adjust(wspace=0.3) 
@@ -684,4 +684,4 @@ if __name__=="__main__":
     #rMag_normalize()
     #expSpectra()
     #expSpectra_emline()
-    expSpectra_redshift(ngal=2)
+    expSpectra_redshift(ngal=20)
