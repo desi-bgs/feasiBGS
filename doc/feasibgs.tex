@@ -217,8 +217,54 @@ cosmology: observations
     \includegraphics[width=0.7\textwidth]{figs/GLeg_rMag_norm.pdf} 
     \caption{Template spectra normalized by the $r$-band magnitude 
     derived from Legacy survey $0.75''$ aperture fluxes compared to 
-    the $r$-band model magnitude from GAMA DR2.}
+    the $r$-band model magnitude from GAMA DR2. By normalizing the 
+    source (template) spectra by the aperture flux, we can bypass 
+    the fiberloss pipeline.}
 \label{fig:rmag_norm}
+\end{center}
+\end{figure}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Figure  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure}
+\begin{center}
+    \includegraphics[width=\textwidth]{figs/Gleg_expSpectra.pdf}
+    \caption{Simulated exposure of source spectrum derived from 
+    GAMA emission line added template spectrum, noramlized by Legacy
+    survey $r$-band aperture flux with sky spectrum derived from 
+    model dark (blue) and bright (orange) sky surface brightness 
+    (Figure~\ref{fig:sky_sbright}). 
+    }
+\label{fig:exp_spectra}
+\end{center}
+\end{figure}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Figure  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure}
+\begin{center}
+    \includegraphics[width=\textwidth]{figs/Gleg_expSpectra_emline.pdf}
+    \caption{We mark the emission line wavelenghts for the same exposure 
+    simulation as Figure~\ref{fig:exp_spectra}.}
+\label{fig:exp_spectra_emline}
+\end{center}
+\end{figure}
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% Figure  
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\begin{figure}
+\begin{center}
+    \includegraphics[width=\textwidth]{figs/Gleg_expSpectra_redshift.pdf}
+    \caption{Redshift measurements, using $\mathtt{redrock}$, of exposed spectra
+    simulated with dark and bright sky models.}
+\label{fig:exp_spectra_emline}
 \end{center}
 \end{figure}
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
