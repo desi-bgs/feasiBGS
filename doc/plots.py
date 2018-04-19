@@ -633,7 +633,7 @@ def expSpectra_redshift(ngal=10):
         zbright.append(z_bright.field('z')) 
         zdark.append(z_dark.field('z')) 
 
-    fig, (sub1, sub2) = plt.subplots(1,2, figsize=(8,4), gridspec_kw={'width_ratios':[1,1]})
+    fig, (sub1, sub2, sub3) = plt.subplots(1,3, figsize=(12,4), gridspec_kw={'width_ratios':[1,1,1]})
     sub1.scatter(absmag_ugriz[2,:][::10], absmag_ugriz[1,:][::10] - absmag_ugriz[2,:][::10], c='k', s=2) 
 
     sub2.plot([0.0, 0.4], [0.0, 0.4], c='k', lw=1, ls='--') 
@@ -646,7 +646,7 @@ def expSpectra_redshift(ngal=10):
         # plot template spectra
         sub2.scatter(redshift[i], zdark[ii], c='C'+str(ii), edgecolors='k', s=30, label='Dark Sky') 
         sub2.scatter(redshift[i], zbright[ii], c='C'+str(ii), edgecolors='k', s=10, marker='s', label='Bright Sky') 
-        
+
         if ii == 0: 
             sub1.legend(loc='upper left', markerscale=3, handletextpad=0., prop={'size':20})
             sub2.legend(loc='upper left', markerscale=2, handletextpad=0., prop={'size':20}) 
@@ -660,6 +660,14 @@ def expSpectra_redshift(ngal=10):
     sub2.set_xlim([0.,0.4]) 
     sub2.set_ylabel(r'$z_\mathrm{redrock}$', fontsize=20) 
     sub2.set_ylim([0.,0.4]) 
+
+    sub3.scatter(redshift[rands], (zdark - redhsift[rands])/(1.+redhsift[rands])) 
+    sub3.scatter(redshift[rands], (zbright - redhsift[rands])/(1.+redhsift[rands]), marker='s') 
+    sub3.set_xlabel(r'$z_\mathrm{true}$', fontsize=20) 
+    sub3.set_xlim([0., 0.4]) 
+    sub3.set_ylabel(r'$\Delta z/(1+z_\mathrm{true})$', fontsize=20) 
+    #sub3.set_ylim([0., 0.4]) 
+        
     fig.subplots_adjust(wspace=0.3) 
     fig.savefig(UT.doc_dir()+"figs/Gleg_expSpectra_redshift.pdf", bbox_inches='tight')
     plt.close() 
