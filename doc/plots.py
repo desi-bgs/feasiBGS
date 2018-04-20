@@ -646,13 +646,13 @@ def expSpectra_redshift(ngal=10):
     sub2.plot([0.0, 0.4], [0.0, 0.4], c='k', lw=1, ls='--') 
     for ii, i in enumerate(i_rand): 
         sub1.scatter(mabs_temp[match[ii],2], mabs_temp[match[ii],1] - mabs_temp[match[ii],2],
-                color='C'+str(ii), s=30, edgecolors='k', marker='^', label='Template')
+                color='C'+str(ii % 10), s=30, edgecolors='k', marker='^', label='Template')
         sub1.scatter(absmag_ugriz[2,i], absmag_ugriz[1,i] - absmag_ugriz[2,i], 
-                color='C'+str(ii), s=30, edgecolors='k', marker='s', label='GAMA object')
+                color='C'+str(ii % 10), s=30, edgecolors='k', marker='s', label='GAMA object')
 
         # plot template spectra
-        sub2.scatter(redshift[i], zdark[ii], c='C'+str(ii), edgecolors='k', s=30, label='Dark Sky') 
-        sub2.scatter(redshift[i], zbright[ii], c='C'+str(ii), edgecolors='k', s=10, marker='s', label='Bright Sky') 
+        sub2.scatter(redshift[i], zdark[ii], c='C'+str(ii % 10), edgecolors='k', s=30, label='Dark Sky') 
+        sub2.scatter(redshift[i], zbright[ii], c='C'+str(ii % 10), edgecolors='k', s=10, marker='s', label='Bright Sky') 
 
         if ii == 0: 
             sub1.legend(loc='upper left', markerscale=3, handletextpad=0., prop={'size':15})

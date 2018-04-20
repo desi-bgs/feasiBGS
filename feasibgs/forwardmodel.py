@@ -108,6 +108,10 @@ class BGStree(object):
 
         # match to templates 
         match, _ = self.Query(gleg_meta)
+        # in some cases there won't be a match from  KDTree.query
+        # we flag these with -999 
+        nomatch = (match >= len(self.meta['TEMPLATEID']))
+        match[nomatch] = -999
         return match 
 
 
