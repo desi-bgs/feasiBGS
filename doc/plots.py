@@ -435,9 +435,9 @@ def expSpectra():
     absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
     
     # pick a random galaxy from the GAMA-legacy sample
-    i_rand = np.random.choice(range(len(redshift)), size=1) 
-    #i_rand = [36415]
-    #print('i_rand = %i' % i_rand[0]) 
+    #i_rand = np.random.choice(range(len(redshift)), size=1) 
+    i_rand = [34893]
+    print('i_rand = %i' % i_rand[0]) 
 
     # match random galaxy to BGS templates
     bgs3 = FM.BGStree() 
@@ -467,9 +467,9 @@ def expSpectra():
     # write out simulated spectra
     for b in ['b', 'r', 'z']: 
         tbl_bright = Table([bgs_spectra_bright.wave[b], bgs_spectra_bright.flux[b][0].flatten()], names=('lambda', 'flux')) 
-        tbl_bright.write('brightsky_test_'+b+'.fits', format='fits', overwrite=True) 
+        tbl_bright.write('obj'+str(i_rand[0])+'_brightsky_'+b+'.fits', format='fits', overwrite=True) 
         tbl_dark = Table([bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten()], names=('lambda', 'flux'))
-        tbl_dark.write('darksky_test_'+b+'.fits', format='fits', overwrite=True) 
+        tbl_dark.write('obj'+str(i_rand[0])+'darksky_'+b+'.fits', format='fits', overwrite=True) 
     
     # plot the spectra
     fig, (sub1, sub2) = plt.subplots(1,2, figsize=(12,4), gridspec_kw={'width_ratios':[1,3]})
@@ -485,12 +485,15 @@ def expSpectra():
     for b in ['b', 'r', 'z']: 
         lbl0, lbl1 = None, None
         if b == 'z': lbl0, lbl1 = 'Simulated Exposure (Dark Sky)', 'Bright Sky'
-        sub2.plot(bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten(), 
-                c='C0', lw=0.2, alpha=0.7, label=lbl0) 
         sub2.plot(bgs_spectra_bright.wave[b], bgs_spectra_bright.flux[b][0].flatten(), 
                 c='C1', lw=0.2, alpha=0.7, label=lbl1) 
+        sub2.plot(bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten(), 
+                c='C0', lw=0.2, alpha=0.7, label=lbl0) 
     # plot template spectra
     sub2.plot(wave, flux[0], c='k', lw=0.3, ls=':', label='Template')
+    
+    sub2.text(0.95, 0.9, r'$z_\mathrm{GAMA} = '+str(redshift[i_rand[0]])+'$', 
+            ha='right', va='center', transform=sub2.transAxes, fontsize=20)
 
     sub1.set_xlabel('$M_{0.1r}$', fontsize=20) 
     sub1.set_xlim([-14., -24]) 
@@ -500,7 +503,7 @@ def expSpectra():
     sub2.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
     sub2.set_xlim([3600., 9800.]) 
     sub2.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
-    sub2.set_ylim([0., 1.8*flux[0].max()]) 
+    sub2.set_ylim([0., 3*flux0[0].max()]) 
     sub2.legend(loc='upper left', prop={'size': 15}) 
     fig.savefig(UT.doc_dir()+"figs/Gleg_expSpectra.pdf", bbox_inches='tight')
     plt.close() 
@@ -519,7 +522,8 @@ def expSpectra_emline():
     absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
 
     # pick a random galaxy from the GAMA-legacy sample
-    i_rand = np.random.choice(range(len(redshift)), size=1) 
+    #i_rand = np.random.choice(range(len(redshift)), size=1) 
+    i_rand = [34893]
     print('i_rand = %i' % i_rand[0]) 
 
     # match random galaxy to BGS templates
@@ -554,23 +558,29 @@ def expSpectra_emline():
     for b in ['b', 'r', 'z']: 
         lbl0, lbl1 = None, None
         if b == 'z': lbl0, lbl1 = 'Simulated Exposure (Dark Sky)', 'Bright Sky'
-        sub.plot(bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten(), 
-                c='C0', lw=0.2, alpha=0.7, label=lbl0) 
         sub.plot(bgs_spectra_bright.wave[b], bgs_spectra_bright.flux[b][0].flatten(), 
                 c='C1', lw=0.2, alpha=0.7, label=lbl1) 
+        sub.plot(bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten(), 
+                c='C0', lw=0.2, alpha=0.7, label=lbl0) 
     
-    emline_keys = ['[OII]', r'$\mathrm{H}_\beta$',  r'[OIII]$_b$', r'[OIII]$_r$', 'NII', r'$\mathrm{H}_\alpha$', '[NII]', '[SII]']
-    emline_lambda = [3727., 4861., 4959., 5007., 6548., 6563., 6584., 6716.]
+    #emline_keys = ['[OII]', r'$\mathrm{H}_\beta$',  r'[OIII]$_b$', r'[OIII]$_r$', 'NII', r'$\mathrm{H}_\alpha$', '[NII]', '[SII]']
+    #emline_lambda = [3727., 4861., 4959., 5007., 6548., 6563., 6584., 6716.]
+    emline_keys = [r'$\mathrm{H}_\alpha$']
+    emline_lambda = [6563.]
+
     emline_zlambda = (1.+redshift[i_rand]) * np.array(emline_lambda)
     
     for i_l, zlambda in enumerate(emline_zlambda): 
         sub.vlines(zlambda, 0., 2.*flux_eml[0].max(), color='k', linestyle=':', linewidth=2) 
         sub.text(zlambda, flux0[0].max()*float(14-i_l)/10., emline_keys[i_l], ha='left', va='top', fontsize=12) 
 
+    sub.text(0.95, 0.9, r'$z_\mathrm{GAMA} = '+str(redshift[i_rand[0]])+'$', 
+            ha='right', va='center', transform=sub.transAxes, fontsize=20)
+
     sub.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
     sub.set_xlim([3600., 9800.]) 
     sub.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
-    sub.set_ylim([0., 2.5*flux0[0].max()]) 
+    sub.set_ylim([0., 3*flux0[0].max()]) 
     sub.legend(loc='upper left', prop={'size': 15}) 
     fig.savefig(UT.doc_dir()+"figs/Gleg_expSpectra_emline.pdf", bbox_inches='tight')
     plt.close() 
@@ -589,55 +599,52 @@ def expSpectra_redshift(ngal=10):
     absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
 
     # pick a random galaxy from the GAMA-legacy sample
-    rands = np.random.choice(range(len(redshift)), size=ngal) 
+    i_rand = np.random.choice(range(len(redshift)), size=ngal) 
     
     # match random galaxy to BGS templates
     bgs3 = FM.BGStree() 
-    match = bgs3._GamaLegacy(gleg, index=rands) 
+    match = bgs3._GamaLegacy(gleg, index=i_rand) 
     mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
     
-    zdark, zbright = [], []
-    for ii, ir in enumerate(rands): 
-        i_rand = [ir] 
-        print('i_rand = %i' % ir) 
+    # r-band aperture magnitude from Legacy photometry 
+    r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][i_rand,1], method='log')  
+    if not np.all(np.isfinite(r_mag)): 
+        has_rmag = np.isfinite(r_mag)
+        i_rand = i_rand[has_rmag]
+        match = match[has_rmag]
+        r_mag = r_mag[has_rmag]
 
-        bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
-        vdisp = np.repeat(100.0, 1) # velocity dispersions [km/s]
-        
-        # r-band aperture magnitude from Legacy photometry 
-        r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][i_rand,1], method='log')  
-        assert np.isfinite(r_mag)
+    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    vdisp = np.repeat(100.0, len(i_rand)) # velocity dispersions [km/s]
 
-        flux, wave, meta = bgstemp.Spectra(
-                r_mag, 
-                redshift[i_rand], 
-                vdisp,
-                seed=1, templateid=match[ii], silent=False) 
-        flux0 = flux.copy()  
-        wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, i_rand, silent=False) 
+    flux, wave, meta = bgstemp.Spectra(
+            r_mag, 
+            redshift[i_rand], 
+            vdisp,
+            seed=1, templateid=match, silent=False) 
+    flux0 = flux.copy()  
+    wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, i_rand, silent=False) 
 
-        # simulate exposure using 
-        fdesi = FM.fakeDESIspec() 
-        f_bright =  UT.dat_dir()+'spectra_tmp_bright.fits'
-        f_dark =  UT.dat_dir()+'spectra_tmp_dark.fits'
-        bgs_spectra_bright = fdesi.simExposure(wave, flux_eml, skycondition='bright', filename=f_bright) 
-        bgs_spectra_dark = fdesi.simExposure(wave, flux_eml, skycondition='dark', filename=f_dark) 
+    # simulate exposure using 
+    fdesi = FM.fakeDESIspec() 
+    f_bright =  UT.dat_dir()+'spectra_tmp_bright.fits'
+    f_dark =  UT.dat_dir()+'spectra_tmp_dark.fits'
+    bgs_spectra_bright = fdesi.simExposure(wave, flux_eml, skycondition='bright', filename=f_bright) 
+    bgs_spectra_dark = fdesi.simExposure(wave, flux_eml, skycondition='dark', filename=f_dark) 
 
-        rrdesi(options=['--zbest', ''.join([f_bright.split('.fits')[0]+'_zbest.fits']) , f_bright]) 
-        rrdesi(options=['--zbest', ''.join([f_dark.split('.fits')[0]+'_zbest.fits']), f_dark]) 
-    
-        f_zbright = fits.open(''.join([f_bright.split('.fits')[0]+'_zbest.fits'])) 
-        f_zdark = fits.open(''.join([f_dark.split('.fits')[0]+'_zbest.fits']))
-        z_bright = f_zbright[1].data
-        z_dark = f_zdark[1].data
-        zbright.append(z_bright.field('z')[0]) 
-        zdark.append(z_dark.field('z')[0]) 
+    rrdesi(options=['--zbest', ''.join([f_bright.split('.fits')[0]+'_zbest.fits']) , f_bright]) 
+    rrdesi(options=['--zbest', ''.join([f_dark.split('.fits')[0]+'_zbest.fits']), f_dark]) 
 
-    fig, (sub1, sub2, sub3) = plt.subplots(1,3, figsize=(12,4), gridspec_kw={'width_ratios':[1,1,1]})
+    f_zbright = Table.read(''.join([f_bright.split('.fits')[0]+'_zbest.fits'])) 
+    f_zdark = Table.read(''.join([f_dark.split('.fits')[0]+'_zbest.fits']))
+    zbright = f_zbright['Z']
+    zdark = f_zdark['Z']
+
+    fig, (sub1, sub2, sub3) = plt.subplots(1,3, figsize=(13,4), gridspec_kw={'width_ratios':[1,1,1]})
     sub1.scatter(absmag_ugriz[2,:][::10], absmag_ugriz[1,:][::10] - absmag_ugriz[2,:][::10], c='k', s=2) 
 
     sub2.plot([0.0, 0.4], [0.0, 0.4], c='k', lw=1, ls='--') 
-    for ii, i in enumerate(rands): 
+    for ii, i in enumerate(i_rand): 
         sub1.scatter(mabs_temp[match[ii],2], mabs_temp[match[ii],1] - mabs_temp[match[ii],2],
                 color='C'+str(ii), s=30, edgecolors='k', marker='^', label='Template')
         sub1.scatter(absmag_ugriz[2,i], absmag_ugriz[1,i] - absmag_ugriz[2,i], 
@@ -648,8 +655,8 @@ def expSpectra_redshift(ngal=10):
         sub2.scatter(redshift[i], zbright[ii], c='C'+str(ii), edgecolors='k', s=10, marker='s', label='Bright Sky') 
 
         if ii == 0: 
-            sub1.legend(loc='upper left', markerscale=3, handletextpad=0., prop={'size':20})
-            sub2.legend(loc='upper left', markerscale=2, handletextpad=0., prop={'size':20}) 
+            sub1.legend(loc='upper left', markerscale=3, handletextpad=0., prop={'size':15})
+            sub2.legend(loc='upper left', markerscale=2, handletextpad=0., prop={'size':15}) 
     sub1.set_xlabel('$M_{0.1r}$', fontsize=20) 
     sub1.set_xlim([-14., -24]) 
     sub1.set_ylabel(r'$^{0.1}(g-r)$ color', fontsize=20) 
@@ -661,14 +668,16 @@ def expSpectra_redshift(ngal=10):
     sub2.set_ylabel(r'$z_\mathrm{redrock}$', fontsize=20) 
     sub2.set_ylim([0.,0.4]) 
 
-    sub3.scatter(redshift[rands], (np.array(zdark) - redshift[rands])/(1.+redshift[rands]), s=30)
-    sub3.scatter(redshift[rands], (np.array(zbright) - redshift[rands])/(1.+redshift[rands]), s=15, marker='s') 
+    sub3.scatter(redshift[i_rand], (np.array(zdark) - redshift[i_rand])/(1.+redshift[i_rand]), 
+            linewidth=0, s=30, label='Dark Sky')
+    sub3.scatter(redshift[i_rand], (np.array(zbright) - redshift[i_rand])/(1.+redshift[i_rand]), 
+            linewidth=0, s=15, label='Bright Sky') 
+    sub3.plot([0., 0.4], [0.0, 0.0], c='k', ls='--', lw=1) 
+    sub3.legend(loc='upper left', markerscale=2, handletextpad=0., prop={'size':15})
     sub3.set_xlabel(r'$z_\mathrm{GAMA}$', fontsize=20) 
     sub3.set_xlim([0., 0.4]) 
     sub3.set_ylabel(r'$\Delta z/(1+z_\mathrm{GAMA})$', fontsize=20) 
-    #sub3.set_ylim([0., 0.4]) 
-        
-    fig.subplots_adjust(wspace=0.3) 
+    fig.subplots_adjust(wspace=0.4) 
     fig.savefig(UT.doc_dir()+"figs/Gleg_expSpectra_redshift.pdf", bbox_inches='tight')
     plt.close() 
     return None          
@@ -684,4 +693,4 @@ if __name__=="__main__":
     #rMag_normalize()
     #expSpectra()
     #expSpectra_emline()
-    expSpectra_redshift(ngal=20)
+    expSpectra_redshift(ngal=100)
