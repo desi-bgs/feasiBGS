@@ -2,11 +2,12 @@
 #SBATCH -p regular 
 #SBATCH -N 1 
 #SBATCH -t 05:00:00 
-#SBATCH -J gamalegacy_expSpec 
-#SBATCH -o _gamalegacy_expSpec.o 
+#SBATCH -J gleg_expSpec_dark
+#SBATCH -o _gleg_expSpec_dark.o 
 #SBATCH -L SCRATCH,project 
 
 module load python/2.7-anaconda
 source activate myenv0 
 
-srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py
+#srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py bright 1
+srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py dark 1

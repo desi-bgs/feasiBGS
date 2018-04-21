@@ -1,4 +1,5 @@
 #!/bin/usr/python 
+import sys
 import numpy as np 
 # -- feasibgs -- 
 from feasibgs import util as UT
@@ -93,4 +94,6 @@ def expSpectra(skycondition='bright', seed=1):
 
 
 if __name__=='__main__':
-    expSpectra(skycondition='bright', seed=1)
+    sky = sys.argv[1]
+    seed = int(sys.argv[2])
+    expSpectra(skycondition=sky, seed=seed)
