@@ -40,8 +40,6 @@ from desitarget.cuts import isBGS_bright, isBGS_faint
 # -- local -- 
 from feasibgs import catalogs as Cat 
 
-os.environ['DESI_BASIS_TEMPLATES']='/Volumes/chang_eHDD/projects/desi/spectro/templates/basis_templates/v2.3'
-
 
 class BGStree(object):
     '''class to deal with KDTree from BGS basis template metadata.
