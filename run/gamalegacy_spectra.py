@@ -74,7 +74,7 @@ def expSpectra(skycondition='bright', seed=1):
     r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
     vdisp = np.repeat(100.0, ngal) # velocity dispersions [km/s]
     
-    for i_block in range(n_block): 
+    for i_block in range(20,n_block): 
         print('block %i of %i' % (i_block+1, n_block))
         in_block = (hasmatch & 
                 (np.arange(ngal) >= i_block * 1000) & 
@@ -103,7 +103,36 @@ def expSpectra(skycondition='bright', seed=1):
     return None 
 
 
+def Redrock_expSpectra(skycondition='bright', seed=1, ncpu=1): 
+    ''' run the simulated spectra through redrock 
+    '''
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read()
+
+    redshift = gleg['gama-spec']['z_helio'] # redshift 
+    ngal = len(redshift) # number of galaxies
+
+    n_block = (ngal // 1000) + 1 # number of blocks
+
+    for i_block in [0]:#range(n_block): 
+        print('block %i of %i' % (i_block+1, n_block))
+
+        f = ''.join([UT.dat_dir(), 
+            'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), 
+            '.', str(i_block+1), 'of', str(n_block), 'blocks.fits']) 
+
+        f_z = ''.join([f.split('.fits')[0]+'.zbest.fits']) # redshift file 
+        rrdesi(options=['--zbest', f_z, '--mp', str(ncpu), f]) 
+    return None 
+
+
 if __name__=='__main__':
-    sky = sys.argv[1]
-    seed = int(sys.argv[2])
-    expSpectra(skycondition=sky, seed=seed)
+    tt = sys.argv[1]
+    sky = sys.argv[2]
+    seed = int(sys.argv[3])
+    if tt == 'spectra': 
+        expSpectra(skycondition=sky, seed=seed)
+    elif tt == 'redshift': 
+        ncpu = int(sys.argv[4]) 
+        Redrock_expSpectra(skycondition=sky, seed=seed, ncpu=ncpu)
