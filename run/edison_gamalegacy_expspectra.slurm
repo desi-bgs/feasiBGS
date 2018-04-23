@@ -1,7 +1,7 @@
 #!/bin/bash -l 
 #SBATCH -p regular 
 #SBATCH -N 1 
-#SBATCH -t 05:00:00 
+#SBATCH -t 01:00:00 
 #SBATCH -J gleg_expSpec_dark
 #SBATCH -o _gleg_expSpec_dark.o 
 #SBATCH -L SCRATCH,project 
