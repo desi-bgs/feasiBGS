@@ -1,12 +1,13 @@
 #!/bin/usr/python 
 import sys
+import subprocess
 import numpy as np 
 # -- feasibgs -- 
 from feasibgs import util as UT
 from feasibgs import catalogs as Cat
 from feasibgs import forwardmodel as FM 
 
-from redrock.external.desi import rrdesi
+#from redrock.external.desi import rrdesi_mpi
 
 
 def _test_NERSC(): 
@@ -74,7 +75,7 @@ def expSpectra(skycondition='bright', seed=1):
     r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
     vdisp = np.repeat(100.0, ngal) # velocity dispersions [km/s]
     
-    for i_block in range(20,n_block): 
+    for i_block in range(n_block): 
         print('block %i of %i' % (i_block+1, n_block))
         in_block = (hasmatch & 
                 (np.arange(ngal) >= i_block * 1000) & 
@@ -115,7 +116,7 @@ def Redrock_expSpectra(skycondition='bright', seed=1, ncpu=1):
 
     n_block = (ngal // 1000) + 1 # number of blocks
 
-    for i_block in [0]:#range(n_block): 
+    for i_block in range(n_block): 
         print('block %i of %i' % (i_block+1, n_block))
 
         f = ''.join([UT.dat_dir(), 
@@ -123,7 +124,11 @@ def Redrock_expSpectra(skycondition='bright', seed=1, ncpu=1):
             '.', str(i_block+1), 'of', str(n_block), 'blocks.fits']) 
 
         f_z = ''.join([f.split('.fits')[0]+'.zbest.fits']) # redshift file 
-        rrdesi(options=['--zbest', f_z, '--mp', str(ncpu), f]) 
+
+
+        rr_cmd = ''.join(['rrdesi_mpi --zbest ', f_z, ' --mp ', str(ncpu), ' ', f]) 
+        subprocess.call(rr_cmd.split())
+        #rrdesi_mpi(options=['--zbest', f_z, '--mp', str(ncpu), f]) 
     return None 
 
 

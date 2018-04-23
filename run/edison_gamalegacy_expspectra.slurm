@@ -1,7 +1,7 @@
 #!/bin/bash -l 
-#SBATCH -p debug 
+#SBATCH -p regular 
 #SBATCH -N 1 
-#SBATCH -t 00:15:00 
+#SBATCH -t 05:00:00 
 #SBATCH -J gleg_expSpec_dark_z
 #SBATCH -o _gleg_expSpec_dark_z.o 
 #SBATCH -L SCRATCH,project 
@@ -14,5 +14,5 @@ source activate myenv0
 #srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra dark 1
 
 # run through redrock
-srun -n 1 -c 16 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py redshift bright 1 16
-#srun -n 1 -c 16 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py redshift dark 1 16
+#srun -n 1 -c 16 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py redshift bright 1 16
+srun -n 1 -c 16 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py redshift dark 1 16
