@@ -156,8 +156,8 @@ class BGStemplates(object):
         assert flux.shape[0] == len(gama_indices)
         _flux = flux.copy() 
         # emission lines
-        emline_keys = ['oii', 'hb',  'oiiib', 'oiiir', 'niib', 'ha', 'niir', 'siib', 'siir']
-        emline_lambda = [3727., 4861., 4959., 5007., 6548., 6563., 6584., 6716., 6731.]
+        emline_keys = ['oiib','oiir', 'hb',  'oiiib', 'oiiir', 'niib', 'ha', 'niir', 'siib', 'siir']
+        emline_lambda = [3726., 3728., 4861., 4959., 5007., 6548., 6563., 6584., 6716., 6731.]
     
         # gama spectra data
         gama_sdata = gama_data['gama-spec']

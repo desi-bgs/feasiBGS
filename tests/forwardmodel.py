@@ -34,6 +34,61 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
+def expSpectra_dark_vs_bright():
+    ''' Weirdly the redshift uncertainties are higher for 
+    dark sky than bright sky... why? 
+    '''
+
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read()
+
+    redshift = gleg['gama-spec']['z_helio'] # redshift 
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
+    
+    igal = [14]
+
+    # match random galaxy to BGS templates
+    bgs3 = FM.BGStree() 
+    match = bgs3._GamaLegacy(gleg, index=igal) 
+    mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
+
+    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    vdisp = np.repeat(100.0, len(igal)) # velocity dispersions [km/s]
+    
+    # r-band aperture magnitude from Legacy photometry 
+    r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][igal,1], method='log')  
+    print('r_mag = %f' % r_mag)
+    
+    flux, wave, meta = bgstemp.Spectra(r_mag, redshift[igal], vdisp, seed=1, 
+            templateid=match, silent=False) 
+    wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, igal, silent=False) 
+
+    # simulate exposure and then save spectra file  
+    fdesi = FM.fakeDESIspec() 
+    f_spec_bright = ''.join([UT.dat_dir(), 'obj', str(igal[0]), '.brightsky.fits']) 
+    f_spec_dark = ''.join([UT.dat_dir(), 'obj'+str(igal[0])+'.darksky.fits']) 
+    bgs_spectra_bright = fdesi.simExposure(wave, flux_eml, skycondition='bright', 
+            filename=f_spec_bright)
+    bgs_spectra_dark = fdesi.simExposure(wave, flux_eml, skycondition='dark', 
+            filename=f_spec_dark)
+
+    # run redrock on it 
+    f_red_bright = ''.join([UT.dat_dir(), 'obj', str(igal[0]), '.brightsky.redrock.fits']) 
+    f_red_dark = ''.join([UT.dat_dir(), 'obj', str(igal[0]), '.darksky.redrock.fits']) 
+    rrdesi(options=['--zbest', f_red_bright, f_spec_bright])
+    rrdesi(options=['--zbest', f_red_dark, f_spec_dark])
+    
+    zdata_bright = fits.open(f_red_bright)[1].data
+    zdata_dark = fits.open(f_red_dark)[1].data
+    
+    print('z_true = %f' % redshift[igal])
+    print('z_redrock bright sky = %f' % zdata_bright['Z'])
+    print('z_redrock dark sky = %f' % zdata_dark['Z'])
+
+    return None 
+
+
 def GamaLegacy_skyflux(obvs): 
     ''' take a random galaxy from the GAMA-Legacy catalog, match it to 
     BGS templates, then simulate exposure on the templates with varying 
@@ -378,4 +433,4 @@ def matchGamaLegacy():
 
 
 if __name__=="__main__": 
-    pass
+    expSpectra_dark_vs_bright()
