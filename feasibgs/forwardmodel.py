@@ -154,9 +154,10 @@ class BGStemplates(object):
         ''' add emission lines to spectra
         '''
         assert flux.shape[0] == len(gama_indices)
+        _flux = flux.copy() 
         # emission lines
-        emline_keys = ['oiib', 'hb',  'oiiib', 'oiiir', 'niib', 'ha', 'niir', 'siib']
-        emline_lambda = [3727., 4861., 4959., 5007., 6548., 6563., 6584., 6716.]
+        emline_keys = ['oii', 'hb',  'oiiib', 'oiiir', 'niib', 'ha', 'niir', 'siib', 'siir']
+        emline_lambda = [3727., 4861., 4959., 5007., 6548., 6563., 6584., 6716., 6731.]
     
         # gama spectra data
         gama_sdata = gama_data['gama-spec']
@@ -168,7 +169,8 @@ class BGStemplates(object):
         # but the width is not... 
         emline_sigmed = [] 
         for k in emline_keys: 
-            emline_sigmed.append(np.median(gama_sdata[k+'sig'][gama_sdata[k+'sig'] > 0]))
+            hassig = (gama_sdata[k+'sig'] > 0)
+            emline_sigmed.append(np.median(gama_sdata[k+'sig'][hassig]))
 
         # loop through emission lines and add them on! 
         for i_k, k in enumerate(emline_keys): 
@@ -177,22 +179,24 @@ class BGStemplates(object):
                 if not silent: print('no galaxies with emission line %s' % k) 
                 continue
             
+            em_lineflux = gama_sdata[k][gama_indices][hasem] # line flux [10^(-17) erg/s/cm^2]
             # width of Gaussian emission line 
-            em_sig = gama_sdata[k+'sig'][gama_indices][hasem] 
+            em_sig = gama_sdata[k+'sig'][gama_indices][hasem] # Angstrom
             # fit the width of the emission line is not fit 
             # accurately, then use the median value of the data  
-            nosig = (em_sig < 0.) 
+            nosig = (em_sig <= 0.) 
             em_sig[nosig] = emline_sigmed[i_k]
 
             # normalization of the Gaussian
-            A = gama_sdata[k][gama_indices][hasem]/np.sqrt(2. * np.pi * em_sig**2)
+            A = em_lineflux/np.sqrt(2. * np.pi * em_sig**2)
 
-            for iflx in range(len(hasem)): 
-                lambda_eml_red = emline_lambda[i_k] * (1.+z_gama[hasem][iflx]) 
-                emline_flux = A[iflx] * np.exp(-0.5*(wave - lambda_eml_red)**2/em_sig[iflx]**2)
-                flux[hasem[iflx]] += emline_flux 
+            lambda_eml_red = emline_lambda[i_k] * (1 + z_gama[hasem]) 
 
-        return wave, flux 
+            emline_flux = A[:,None] * np.exp(-0.5*(np.tile(wave, len(hasem)).reshape(len(hasem), len(wave)) - lambda_eml_red[:,None])**2/em_sig[:,None]**2)
+
+            _flux[hasem] += emline_flux 
+
+        return wave, _flux 
 
 
 class fakeDESIspec(object): 

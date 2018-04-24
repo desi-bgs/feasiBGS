@@ -1,4 +1,5 @@
 #!/bin/usr/python 
+import os
 import sys
 import subprocess
 import numpy as np 
@@ -7,7 +8,7 @@ from feasibgs import util as UT
 from feasibgs import catalogs as Cat
 from feasibgs import forwardmodel as FM 
 
-#from redrock.external.desi import rrdesi_mpi
+from redrock.external.desi import rrdesi
 
 
 def _test_NERSC(): 
@@ -97,7 +98,7 @@ def expSpectra(skycondition='bright', seed=1):
         bgs_spectra = fdesi.simExposure(wave, flux_eml, skycondition=skycondition, 
                 filename=f) 
         # save indices for future reference 
-        f_indx = ''.join([UT.dat_dir(), 
+        f_indx = ''.join([UT.dat_dir(), 'spectra/'
             'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), 
             '.', str(i_block+1), 'of', str(n_block), 'blocks.index']) 
         np.savetxt(f_indx, np.arange(ngal)[in_block], fmt='%i')
@@ -118,17 +119,19 @@ def Redrock_expSpectra(skycondition='bright', seed=1, ncpu=1):
 
     for i_block in range(n_block): 
         print('block %i of %i' % (i_block+1, n_block))
-
-        f = ''.join([UT.dat_dir(), 
+        f = ''.join([UT.dat_dir(), 'spectra/'
             'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), 
             '.', str(i_block+1), 'of', str(n_block), 'blocks.fits']) 
+        if not os.path.isfile(f): 
+            continue 
+        
+        f_z = ''.join([UT.dat_dir(), 'redrock/'
+            'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), 
+            '.', str(i_block+1), 'of', str(n_block), 'blocks.zbest.fits']) 
 
-        f_z = ''.join([f.split('.fits')[0]+'.zbest.fits']) # redshift file 
-
-
-        rr_cmd = ''.join(['rrdesi_mpi --zbest ', f_z, ' --mp ', str(ncpu), ' ', f]) 
-        subprocess.call(rr_cmd.split())
-        #rrdesi_mpi(options=['--zbest', f_z, '--mp', str(ncpu), f]) 
+        #rr_cmd = ''.join(['rrdesi_mpi --zbest ', f_z, ' --mp ', str(ncpu), ' ', f]) 
+        #subprocess.call(rr_cmd.split())
+        rrdesi(options=['--zbest', f_z, '--mp', str(ncpu), f]) 
     return None 
 
 
