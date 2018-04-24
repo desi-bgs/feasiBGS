@@ -117,7 +117,7 @@ def Redrock_expSpectra(skycondition='bright', seed=1, ncpu=1):
 
     n_block = (ngal // 1000) + 1 # number of blocks
 
-    for i_block in range(n_block): 
+    for i_block in [0]: #range(n_block): 
         print('block %i of %i' % (i_block+1, n_block))
         f = ''.join([UT.dat_dir(), 'spectra/'
             'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), 

@@ -34,7 +34,7 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
-def expSpectra_dark_vs_bright():
+def expSpectra_dark_vs_bright(i_gal):
     ''' Weirdly the redshift uncertainties are higher for 
     dark sky than bright sky... why? 
     '''
@@ -46,7 +46,7 @@ def expSpectra_dark_vs_bright():
     redshift = gleg['gama-spec']['z_helio'] # redshift 
     absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
     
-    igal = [14]
+    igal = [i_gal]
 
     # match random galaxy to BGS templates
     bgs3 = FM.BGStree() 
@@ -433,4 +433,7 @@ def matchGamaLegacy():
 
 
 if __name__=="__main__": 
-    expSpectra_dark_vs_bright()
+    expSpectra_dark_vs_bright(89)
+    expSpectra_dark_vs_bright(122)
+    expSpectra_dark_vs_bright(180)
+    expSpectra_dark_vs_bright(187)
