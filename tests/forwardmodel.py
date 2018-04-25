@@ -34,6 +34,36 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
+def weird_expSpectra_dark_vs_bright(i_gal):
+    ''' for these weird galaxies, redshift measured from 
+    spectrum + bright sky is more accurate than spectrum + dark sky. 
+    '''
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read()
+
+    redshift = gleg['gama-spec']['z_helio']  # redshift
+
+    igal = [i_gal]
+
+    f_spec_bright = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.fits']) 
+    f_spec_dark = ''.join([UT.dat_dir(), 'weird_obj'+str(igal[0])+'.darksky.fits']) 
+
+    # run redrock on it 
+    f_red_bright = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.redrock.fits']) 
+    f_red_dark = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.darksky.redrock.fits']) 
+    rrdesi(options=['--zbest', f_red_bright, f_spec_bright])
+    rrdesi(options=['--zbest', f_red_dark, f_spec_dark])
+    
+    zdata_bright = fits.open(f_red_bright)[1].data
+    zdata_dark = fits.open(f_red_dark)[1].data
+    
+    print('z_true = %f' % redshift[igal])
+    print('z_redrock bright sky = %f' % zdata_bright['Z'])
+    print('z_redrock dark sky = %f' % zdata_dark['Z'])
+    return None 
+
+
 def expSpectra_dark_vs_bright(i_gal):
     ''' Weirdly the redshift uncertainties are higher for 
     dark sky than bright sky... why? 
@@ -57,10 +87,10 @@ def expSpectra_dark_vs_bright(i_gal):
     vdisp = np.repeat(100.0, len(igal)) # velocity dispersions [km/s]
     
     # r-band aperture magnitude from Legacy photometry 
-    r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][igal,1], method='log')  
+    r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
     print('r_mag = %f' % r_mag)
     
-    flux, wave, meta = bgstemp.Spectra(r_mag, redshift[igal], vdisp, seed=1, 
+    flux, wave, meta = bgstemp.Spectra(r_mag[igal], redshift[igal], vdisp, seed=1, 
             templateid=match, silent=False) 
     wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, igal, silent=False) 
 
@@ -85,7 +115,6 @@ def expSpectra_dark_vs_bright(i_gal):
     print('z_true = %f' % redshift[igal])
     print('z_redrock bright sky = %f' % zdata_bright['Z'])
     print('z_redrock dark sky = %f' % zdata_dark['Z'])
-
     return None 
 
 
@@ -433,7 +462,7 @@ def matchGamaLegacy():
 
 
 if __name__=="__main__": 
-    expSpectra_dark_vs_bright(89)
-    expSpectra_dark_vs_bright(122)
-    expSpectra_dark_vs_bright(180)
-    expSpectra_dark_vs_bright(187)
+    weird_expSpectra_dark_vs_bright(89)
+    weird_expSpectra_dark_vs_bright(122)
+    weird_expSpectra_dark_vs_bright(180)
+    weird_expSpectra_dark_vs_bright(187)
