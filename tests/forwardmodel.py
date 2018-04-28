@@ -6,11 +6,14 @@ Test `feasibgs.forwardmodel`
 '''
 import h5py
 import numpy as np 
+import subprocess
 import astropy.units as u 
 from astropy.io import fits
 from astropy.table import Table
 from astropy.cosmology import FlatLambdaCDM
+import redrock as RedRock
 from redrock import plotspec as RRplotspec
+from redrock.external import desi
 from redrock.external.desi import rrdesi
 
 # -- local -- 
@@ -52,8 +55,10 @@ def weird_expSpectra_dark_vs_bright(i_gal):
     # run redrock on it 
     f_red_bright = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.redrock.fits']) 
     f_red_dark = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.darksky.redrock.fits']) 
-    rrdesi(options=['--zbest', f_red_bright, f_spec_bright])
-    rrdesi(options=['--zbest', f_red_dark, f_spec_dark])
+    f_out_bright = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.output.h5']) 
+    f_out_dark = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.darksky.redrock.h5']) 
+    rrdesi(options=['--zbest', f_red_bright, '--output', f_out_bright, f_spec_bright])
+    rrdesi(options=['--zbest', f_red_dark, '--output', f_out_dark, f_spec_dark])
     
     zdata_bright = fits.open(f_red_bright)[1].data
     zdata_dark = fits.open(f_red_dark)[1].data
@@ -61,6 +66,25 @@ def weird_expSpectra_dark_vs_bright(i_gal):
     print('z_true = %f' % redshift[igal])
     print('z_redrock bright sky = %f' % zdata_bright['Z'])
     print('z_redrock dark sky = %f' % zdata_dark['Z'])
+
+    templates_path = RedRock.templates.find_templates(None)
+    templates = {}
+    for el in templates_path:
+        t = RedRock.templates.Template(filename=el)
+        templates[t.full_type] = t
+
+    targets_bright = desi.DistTargetsDESI(f_spec_bright)._my_data
+    targets_dark = desi.DistTargetsDESI(f_spec_dark)._my_data
+
+    #- Redrock
+    zscan_bright, zfit_bright = RedRock.results.read_zscan(f_out_bright)
+    zscan_dark, zfit_dark = RedRock.results.read_zscan(f_out_dark)
+
+    #- Plot
+    pb = RedRock.plotspec.PlotSpec(targets_bright, templates, zscan_bright, zfit_bright)
+    pb._fig.savefig(''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.redrock.png']))
+    pd = RedRock.plotspec.PlotSpec(targets_dark, templates, zscan_dark, zfit_dark)
+    pd._fig.savefig(''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.darksky.redrock.png']))
     return None 
 
 
