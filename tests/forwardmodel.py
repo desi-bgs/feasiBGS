@@ -82,9 +82,9 @@ def weird_expSpectra_dark_vs_bright(i_gal):
 
     #- Plot
     pb = RedRock.plotspec.PlotSpec(targets_bright, templates, zscan_bright, zfit_bright)
-    pb._fig.savefig(''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.redrock.png']))
+    pb._fig.savefig(''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.redrock.png']), bbox_inches='tight')
     pd = RedRock.plotspec.PlotSpec(targets_dark, templates, zscan_dark, zfit_dark)
-    pd._fig.savefig(''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.darksky.redrock.png']))
+    pd._fig.savefig(''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.darksky.redrock.png']), bbox_inches='tight')
     return None 
 
 
