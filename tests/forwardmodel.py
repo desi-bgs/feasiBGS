@@ -12,12 +12,12 @@ from astropy.io import fits
 from astropy.table import Table
 from astropy.cosmology import FlatLambdaCDM
 import redrock as RedRock
-from redrock import plotspec as RRplotspec
 from redrock.external import desi
 from redrock.external.desi import rrdesi
 
 # -- local -- 
 from feasibgs import util as UT
+from feasibgs import plotspec as PS
 from feasibgs import catalogs as Cat 
 from feasibgs import forwardmodel as FM
 
@@ -35,6 +35,40 @@ mpl.rcParams['ytick.labelsize'] = 'x-large'
 mpl.rcParams['ytick.major.size'] = 5
 mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
+
+
+def weird_expSpectra_zoom(igal, sky='bright', xrange0=None, yrange0=None, xrange1=None, yrange1=None):
+    ''' for these weird galaxies, redshift measured from 
+    spectrum + bright sky is more accurate than spectrum + dark sky. 
+    '''
+    f_spec = ''.join([UT.dat_dir(), 'weird_obj', str(igal), '.', sky, 'sky.fits']) 
+
+    # run redrock on it 
+    if sky == 'bright': 
+        f_out = ''.join([UT.dat_dir(), 'weird_obj', str(igal), '.', sky, 'sky.output.h5']) 
+    else: 
+        f_out = ''.join([UT.dat_dir(), 'weird_obj', str(igal), '.', sky, 'sky.redrock.h5']) 
+    
+    templates_path = RedRock.templates.find_templates(None)
+    templates = {}
+    for el in templates_path:
+        t = RedRock.templates.Template(filename=el)
+        templates[t.full_type] = t
+
+    targets = desi.DistTargetsDESI(f_spec)._my_data
+
+    #- Redrock
+    zscan, zfit = RedRock.results.read_zscan(f_out)
+
+    #- Plot
+    pb = PS.PlotSpec(targets, templates, zscan, zfit)
+    #if xrange0 is not None: pb._ax1.set_xlim(xrange0) 
+    #if yrange0 is not None: pb._ax1.set_ylim(yrange0)
+    if xrange1 is not None: pb._ax2.set_xlim(xrange1) 
+    if yrange1 is not None: pb._ax2.set_ylim(yrange1)
+    pb._fig.savefig(''.join([UT.dat_dir(), 'weird_obj', str(igal), '.', sky, 'sky.redrock.zoomed.png']),
+            bbox_inches='tight')
+    return None 
 
 
 def weird_expSpectra_dark_vs_bright(i_gal):
@@ -55,7 +89,7 @@ def weird_expSpectra_dark_vs_bright(i_gal):
     # run redrock on it 
     f_red_bright = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.redrock.fits']) 
     f_red_dark = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.darksky.redrock.fits']) 
-    f_out_bright = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.output.h5']) 
+    f_out_bright = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.redrock.h5']) 
     f_out_dark = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.darksky.redrock.h5']) 
     rrdesi(options=['--zbest', f_red_bright, '--output', f_out_bright, f_spec_bright])
     rrdesi(options=['--zbest', f_red_dark, '--output', f_out_dark, f_spec_dark])
@@ -82,8 +116,10 @@ def weird_expSpectra_dark_vs_bright(i_gal):
 
     #- Plot
     pb = RedRock.plotspec.PlotSpec(targets_bright, templates, zscan_bright, zfit_bright)
+    pb._ax1.set_xlim([0., 2.]) 
     pb._fig.savefig(''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.redrock.png']), bbox_inches='tight')
     pd = RedRock.plotspec.PlotSpec(targets_dark, templates, zscan_dark, zfit_dark)
+    pd._ax1.set_xlim([0., 2.]) 
     pd._fig.savefig(''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.darksky.redrock.png']), bbox_inches='tight')
     return None 
 
@@ -486,7 +522,4 @@ def matchGamaLegacy():
 
 
 if __name__=="__main__": 
-    weird_expSpectra_dark_vs_bright(89)
-    weird_expSpectra_dark_vs_bright(122)
-    weird_expSpectra_dark_vs_bright(180)
-    weird_expSpectra_dark_vs_bright(187)
+    weird_expSpectra_zoom(89, sky='dark', xrange0=[0.1, 0.25], yrange0=[0.,4000.], xrange1=[7500, 7800], yrange1=[0., 10.])
