@@ -703,6 +703,74 @@ def expSpectra_redshift(seed=1):
     return None          
 
 
+def expSpectra_SDSScomparison(): 
+    '''
+    '''
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read()
+    cataid = gleg['gama-photo']['cataid'] # GAMA catalog ID 
+    redshift = gleg['gama-spec']['z_helio'] # redshift 
+    ngal = len(redshift) # number of galaxies
+
+    # read in SpecOjb
+    f_specobj = fits.open(''.join([UT.dat_dir(), 'gama/SpecObj.fits']))
+    specobj_fits = f_specobj[1].data
+    issdss = (specobj_fits.field('SURVEY') == 'SDSS')
+    specobj_cataid = specobj_fits.field('CATAID')
+    
+    cataid_common = np.intersect1d(cataid, specobj_cataid[issdss]) 
+
+    i_obj = np.arange(ngal)[cataid == cataid_common[0]]
+    
+    # SDSS spectra from GAMA data
+    f_spec_i = (specobj_fits.field('FILENAME')[specobj_cataid == cataid_common[0]][0].split('/'))[-1]
+    if not os.path.isfile(''.join([UT.dat_dir(), 'gama/spectra/', f_spec_i])): 
+        url_spec_i = ''.join(['http://www.gama-survey.org/dr2/data/spectra/sdss/', f_spec_i]) 
+        raise ValueError("Download spectra from %s" % url_spec_i)
+
+    # match random galaxy to BGS templates
+    bgs3 = FM.BGStree() 
+    match = bgs3._GamaLegacy(gleg, index=i_obj) 
+    mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
+
+    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    vdisp = np.repeat(100.0, len(i_obj)) # velocity dispersions [km/s]
+    
+    # r-band aperture magnitude from Legacy photometry 
+    r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][i_obj,1], method='log')  
+    print('r_mag = %f' % r_mag)
+
+    flux, wave, meta = bgstemp.Spectra(r_mag, redshift[i_obj], vdisp, seed=1, templateid=match, silent=False) 
+    wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, i_obj, silent=False) 
+
+    # simulate exposure using 
+    fdesi = FM.fakeDESIspec() 
+    bgs_spectra_bright = fdesi.simExposure(wave, flux_eml, skycondition='bright') 
+    bgs_spectra_dark = fdesi.simExposure(wave, flux_eml, skycondition='dark') 
+    
+    # plot the spectra
+    fig = plt.figure(figsize=(12,4))
+    sub = fig.add_subplot(111)
+    # plot exposed spectra of the three CCDs
+    for b in ['b', 'r', 'z']: 
+        lbl0, lbl1 = None, None
+        if b == 'z': lbl0, lbl1 = 'Simulated Exposure (Dark Sky)', 'Bright Sky'
+        sub.plot(bgs_spectra_bright.wave[b], bgs_spectra_bright.flux[b][0].flatten(), 
+                c='C1', lw=0.2, alpha=0.7, label=lbl1) 
+        sub.plot(bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten(), 
+                c='C0', lw=0.2, alpha=0.7, label=lbl0) 
+
+    sub.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
+    sub.set_xlim([3600., 9800.]) 
+    sub.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
+    sub.set_ylim([0., 3*flux[0].max()]) 
+    sub.legend(loc='upper left', prop={'size': 15}) 
+    fig.savefig(UT.doc_dir()+"figs/Gleg_expSpectra_SDSScomparison.pdf", bbox_inches='tight')
+    plt.close() 
+    return None
+
+
 if __name__=="__main__": 
     #GAMALegacy_Halpha_color()
     #BGStemplates()
@@ -712,5 +780,6 @@ if __name__=="__main__":
     #skySurfaceBrightness()
     #rMag_normalize()
     #expSpectra()
-    expSpectra_emline()
+    #expSpectra_emline()
     #expSpectra_redshift(seed=1)
+    expSpectra_SDSScomparison()

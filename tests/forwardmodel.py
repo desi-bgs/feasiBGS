@@ -61,9 +61,9 @@ def weird_expSpectra_zoom(igal, sky='bright', xrange0=None, yrange0=None, xrange
     zscan, zfit = RedRock.results.read_zscan(f_out)
 
     #- Plot
-    pb = PS.PlotSpec(targets, templates, zscan, zfit)
-    #if xrange0 is not None: pb._ax1.set_xlim(xrange0) 
-    #if yrange0 is not None: pb._ax1.set_ylim(yrange0)
+    pb = PS.PlotSpec(targets, templates, zscan, zfit, xrange0=xrange0, yrange0=yrange0, xrange1=xrange1, yrange1=yrange1)
+    if xrange0 is not None: pb._ax1.set_xlim(xrange0) 
+    if yrange0 is not None: pb._ax1.set_ylim(yrange0)
     if xrange1 is not None: pb._ax2.set_xlim(xrange1) 
     if yrange1 is not None: pb._ax2.set_ylim(yrange1)
     pb._fig.savefig(''.join([UT.dat_dir(), 'weird_obj', str(igal), '.', sky, 'sky.redrock.zoomed.png']),
@@ -522,4 +522,4 @@ def matchGamaLegacy():
 
 
 if __name__=="__main__": 
-    weird_expSpectra_zoom(89, sky='dark', xrange0=[0.1, 0.25], yrange0=[0.,4000.], xrange1=[7500, 7800], yrange1=[0., 10.])
+    weird_expSpectra_zoom(89, sky='bright', xrange0=[1.05, 1.07], yrange0=[0,1e5], xrange1=[7600, 7800], yrange1=[0., 50.])
