@@ -722,12 +722,20 @@ def expSpectra_SDSScomparison():
     cataid_common = np.intersect1d(cataid, specobj_cataid[issdss]) 
 
     i_obj = np.arange(ngal)[cataid == cataid_common[0]]
+    print('z_gama = %f' % redshift[i_obj]) 
     
     # SDSS spectra from GAMA data
     f_spec_i = (specobj_fits.field('FILENAME')[specobj_cataid == cataid_common[0]][0].split('/'))[-1]
     if not os.path.isfile(''.join([UT.dat_dir(), 'gama/spectra/', f_spec_i])): 
         url_spec_i = ''.join(['http://www.gama-survey.org/dr2/data/spectra/sdss/', f_spec_i]) 
         raise ValueError("Download spectra from %s" % url_spec_i)
+    # read in sdss spectra
+    fits_spec = fits.open(''.join([UT.dat_dir(), 'gama/spectra/', f_spec_i])) 
+    sdss_spec = fits_spec[0].data[0,:]
+    sdss_wave = np.logspace(np.log10(fits_spec[0].header['WMIN']), np.log10(fits_spec[0].header['WMAX']), len(sdss_spec))
+    #fits_spec[0].header['WMIN'] +  ((fits_spec[0].header['WMAX'] - fits_spec[0].header['WMIN'])/float(len(sdss_spec)-1)) * np.arange(len(sdss_spec))
+    assert fits_spec[0].header['WMAX'] == sdss_wave[-1]
+    print('z_sdss = %f' % fits_spec[0].header['SDSS_Z']) 
 
     # match random galaxy to BGS templates
     bgs3 = FM.BGStree() 
@@ -755,16 +763,17 @@ def expSpectra_SDSScomparison():
     # plot exposed spectra of the three CCDs
     for b in ['b', 'r', 'z']: 
         lbl0, lbl1 = None, None
-        if b == 'z': lbl0, lbl1 = 'Simulated Exposure (Dark Sky)', 'Bright Sky'
+        if b == 'z': lbl0, lbl1 = 'Dark Sky', 'Simulated Exposure (Bright Sky)'
         sub.plot(bgs_spectra_bright.wave[b], bgs_spectra_bright.flux[b][0].flatten(), 
                 c='C1', lw=0.2, alpha=0.7, label=lbl1) 
         sub.plot(bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten(), 
                 c='C0', lw=0.2, alpha=0.7, label=lbl0) 
+    sub.plot(sdss_wave, sdss_spec, c='k', lw=0.1, label='SDSS DR 7 spectra')  
 
     sub.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
     sub.set_xlim([3600., 9800.]) 
     sub.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
-    sub.set_ylim([0., 3*flux[0].max()]) 
+    #sub.set_ylim([0., 3*flux[0].max()]) 
     sub.legend(loc='upper left', prop={'size': 15}) 
     fig.savefig(UT.doc_dir()+"figs/Gleg_expSpectra_SDSScomparison.pdf", bbox_inches='tight')
     plt.close() 
