@@ -14,7 +14,7 @@ import astropy.units as u
 from astropy.io import fits
 from astropy.table import Table
 from astropy.cosmology import FlatLambdaCDM
-
+from pydl.pydlutils.spheregroup import spherematch
 # -- local -- 
 from feasibgs import util as UT
 from feasibgs import catalogs as Cat 
@@ -559,7 +559,8 @@ def expSpectra_emline():
         sub.plot(bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten(), 
                 c='C0', lw=0.2, alpha=0.7, label=lbl0) 
     
-    emline_labels = ['[OII]', r'$\mathrm{H}_\beta$',  r'[OIII]$_b$', r'[OIII]$_r$', 'NII', r'$\mathrm{H}_\alpha$', '[NII]', '[SII]']
+    emline_labels = ['[OII]', r'$\mathrm{H}_\beta$',  r'[OIII]$_b$', r'[OIII]$_r$', r'[NII]$_b$', r'$\mathrm{H}_\alpha$', 
+            r'[NII]$_r$', '[SII]']
     emline_lambda = [3727., 4861., 4959., 5007., 6548., 6563., 6584., 6716.]
     emline_keys = ['oiib', 'hb',  'oiiib', 'oiiir', 'niib', 'ha', 'niir', 'siib']
 
@@ -595,10 +596,10 @@ def expSpectra_emline():
     plt.close() 
     
     # plot the spectra
-    fig = plt.figure(figsize=(20,4))
+    fig = plt.figure(figsize=(20,8))
     # plot exposed spectra of the three CCDs
     for i_l, zlambda in enumerate(emline_zlambda): 
-        sub = fig.add_subplot(1,len(emline_zlambda),i_l+1)
+        sub = fig.add_subplot(2,int(np.ceil(0.5*len(emline_zlambda))),i_l+1)
         for b in ['b', 'r', 'z']: 
             lbl0, lbl1 = None, None
             if b == 'z': lbl0, lbl1 = 'Simulated Exposure (Dark Sky)', 'Bright Sky'
@@ -609,7 +610,8 @@ def expSpectra_emline():
     
         # mark the redshifted wavelength of the emission line 
         sub.vlines(zlambda, 0., 2.*flux_eml[0].max(), color='k', linestyle=':', linewidth=0.5) 
-        sub.text(0.9, 0.9, emline_labels[i_l], ha='right', va='center', transform=sub.transAxes, fontsize=20)
+        sub.text(0.9, 0.85, emline_labels[i_l]+'\n $\sigma='+str(gleg['gama-spec'][emline_keys[i_l]+'sig'][i_rand][0])+'$', 
+                ha='right', va='center', transform=sub.transAxes, fontsize=20)
 
         # lineflux of the emissionline 
         emlineflux = gleg['gama-spec'][emline_keys[i_l]][i_rand][0]
@@ -621,7 +623,7 @@ def expSpectra_emline():
         f_eml = lambda ww: A*np.exp(-0.5*(ww-zlambda)**2/emlinesig**2)
 
         sub.plot(wave, f_eml(wave), c='k', linestyle=':', linewidth=1)
-        sub.set_xlim([zlambda-100., zlambda+100.]) 
+        sub.set_xlim([zlambda-50., zlambda+50.]) 
         sub.set_ylim([0., 3*flux[0].max()]) 
 
     fig.savefig(UT.doc_dir()+"figs/Gleg_expSpectra_emline_zoom.pdf", bbox_inches='tight')
@@ -713,69 +715,129 @@ def expSpectra_SDSScomparison():
     redshift = gleg['gama-spec']['z_helio'] # redshift 
     ngal = len(redshift) # number of galaxies
 
-    # read in SpecOjb
-    f_specobj = fits.open(''.join([UT.dat_dir(), 'gama/SpecObj.fits']))
-    specobj_fits = f_specobj[1].data
-    issdss = (specobj_fits.field('SURVEY') == 'SDSS')
-    specobj_cataid = specobj_fits.field('CATAID')
+    # sdss spAll
+    f_sdss = h5py.File(''.join([UT.dat_dir(), 'sdss/spAll-v5_7_0.zcut.hdf5']), 'r') 
+    ra_sdss = f_sdss['ra'].value
+    dec_sdss = f_sdss['dec'].value
+    plate = f_sdss['plate'].value
+    mjd = f_sdss['mjd'].value
+    fiberid = f_sdss['fiberid'].value
     
-    cataid_common = np.intersect1d(cataid, specobj_cataid[issdss]) 
-
-    i_obj = np.arange(ngal)[cataid == cataid_common[0]]
-    print('z_gama = %f' % redshift[i_obj]) 
-    
-    # SDSS spectra from GAMA data
-    f_spec_i = (specobj_fits.field('FILENAME')[specobj_cataid == cataid_common[0]][0].split('/'))[-1]
-    if not os.path.isfile(''.join([UT.dat_dir(), 'gama/spectra/', f_spec_i])): 
-        url_spec_i = ''.join(['http://www.gama-survey.org/dr2/data/spectra/sdss/', f_spec_i]) 
-        raise ValueError("Download spectra from %s" % url_spec_i)
-    # read in sdss spectra
-    fits_spec = fits.open(''.join([UT.dat_dir(), 'gama/spectra/', f_spec_i])) 
-    sdss_spec = fits_spec[0].data[0,:]
-    sdss_wave = np.logspace(np.log10(fits_spec[0].header['WMIN']), np.log10(fits_spec[0].header['WMAX']), len(sdss_spec))
-    #fits_spec[0].header['WMIN'] +  ((fits_spec[0].header['WMAX'] - fits_spec[0].header['WMIN'])/float(len(sdss_spec)-1)) * np.arange(len(sdss_spec))
-    assert fits_spec[0].header['WMAX'] == sdss_wave[-1]
-    print('z_sdss = %f' % fits_spec[0].header['SDSS_Z']) 
-
-    # match random galaxy to BGS templates
-    bgs3 = FM.BGStree() 
-    match = bgs3._GamaLegacy(gleg, index=i_obj) 
-    mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
-
-    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
-    vdisp = np.repeat(100.0, len(i_obj)) # velocity dispersions [km/s]
-    
-    # r-band aperture magnitude from Legacy photometry 
-    r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][i_obj,1], method='log')  
-    print('r_mag = %f' % r_mag)
-
-    flux, wave, meta = bgstemp.Spectra(r_mag, redshift[i_obj], vdisp, seed=1, templateid=match, silent=False) 
-    wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, i_obj, silent=False) 
-
-    # simulate exposure using 
-    fdesi = FM.fakeDESIspec() 
-    bgs_spectra_bright = fdesi.simExposure(wave, flux_eml, skycondition='bright') 
-    bgs_spectra_dark = fdesi.simExposure(wave, flux_eml, skycondition='dark') 
+    m_sdss, m_gleg, d_match = spherematch(ra_sdss, dec_sdss, 
+            gleg['gama-photo']['ra'], gleg['gama-photo']['dec'], 0.000277778) # spherematch 
     
     # plot the spectra
+    fig = plt.figure(figsize=(12,12))
+    for i, igal in enumerate([2,3,7]): 
+        i_obj = [m_gleg[igal]]
+        i_sdss = m_sdss[igal]
+        f_spec_local = fits.open(''.join([UT.dat_dir(), 'gama/spectra/',
+                    'spec-', str(plate[i_sdss]), '-', str(mjd[i_sdss]), '-', str(fiberid[i_sdss]).zfill(4), '.fits']))
+        sdss_spec = f_spec_local[1].data
+        print('z_gama = %f' % redshift[i_obj]) 
+
+        # match random galaxy to BGS templates
+        bgs3 = FM.BGStree() 
+        match = bgs3._GamaLegacy(gleg, index=i_obj) 
+        mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
+
+        bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+        vdisp = np.repeat(100.0, len(i_obj)) # velocity dispersions [km/s]
+        
+        # r-band aperture magnitude from Legacy photometry 
+        r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][i_obj,1], method='log')  
+        print('r_mag = %f' % r_mag)
+
+        flux, wave, meta = bgstemp.Spectra(r_mag, redshift[i_obj], vdisp, seed=1, templateid=match, silent=False) 
+        wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, i_obj, silent=False) 
+
+        # simulate exposure using 
+        fdesi = FM.fakeDESIspec() 
+        bgs_spectra_bright = fdesi.simExposure(wave, flux_eml, skycondition='bright') 
+        bgs_spectra_dark = fdesi.simExposure(wave, flux_eml, skycondition='dark') 
+        
+        sub = fig.add_subplot(3,1,i+1)
+        sub.plot(10.**sdss_spec['loglam'], sdss_spec['flux'], c='k', lw=0.1, label='SDSS DR 7 spectra')  
+        # plot exposed spectra of the three CCDs
+        for b in ['b', 'r', 'z']: 
+            lbl0, lbl1 = None, None
+            if b == 'z': lbl0, lbl1 = 'Dark Sky', 'Simulated Exposure (Bright Sky)'
+            sub.plot(bgs_spectra_bright.wave[b], bgs_spectra_bright.flux[b][0].flatten(), 
+                    c='C1', lw=0.2, alpha=0.7, label=lbl1) 
+            sub.plot(bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten(), 
+                    c='C0', lw=0.2, alpha=0.7, label=lbl0) 
+
+        if i == 2: sub.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
+        sub.set_xlim([3600., 9800.]) 
+        if i == 1: sub.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
+        sub.set_ylim([-5., 15]) 
+        #sub.set_ylim([0., 3*flux[0].max()]) 
+        if i == 0: sub.legend(loc='upper left', prop={'size': 15}) 
+    fig.savefig(UT.doc_dir()+"figs/Gleg_expSpectra_SDSScomparison.pdf", bbox_inches='tight')
+    plt.close() 
+    return None
+
+
+def SDSS_emlineComparison(): 
+    '''
+    '''
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read()
+    redshift = gleg['gama-spec']['z_helio'] # redshift 
+    ngal = len(redshift) # number of galaxies
+
+    # sdss spAll
+    f_sdss = h5py.File(''.join([UT.dat_dir(), 'sdss/spAll-v5_7_0.zcut.hdf5']), 'r') 
+    ra_sdss = f_sdss['ra'].value
+    dec_sdss = f_sdss['dec'].value
+    plate = f_sdss['plate'].value
+    mjd = f_sdss['mjd'].value
+    fiberid = f_sdss['fiberid'].value
+    
+    f_sdss_emline = h5py.File(''.join([UT.dat_dir(), 'sdss/spAllLine-v5_7_0.zcut.hdf5']), 'r') #'linecontlevel'
+
+    m_sdss, m_gleg, d_match = spherematch(ra_sdss, dec_sdss, 
+            gleg['gama-photo']['ra'], gleg['gama-photo']['dec'], 0.000277778) # spherematch 
+    
+    igal = 2 
+    i_sdss = m_sdss[igal]
+    i_gleg = m_gleg[igal]
+    f_spec_local = fits.open(''.join([UT.dat_dir(), 'gama/spectra/',
+                'spec-', str(plate[i_sdss]), '-', str(mjd[i_sdss]), '-', str(fiberid[i_sdss]).zfill(4), '.fits']))
+    sdss_spec = f_spec_local[1].data
+    wave = 10.**sdss_spec['loglam']
+    flux = sdss_spec['flux']
+
+    emline_sdss_index = [6, 7, 15, 16, 17, 25, 26, 27, 28, 29]
+    emline_gleg_key = ['oiib', 'oiir', 'hb', 'oiiib', 'oiiir', 'niib', 'ha', 'niir', 'siib', 'siir']
+    emline_lambda = [3726., 3728., 4861., 4959., 5007., 6548., 6563., 6584., 6716., 6731.]
+    emlambda_red = (1. + redshift[i_gleg])*np.array(emline_lambda)
+
+    emline = np.zeros(len(wave))
+    for i_k, k in enumerate(emline_gleg_key):
+        if (gleg['gama-spec'][k][i_gleg] == -99.) or (gleg['gama-spec'][k+'sig'][i_gleg] < 0.): continue
+        print('%s' % k)
+        lineflux = gleg['gama-spec'][k][i_gleg]
+        linesig = gleg['gama-spec'][k+'sig'][i_gleg]
+
+        A = lineflux / np.sqrt(2.*np.pi*linesig**2)
+        emline_flux = A * np.exp(-0.5*(wave-emlambda_red[i_k])**2/linesig**2)
+    
+        #wlim = (wave > emline_lambda[i_k] - 50.) & (wave < emline_lambda[i_k] + 50.)
+        emline += emline_flux
+        #emline[wlim] = emline_flux[wlim]# + f_sdss_emline['linecontlevel'].value[i_sdss, emline_sdss_index[i_k]]
+
     fig = plt.figure(figsize=(12,4))
     sub = fig.add_subplot(111)
-    # plot exposed spectra of the three CCDs
-    for b in ['b', 'r', 'z']: 
-        lbl0, lbl1 = None, None
-        if b == 'z': lbl0, lbl1 = 'Dark Sky', 'Simulated Exposure (Bright Sky)'
-        sub.plot(bgs_spectra_bright.wave[b], bgs_spectra_bright.flux[b][0].flatten(), 
-                c='C1', lw=0.2, alpha=0.7, label=lbl1) 
-        sub.plot(bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten(), 
-                c='C0', lw=0.2, alpha=0.7, label=lbl0) 
-    sub.plot(sdss_wave, sdss_spec, c='k', lw=0.1, label='SDSS DR 7 spectra')  
-
+    sub.plot(wave, flux, c='k', lw=0.5) 
+    sub.plot(wave, emline, c='C1', lw=1, ls=':') 
     sub.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
-    sub.set_xlim([3600., 9800.]) 
+    sub.set_xlim([3550, 10325])
     sub.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
-    #sub.set_ylim([0., 3*flux[0].max()]) 
-    sub.legend(loc='upper left', prop={'size': 15}) 
-    fig.savefig(UT.doc_dir()+"figs/Gleg_expSpectra_SDSScomparison.pdf", bbox_inches='tight')
+    sub.set_ylim([-5., 15]) 
+    #sub.legend(loc='upper left', prop={'size': 15}) 
+    fig.savefig(UT.doc_dir()+"figs/SDSS_emlineComparison.pdf", bbox_inches='tight')
     plt.close() 
     return None
 
@@ -792,3 +854,4 @@ if __name__=="__main__":
     #expSpectra_emline()
     #expSpectra_redshift(seed=1)
     expSpectra_SDSScomparison()
+    #SDSS_emlineComparison()

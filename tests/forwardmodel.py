@@ -12,6 +12,7 @@ from astropy.io import fits
 from astropy.table import Table
 from astropy.cosmology import FlatLambdaCDM
 import redrock as RedRock
+import redrock.plotspec
 from redrock.external import desi
 from redrock.external.desi import rrdesi
 
@@ -82,6 +83,8 @@ def weird_expSpectra_dark_vs_bright(i_gal):
     redshift = gleg['gama-spec']['z_helio']  # redshift
 
     igal = [i_gal]
+    for k in gleg['gama-spec'].keys(): 
+        if 'sig' in k: print('%s -- %f' % (k, gleg['gama-spec'][k][igal]))
 
     f_spec_bright = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.fits']) 
     f_spec_dark = ''.join([UT.dat_dir(), 'weird_obj'+str(igal[0])+'.darksky.fits']) 
@@ -89,7 +92,7 @@ def weird_expSpectra_dark_vs_bright(i_gal):
     # run redrock on it 
     f_red_bright = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.redrock.fits']) 
     f_red_dark = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.darksky.redrock.fits']) 
-    f_out_bright = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.redrock.h5']) 
+    f_out_bright = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.brightsky.output.h5']) 
     f_out_dark = ''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.darksky.redrock.h5']) 
     rrdesi(options=['--zbest', f_red_bright, '--output', f_out_bright, f_spec_bright])
     rrdesi(options=['--zbest', f_red_dark, '--output', f_out_dark, f_spec_dark])
@@ -128,7 +131,6 @@ def expSpectra_dark_vs_bright(i_gal):
     ''' Weirdly the redshift uncertainties are higher for 
     dark sky than bright sky... why? 
     '''
-
     # read in GAMA-Legacy catalog 
     cata = Cat.GamaLegacy()
     gleg = cata.Read()
@@ -522,4 +524,5 @@ def matchGamaLegacy():
 
 
 if __name__=="__main__": 
-    weird_expSpectra_zoom(89, sky='bright', xrange0=[1.05, 1.07], yrange0=[0,1e5], xrange1=[7600, 7800], yrange1=[0., 50.])
+    weird_expSpectra_dark_vs_bright(89)
+    #weird_expSpectra_zoom(89, sky='bright', xrange0=[1.05, 1.07], yrange0=[0,1e5], xrange1=[7600, 7800], yrange1=[0., 50.])

@@ -184,8 +184,9 @@ class BGStemplates(object):
             em_sig = gama_sdata[k+'sig'][gama_indices][hasem] # Angstrom
             # fit the width of the emission line is not fit 
             # accurately, then use the median value of the data  
-            nosig = (em_sig <= 0.) 
+            nosig = (em_sig <= 0.) & (em_sig != -10.)
             em_sig[nosig] = emline_sigmed[i_k]
+            em_sig[em_sig == -10.] = 10.
 
             # normalization of the Gaussian
             A = em_lineflux/np.sqrt(2. * np.pi * em_sig**2)
