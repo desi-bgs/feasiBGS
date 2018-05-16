@@ -42,5 +42,25 @@ def SpAllzcut():
     return None 
 
 
+def specObj(): 
+    ''' Read DR8 specObj fits file and save as hdf5 file to 
+    project dir 
+    '''
+    dir_dr8 = '/global/projecta/projectdirs/sdss/data/sdss/dr8/sdss/spectro/redux/'
+    f_sobj = fits.open(''.join([dir_dr8, 'specObj-dr8.fits'])) # read in specObj 
+    sobj = f_sobj[1].data
+    
+    #ngal = len(spall['Z']) # number of galaxies 
+    #zlim = (spall['Z'] < 0.4)  # redshift limit
+    
+    # write redshift cut spAll to hdf5 
+    f_sobj_hdf5 = h5py.File(''.join([UT.dat_dir(), 'sdss/specObj-dr8.hdf5']), 'w') 
+    for name in spall.names: 
+        f_sobj_hdf5.create_dataset(name.lower(), data=sobj.field(name))
+    f_sobj_hdf5.close() 
+    return None 
+
+
 if __name__=="__main__": 
-    SpAllzcut()
+    #SpAllzcut()
+    specObj()
