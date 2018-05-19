@@ -135,12 +135,63 @@ def Redrock_expSpectra(skycondition='bright', seed=1, ncpu=1):
     return None 
 
 
+def expSpectra_faintEmLine(skycondition='bright', seed=1):
+    ''' simulated spectra with simulated exposure for the galaxies in the 
+    Gama-Legacy survey that have faint Halpha emission lines. 
+    '''
+    if skycondition not in ['bright', 'dark']: raise ValueError
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read()
+
+    redshift = gleg['gama-spec']['z_helio'] # redshift 
+    ha_gama = gleg['gama-spec']['ha'] # halpha line flux 
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
+    ngal = len(redshift) # number of galaxies
+
+    # match galaxies in the catalog to BGS templates
+    bgs3 = FM.BGStree() 
+    match = bgs3._GamaLegacy(gleg) 
+    hasmatch = (match != -999) 
+    print('%i galaxies out of %i do not have matches' % ((len(match) - np.sum(hasmatch)), ngal))
+    
+    n_block = (ngal // 1000) + 1 
+    
+    # r-band aperture magnitude from Legacy photometry 
+    r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
+    vdisp = np.repeat(100.0, ngal) # velocity dispersions [km/s]
+    
+    # randomly select 1000 galaxies with faint Halpha line flux
+    np.random.seed(seed)
+    faint_emline = np.random.choice(np.arange(ngal)[hasmatch & (ha_gama < 10.)], 1000) 
+
+    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    flux, wave, meta = bgstemp.Spectra(r_mag[faint_emline], redshift[faint_emline], vdisp[faint_emline],
+            seed=seed, templateid=match[faint_emline], silent=False) 
+    flux0 = flux.copy()  
+    wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, faint_emline, silent=False) 
+
+    # simulate exposure using 
+    fdesi = FM.fakeDESIspec() 
+
+    f = ''.join([UT.dat_dir(), 
+        'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.faintEmLine.fits']) 
+    bgs_spectra = fdesi.simExposure(wave, flux_eml, skycondition=skycondition, filename=f) 
+    # save indices for future reference 
+    f_indx = ''.join([UT.dat_dir(), 'spectra/'
+        'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.faintEmLine.index']) 
+    np.savetxt(f_indx, np.arange(ngal)[in_block], fmt='%i')
+    return None 
+
+
 if __name__=='__main__':
     tt = sys.argv[1]
     sky = sys.argv[2]
     seed = int(sys.argv[3])
     if tt == 'spectra': 
         expSpectra(skycondition=sky, seed=seed)
+    elif tt == 'spectra_faintemline': 
+        expSpectra_faintEmLine(skycondition=sky, seed=seed)
     elif tt == 'redshift': 
         ncpu = int(sys.argv[4]) 
         Redrock_expSpectra(skycondition=sky, seed=seed, ncpu=ncpu)

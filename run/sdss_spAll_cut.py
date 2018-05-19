@@ -50,12 +50,9 @@ def specObj():
     f_sobj = fits.open(''.join([dir_dr8, 'specObj-dr8.fits'])) # read in specObj 
     sobj = f_sobj[1].data
     
-    #ngal = len(spall['Z']) # number of galaxies 
-    #zlim = (spall['Z'] < 0.4)  # redshift limit
-    
     # write redshift cut spAll to hdf5 
     f_sobj_hdf5 = h5py.File(''.join([UT.dat_dir(), 'sdss/specObj-dr8.hdf5']), 'w') 
-    for name in spall.names: 
+    for name in sobj.names: 
         f_sobj_hdf5.create_dataset(name.lower(), data=sobj.field(name))
     f_sobj_hdf5.close() 
     return None 
