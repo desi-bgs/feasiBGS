@@ -1,9 +1,9 @@
 #!/bin/bash -l 
 #SBATCH -q debug 
 #SBATCH -N 1 
-#SBATCH -t 00:30:00 
-#SBATCH -J gleg_expSpec_faintemline_dark
-#SBATCH -o _gleg_expSpec_faintemline_dark.o 
+#SBATCH -t 00:15:00 
+#SBATCH -J gleg_expSpec_faintemline_bright
+#SBATCH -o _gleg_expSpec_faintemline_bright.o 
 #SBATCH -L SCRATCH,project 
 
 module load python/2.7-anaconda
@@ -12,8 +12,8 @@ source activate myenv0
 # exposed spectra
 #srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra bright 1
 #srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra dark 1
-#srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra_faintemline bright 1
-srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra_faintemline dark 1
+srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra_faintemline bright 1
+#srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra_faintemline dark 1
 
 #source /project/projectdirs/desi/software/desi_environment.sh 18.3
 

@@ -180,7 +180,7 @@ def expSpectra_faintEmLine(skycondition='bright', seed=1):
     # save indices for future reference 
     f_indx = ''.join([UT.dat_dir(), 'spectra/'
         'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.faintEmLine.index']) 
-    np.savetxt(f_indx, np.arange(ngal)[in_block], fmt='%i')
+    np.savetxt(f_indx, faint_emline, fmt='%i')
     return None 
 
 
