@@ -174,7 +174,7 @@ def expSpectra_faintEmLine(skycondition='bright', seed=1):
     # simulate exposure using 
     fdesi = FM.fakeDESIspec() 
 
-    f = ''.join([UT.dat_dir(), 
+    f = ''.join([UT.dat_dir(), 'spectra/'
         'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.faintEmLine.fits']) 
     bgs_spectra = fdesi.simExposure(wave, flux_eml, skycondition=skycondition, filename=f) 
     # save indices for future reference 
