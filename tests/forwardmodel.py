@@ -11,6 +11,10 @@ import astropy.units as u
 from astropy.io import fits
 from astropy.table import Table
 from astropy.cosmology import FlatLambdaCDM
+from desispec.io import read_spectra
+from desispec.io import write_spectra
+from desispec.spectra import Spectra
+
 import redrock as RedRock
 import redrock.plotspec
 from redrock.external import desi
@@ -124,6 +128,83 @@ def weird_expSpectra_dark_vs_bright(i_gal):
     pd = RedRock.plotspec.PlotSpec(targets_dark, templates, zscan_dark, zfit_dark)
     pd._ax1.set_xlim([0., 2.]) 
     pd._fig.savefig(''.join([UT.dat_dir(), 'weird_obj', str(igal[0]), '.darksky.redrock.png']), bbox_inches='tight')
+    return None 
+
+
+def expSpectra_redrock_outlier(): 
+    ''' write out the spectra for redrock outlier galaxies --- i.e. 
+    galaxies with larger redshift discrepancies in dark sky than 
+    bright sky --- in the first block.
+    '''
+    # read in GAMA-Legacy survey
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read()
+
+    redshift = gleg['gama-spec']['z_helio']
+
+    # apparent magnitude from Legacy photometry aperture flux
+    r_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
+
+    # redrock redshifts fokr spectra with dark and bright sky 
+    f_z_dark = ''.join([UT.dat_dir(), 'redrock/', 'gama_legacy.expSpectra.darksky.seed1.1of40blocks.zbest.fits'])
+    zdark_data = fits.open(f_z_dark)[1].data
+    f_i_dark = ''.join([UT.dat_dir(), 'spectra/', 'gama_legacy.expSpectra.darksky.seed1.1of40blocks.index'])
+    i_dark = np.loadtxt(f_i_dark, unpack=True, usecols=[0], dtype='i')
+
+    f_z_bright = ''.join([UT.dat_dir(), 'redrock/', 'gama_legacy.expSpectra.brightsky.seed1.1of40blocks.zbest.fits'])
+    zbright_data = fits.open(f_z_bright)[1].data
+    f_i_bright = ''.join([UT.dat_dir(), 'spectra/', 'gama_legacy.expSpectra.brightsky.seed1.1of40blocks.index'])
+    i_bright = np.loadtxt(f_i_bright, unpack=True, usecols=[0], dtype='i')
+
+    assert np.array_equal(i_dark, i_bright) 
+    
+    # simulated spectra of one block
+    spec_dark = read_spectra(''.join([UT.dat_dir(), 'spectra/', 
+        'gama_legacy.expSpectra.darksky.seed1.1of40blocks.fits']))
+    spec_bright = read_spectra(''.join([UT.dat_dir(), 'spectra/', 
+        'gama_legacy.expSpectra.brightsky.seed1.1of40blocks.fits']))
+
+    weird = ((r_mag_legacy_apflux[i_dark] < 25.0) & 
+            (zdark_data['Z'] - redshift[i_dark] >  0.1) & 
+            (zbright_data['Z'] - redshift[i_dark] < 0.1))
+
+    i_weird = np.arange(spec_dark.flux['b'].shape[0])[weird]
+    
+    # write out the weird spectra for bright and dark sky conditions  
+    for i in i_weird:
+        print('writing spectra for i = %i' % i_dark[i]) 
+        for i_spec, spec in enumerate([spec_bright, spec_dark]):
+            flux_dict = {}
+            ivar_dict = {}
+            reso_dict = {}
+            mask_dict = {}
+            for band in ['b', 'r', 'z']:
+                flux_dict[band] = spec.flux[band][i,:].reshape(1,-1)
+                ivar_dict[band] = spec.ivar[band][i,:].reshape(1,-1)
+                reso_dict[band] = np.array([spec.resolution_data[band][i,:,:]])
+                mask_dict[band] = spec.mask[band][i,:].reshape(1,-1)
+            ss = Spectra(bands=['b', 'r', 'z'], wave=spec.wave, flux=flux_dict, ivar=ivar_dict, mask=mask_dict,
+                         resolution_data=reso_dict, fibermap=spec.fibermap[np.array([i])],
+                         meta=spec.meta, extra=None, single=spec._single)
+            if i_spec == 0:
+                write_spectra(''.join([UT.dat_dir(), 'redrock_outlier_spectra/',
+                                       'weird_obj', str(i_dark[i]), '.brightsky.fits']), ss)
+            elif i_spec == 1:
+                write_spectra(''.join([UT.dat_dir(), 'redrock_outlier_spectra/',
+                                       'weird_obj', str(i_dark[i]), '.darksky.fits']), ss)
+
+    # run redrock on the weird spectra for bright and dark sky conditions  
+    for i in i_weird:
+        print('running redrock on i = %i' % i_dark[i]) 
+        for sky in ['bright', 'dark']: 
+            f_spec = ''.join([UT.dat_dir(), 'redrock_outlier_spectra/', 
+                'weird_obj', str(i_dark[i]), '.', sky, 'sky.fits'])
+
+            f_red = ''.join([UT.dat_dir(), 'redrock_outlier_spectra/',
+                'weird_obj', str(i_dark[i]), '.', sky, 'sky.redrock.fits'])
+            f_out = ''.join([UT.dat_dir(), 'redrock_outlier_spectra/', 
+                'weird_obj', str(i_dark[i]), '.', sky, 'sky.redrock.h5'])
+            rrdesi(options=['--zbest', f_red, '--output', f_out, f_spec])
     return None 
 
 
@@ -524,5 +605,6 @@ def matchGamaLegacy():
 
 
 if __name__=="__main__": 
-    weird_expSpectra_dark_vs_bright(89)
+    expSpectra_redrock_outlier()
+    #weird_expSpectra_dark_vs_bright(89)
     #weird_expSpectra_zoom(89, sky='bright', xrange0=[1.05, 1.07], yrange0=[0,1e5], xrange1=[7600, 7800], yrange1=[0., 50.])
