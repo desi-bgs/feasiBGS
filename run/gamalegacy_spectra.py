@@ -51,7 +51,7 @@ def _test_NERSC():
     return None 
 
 
-def expSpectra(skycondition='bright', seed=1):
+def expSpectra(skycondition='bright', seed=1, exptime=480):
     ''' spectra with simulated exposure for the galaxies in the 
     Gama-Legacy survey.
     '''
@@ -93,13 +93,13 @@ def expSpectra(skycondition='bright', seed=1):
         fdesi = FM.fakeDESIspec() 
 
         f = ''.join([UT.dat_dir(), 
-            'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), 
+            'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.exptime', str(exptime), 
             '.', str(i_block+1), 'of', str(n_block), 'blocks.fits']) 
-        bgs_spectra = fdesi.simExposure(wave, flux_eml, skycondition=skycondition, 
+        bgs_spectra = fdesi.simExposure(wave, flux_eml, skycondition=skycondition, exptime=exptime, 
                 filename=f) 
         # save indices for future reference 
         f_indx = ''.join([UT.dat_dir(), 'spectra/'
-            'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), 
+            'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.exptime', str(exptime), 
             '.', str(i_block+1), 'of', str(n_block), 'blocks.index']) 
         np.savetxt(f_indx, np.arange(ngal)[in_block], fmt='%i')
     return None 
@@ -135,7 +135,7 @@ def Redrock_expSpectra(skycondition='bright', seed=1, ncpu=1):
     return None 
 
 
-def expSpectra_faintEmLine(skycondition='bright', seed=1):
+def expSpectra_faintEmLine(skycondition='bright', seed=1, exptime=480):
     ''' simulated spectra with simulated exposure for the galaxies in the 
     Gama-Legacy survey that have faint Halpha emission lines. 
     '''
@@ -175,11 +175,11 @@ def expSpectra_faintEmLine(skycondition='bright', seed=1):
     fdesi = FM.fakeDESIspec() 
 
     f = ''.join([UT.dat_dir(), 'spectra/'
-        'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.faintEmLine.fits']) 
-    bgs_spectra = fdesi.simExposure(wave, flux_eml, skycondition=skycondition, filename=f) 
+        'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.exptime', str(exptime), '.faintEmLine.fits']) 
+    bgs_spectra = fdesi.simExposure(wave, flux_eml, skycondition=skycondition, exptime=exptime, filename=f) 
     # save indices for future reference 
     f_indx = ''.join([UT.dat_dir(), 'spectra/'
-        'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.faintEmLine.index']) 
+        'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.exptime', str(exptime), '.faintEmLine.index']) 
     np.savetxt(f_indx, faint_emline, fmt='%i')
     return None 
 
@@ -188,10 +188,11 @@ if __name__=='__main__':
     tt = sys.argv[1]
     sky = sys.argv[2]
     seed = int(sys.argv[3])
+    exptime = int(sys.argv[4]) 
     if tt == 'spectra': 
-        expSpectra(skycondition=sky, seed=seed)
+        expSpectra(skycondition=sky, seed=seed, exptime=exptime)
     elif tt == 'spectra_faintemline': 
-        expSpectra_faintEmLine(skycondition=sky, seed=seed)
-    elif tt == 'redshift': 
-        ncpu = int(sys.argv[4]) 
-        Redrock_expSpectra(skycondition=sky, seed=seed, ncpu=ncpu)
+        expSpectra_faintEmLine(skycondition=sky, seed=seed, exptime=exptime)
+    #elif tt == 'redshift': (DEFUNCT) 
+    #    ncpu = int(sys.argv[5]) 
+    #    Redrock_expSpectra(skycondition=sky, seed=seed, ncpu=ncpu)
