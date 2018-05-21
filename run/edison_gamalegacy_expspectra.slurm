@@ -2,20 +2,24 @@
 #SBATCH -q regular 
 #SBATCH -N 1 
 #SBATCH -t 01:00:00 
-#SBATCH -J gleg_expSpec_faintemline_dark_z
-#SBATCH -o _gleg_expSpec_faintemline_dark_z.o 
+#SBATCH -J gleg_expSpec_faintemline_bright
+#SBATCH -o _gleg_expSpec_faintemline_bright.o 
 #SBATCH -L SCRATCH,project 
+
+now=$(date +"%T") 
+echo "start time ... $now"
 
 module load python/2.7-anaconda
 source activate myenv0 
 
-sky="dark"
+sky="bright"
 seed=1
+exptime=480
 # exposed spectra
-#srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra $sky $seed
-#srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra_faintemline $sky $seed
+#srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra $sky $seed $exptime
+srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra_faintemline $sky $seed $exptime
 
-source /project/projectdirs/desi/software/desi_environment.sh 18.3
+#source /project/projectdirs/desi/software/desi_environment.sh 18.3
 
 # run through redrock
 #for iblock in 1; do # {1..40}; do 
@@ -26,10 +30,13 @@ source /project/projectdirs/desi/software/desi_environment.sh 18.3
 #    srun -N 1 -n 12 -c 2 rrdesi_mpi --zbest $f_redrock $f_spectra
 #done 
 
-f_spectra=$CSCRATCH"/feasibgs/spectra/gama_legacy.expSpectra."$sky"sky.seed"$seed".faintEmLine.fits"
-f_redrock=$CSCRATCH"/feasibgs/spectra/gama_legacy.expSpectra."$sky"sky.seed"$seed".faintEmLine.zbest.fits"
-f_zoutput=$CSCRATCH"/feasibgs/spectra/gama_legacy.expSpectra."$sky"sky.seed"$seed".faintEmLine.zbest.h5"
-echo $f_spectra
-echo $f_redrock
-echo $f_zoutput
-srun -N 1 -n 12 -c 2 rrdesi_mpi --zbest $f_redrock --output $f_zoutput $f_spectra
+#f_spectra=$CSCRATCH"/feasibgs/spectra/gama_legacy.expSpectra."$sky"sky.seed"$seed".faintEmLine.fits"
+#f_redrock=$CSCRATCH"/feasibgs/spectra/gama_legacy.expSpectra."$sky"sky.seed"$seed".faintEmLine.zbest.fits"
+#f_zoutput=$CSCRATCH"/feasibgs/spectra/gama_legacy.expSpectra."$sky"sky.seed"$seed".faintEmLine.zbest.h5"
+#echo $f_spectra
+#echo $f_redrock
+#echo $f_zoutput
+#srun -N 1 -n 12 -c 2 rrdesi_mpi --zbest $f_redrock --output $f_zoutput $f_spectra
+
+now=$(date +"%T") 
+echo "start time ... $now"
