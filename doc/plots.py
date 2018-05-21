@@ -903,16 +903,16 @@ def expSpectra_faintemline_redrock(exptime=480):
 
     # panel 3 
     sub = fig.add_subplot(133)
-    mm_dark, e1_dark, ee1_dark = _z_successrate(r_mag_legacy_apflux[i_dark], 
-        redshift[i_dark], zdark_data['Z'], range=(18, 22))
-    mm_bright, e1_bright, ee1_bright = _z_successrate(r_mag_legacy_apflux[i_dark], 
-        redshift[i_dark], zbright_data['Z'], range=(18, 22))
+    mm_dark, e1_dark, ee1_dark = _z_successrate(r_mag_legacy_apflux[i_dark], #range=(18, 22), 
+            condition=((zdark_data['ZWARN'] == 0) & (dz_1pz_dark < 0.003)))
+    mm_bright, e1_bright, ee1_bright = _z_successrate(r_mag_legacy_apflux[i_dark], #range=(18, 22), 
+            condition=((zbright_data['ZWARN'] == 0) & (dz_1pz_bright < 0.003)))
     sub = fig.add_subplot(133)
     sub.plot([17., 22.], [1., 1.], c='k', ls='--', lw=2)
     sub.errorbar(mm_dark, e1_dark, ee1_dark, c='C0', fmt='o', label="w/ Dark Sky")
     sub.errorbar(mm_bright, e1_bright, ee1_bright, fmt='.C1', label="w/ Bright Sky")
     sub.set_xlabel(r'$r_\mathrm{apflux}$ magnitude', fontsize=20)
-    sub.set_xlim([19., 22.])
+    sub.set_xlim([18.5, 22.])
     sub.set_ylabel(r'fraction of $\Delta z /(1+z_\mathrm{GAMA}) < 0.003$', fontsize=20)
     sub.set_ylim([0., 1.2])
     sub.legend(loc='lower left', handletextpad=0., prop={'size': 20})
@@ -923,14 +923,13 @@ def expSpectra_faintemline_redrock(exptime=480):
     return None
 
 
-def _z_successrate(var, ztrue, zbest, range=None, threshold=0.003):
+def _z_successrate(var, range=None, condition=None): 
     ''' 
     '''
-    dz = zbest - ztrue
-    dz_1pz = np.abs(dz)/(1.+ztrue)
-    s1 = (dz_1pz < threshold)
+    if condition is None: raise ValueError
+    s1 = condition
     
-    h0, bins = np.histogram(var, bins=20, range=range)
+    h0, bins = np.histogram(var, bins=100, range=range)
     hv, _ = np.histogram(var, bins=bins, weights=var)
     h1, _ = np.histogram(var[s1], bins=bins)
     
@@ -962,4 +961,5 @@ if __name__=="__main__":
     #expSpectra_redshift(seed=1)
     #expSpectra_SDSScomparison()
     #SDSS_emlineComparison()
-    expSpectra_faintemline_redrock(exptime=480)
+    for et in [300, 480, 1000]: 
+        expSpectra_faintemline_redrock(exptime=et)
