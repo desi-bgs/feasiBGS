@@ -76,7 +76,7 @@ def expSpectra(skycondition='bright', seed=1, exptime=480):
     r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
     vdisp = np.repeat(100.0, ngal) # velocity dispersions [km/s]
     
-    for i_block in range(n_block): 
+    for i_block in range(21,n_block): 
         print('block %i of %i' % (i_block+1, n_block))
         in_block = (hasmatch & 
                 (np.arange(ngal) >= i_block * 1000) & 
@@ -90,13 +90,11 @@ def expSpectra(skycondition='bright', seed=1, exptime=480):
                 silent=False) 
 
         # simulate exposure using 
-        fdesi = FM.fakeDESIspec() 
-
-        f = ''.join([UT.dat_dir(), 
+        f = ''.join([UT.dat_dir(), 'spectra/'
             'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.exptime', str(exptime), 
             '.', str(i_block+1), 'of', str(n_block), 'blocks.fits']) 
-        bgs_spectra = fdesi.simExposure(wave, flux_eml, skycondition=skycondition, exptime=exptime, 
-                filename=f) 
+        fdesi = FM.fakeDESIspec() 
+        bgs_spectra = fdesi.simExposure(wave, flux_eml, skycondition=skycondition, exptime=exptime, filename=f) 
         # save indices for future reference 
         f_indx = ''.join([UT.dat_dir(), 'spectra/'
             'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.exptime', str(exptime), 
@@ -126,19 +124,17 @@ def expSpectra_noEmLine(skycondition='bright', seed=1, exptime=480):
     hasmatch = (match != -999) 
     print('%i galaxies out of %i do not have matches' % ((len(match) - np.sum(hasmatch)), ngal))
     
-    n_block = (ngal // 1000) + 1 
-    
     # r-band aperture magnitude from Legacy photometry 
     r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
     vdisp = np.repeat(100.0, ngal) # velocity dispersions [km/s]
     
     # randomly select 1000 galaxies with faint Halpha line flux
     np.random.seed(seed)
-    faint_emline = np.random.choice(np.arange(ngal), 1000) 
+    gals = np.random.choice(np.arange(ngal), 1000) 
 
     bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
-    flux, wave, meta = bgstemp.Spectra(r_mag[faint_emline], redshift[faint_emline], vdisp[faint_emline],
-            seed=seed, templateid=match[faint_emline], silent=False) 
+    flux, wave, meta = bgstemp.Spectra(r_mag[gals], redshift[gals], vdisp[gals],
+            seed=seed, templateid=match[gals], silent=False) 
     # no emission lines = we don't run the line below
     #wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, faint_emline, silent=False)
 
@@ -151,7 +147,7 @@ def expSpectra_noEmLine(skycondition='bright', seed=1, exptime=480):
     # save indices for future reference 
     f_indx = ''.join([UT.dat_dir(), 'spectra/'
         'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.exptime', str(exptime), '.noEmLine.index']) 
-    np.savetxt(f_indx, faint_emline, fmt='%i')
+    np.savetxt(f_indx, gals, fmt='%i')
     return None 
 
 
@@ -174,8 +170,6 @@ def expSpectra_faintEmLine(skycondition='bright', seed=1, exptime=480):
     match = bgs3._GamaLegacy(gleg) 
     hasmatch = (match != -999) 
     print('%i galaxies out of %i do not have matches' % ((len(match) - np.sum(hasmatch)), ngal))
-    
-    n_block = (ngal // 1000) + 1 
     
     # r-band aperture magnitude from Legacy photometry 
     r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
