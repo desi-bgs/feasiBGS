@@ -105,33 +105,53 @@ def expSpectra(skycondition='bright', seed=1, exptime=480):
     return None 
 
 
-def Redrock_expSpectra(skycondition='bright', seed=1, ncpu=1): 
-    ''' run the simulated spectra through redrock 
+def expSpectra_noEmLine(skycondition='bright', seed=1, exptime=480):
+    ''' simulated spectra with simulated exposure for the galaxies in the 
+    Gama-Legacy survey that have **no** emission lines (i.e. we don't run 
+    add emission line) . 
     '''
+    if skycondition not in ['bright', 'dark']: raise ValueError
     # read in GAMA-Legacy catalog 
     cata = Cat.GamaLegacy()
     gleg = cata.Read()
 
     redshift = gleg['gama-spec']['z_helio'] # redshift 
+    ha_gama = gleg['gama-spec']['ha'] # halpha line flux 
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
     ngal = len(redshift) # number of galaxies
 
-    n_block = (ngal // 1000) + 1 # number of blocks
+    # match galaxies in the catalog to BGS templates
+    bgs3 = FM.BGStree() 
+    match = bgs3._GamaLegacy(gleg) 
+    hasmatch = (match != -999) 
+    print('%i galaxies out of %i do not have matches' % ((len(match) - np.sum(hasmatch)), ngal))
+    
+    n_block = (ngal // 1000) + 1 
+    
+    # r-band aperture magnitude from Legacy photometry 
+    r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
+    vdisp = np.repeat(100.0, ngal) # velocity dispersions [km/s]
+    
+    # randomly select 1000 galaxies with faint Halpha line flux
+    np.random.seed(seed)
+    faint_emline = np.random.choice(np.arange(ngal), 1000) 
 
-    for i_block in [0]: #range(n_block): 
-        print('block %i of %i' % (i_block+1, n_block))
-        f = ''.join([UT.dat_dir(), 'spectra/'
-            'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), 
-            '.', str(i_block+1), 'of', str(n_block), 'blocks.fits']) 
-        if not os.path.isfile(f): 
-            continue 
-        
-        f_z = ''.join([UT.dat_dir(), 'redrock/'
-            'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), 
-            '.', str(i_block+1), 'of', str(n_block), 'blocks.zbest.fits']) 
+    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    flux, wave, meta = bgstemp.Spectra(r_mag[faint_emline], redshift[faint_emline], vdisp[faint_emline],
+            seed=seed, templateid=match[faint_emline], silent=False) 
+    # no emission lines = we don't run the line below
+    #wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, faint_emline, silent=False)
 
-        #rr_cmd = ''.join(['rrdesi_mpi --zbest ', f_z, ' --mp ', str(ncpu), ' ', f]) 
-        #subprocess.call(rr_cmd.split())
-        rrdesi(options=['--zbest', f_z, '--mp', str(ncpu), f]) 
+    # simulate exposure using 
+    fdesi = FM.fakeDESIspec() 
+
+    f = ''.join([UT.dat_dir(), 'spectra/'
+        'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.exptime', str(exptime), '.noEmLine.fits']) 
+    bgs_spectra = fdesi.simExposure(wave, flux, skycondition=skycondition, exptime=exptime, filename=f) 
+    # save indices for future reference 
+    f_indx = ''.join([UT.dat_dir(), 'spectra/'
+        'gama_legacy.expSpectra.', skycondition, 'sky.seed', str(seed), '.exptime', str(exptime), '.noEmLine.index']) 
+    np.savetxt(f_indx, faint_emline, fmt='%i')
     return None 
 
 
@@ -193,6 +213,5 @@ if __name__=='__main__':
         expSpectra(skycondition=sky, seed=seed, exptime=exptime)
     elif tt == 'spectra_faintemline': 
         expSpectra_faintEmLine(skycondition=sky, seed=seed, exptime=exptime)
-    #elif tt == 'redshift': (DEFUNCT) 
-    #    ncpu = int(sys.argv[5]) 
-    #    Redrock_expSpectra(skycondition=sky, seed=seed, ncpu=ncpu)
+    elif tt == 'spectra_noemline': 
+        expSpectra_noEmLine(skycondition=sky, seed=seed, exptime=exptime)
