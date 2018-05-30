@@ -257,13 +257,14 @@ class GamaLegacy(Catalog):
         absmag_ugriz = mag_ugriz - DM - kcorr
         return absmag_ugriz
     
-    def Read(self, silent=True):
+    def Read(self, field, dr_gama=3, silent=True):
         ''' Read in objects from legacy survey DR 5 that overlap with the 
         GAMA photo+spectra objects
         '''
-        if not os.path.isfile(self._File()): # if file is not constructed
-            if not silent: print('Building %s' % self._File()) 
-            self._Build(silent=silent)
+        fgleg = self._File(field, dr_gama=dr_gama)
+        if not os.path.isfile(fgleg): # if file is not constructed
+            if not silent: print('Building %s' % fgleg)) 
+            self._Build(field, dr_gama=dr_gama, silent=silent)
     
         # read in data and compile onto a dictionary
         f = h5py.File(self._File(), 'r') 
@@ -291,25 +292,31 @@ class GamaLegacy(Catalog):
                 data[dk][key] = grp[key].value 
         return data 
 
-    def _File(self): 
-        return ''.join([UT.dat_dir(), 'gama_legacy.hdf5'])
+    def _File(self, field, dr_gama=3): 
+        return ''.join([UT.dat_dir(), 'GAMA.dr', str(dr_gama), '.', field, '.LEGACY.hdf5'])
 
-    def _Build(self, silent=True): 
-        ''' Get sweep photometry data for objects in GAMA DR2 photo+spec
+    def _Build(self, field, dr_gama=3, 
+            sweep_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/sweep/5.0/', silent=True): 
+        ''' Get Legacy Survey photometry for objects in the GAMA DR`dr_gama`
+        photo+spec objects from the sweep files. This is meant to run on nersc
+        but you can also manually download the sweep files and specify the dir
+        where the sweep files are located in. 
         '''
         # read in the names of the sweep files 
-        sweep_files = np.loadtxt(''.join([UT.dat_dir(), 'legacy/sweep/sweep_list.dat']), 
-                unpack=True, usecols=[0], dtype='S') 
+        fsweep = ''.join([UT.dat_dir(), 'legacy/', field, '.sweep_list.dat'])
+        if not os.path.isfile(fsweep): _ = self._getSweeps(field, silent=silent)
+        sweep_files = np.loadtxt(fsweep, unpack=True, usecols=[0], dtype='S') 
+        if not silent: print("there are %i sweep files in the %s GAMA region" % (len(sweepfiles), field)) 
         # read in GAMA objects
         gama = GAMA() 
-        gama_data = gama.Read(silent=silent)
+        gama_data = gama.Read(field, data_release=dr_gama, silent=silent)
     
         sweep_dict = {} 
         gama_photo_dict, gama_spec_dict, gama_kcorr0_dict, gama_kcorr1_dict = {}, {}, {}, {} 
         # loop through the files and only keep ones that spherematch with GAMA objects
         for i_f, f in enumerate(sweep_files): 
             # read in sweep object 
-            sweep = mrdfits(''.join([UT.dat_dir(), 'legacy/sweep/', f]))  
+            sweep = mrdfits(''.join([sweep_dir, f]))  
         
             # spherematch the sweep objects with GAMA objects 
             if len(sweep.ra) > len(gama_data['photo']['ra']):
@@ -352,6 +359,11 @@ class GamaLegacy(Catalog):
         assert len(sweep_dict['ra']) == len(gama_kcorr0_dict['mass']) 
         assert len(sweep_dict['ra']) == len(gama_kcorr1_dict['mass']) 
 
+        # read apfluxes from tractor catalogs 
+        apflux_dict = self._getTractorApflux(sweep_dict['brickname'], sweep_dict['objid'], 
+                tractor_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/') 
+        assert apflux_dict['apflux_g'].shape[0] == len(sweep_dict['brickname']) 
+
         # save data to hdf5 file
         if not silent: print('writing to %s' % self._File())
         f = h5py.File(self._File(), 'w') 
@@ -363,6 +375,8 @@ class GamaLegacy(Catalog):
     
         for key in sweep_dict.keys():
             grp_lp.create_dataset(key, data=sweep_dict[key]) 
+        for key in apflux_dict.keys(): # additional apflux data. 
+            grp_lp.create_dataset(key, data=apflux_dict[key]) 
         for key in gama_photo_dict.keys(): 
             grp_gp.create_dataset(key, data=gama_photo_dict[key]) 
         for key in gama_spec_dict.keys(): 
@@ -374,9 +388,53 @@ class GamaLegacy(Catalog):
         f.close() 
         return None 
 
-    def _getTractorApflux(self, brickname, objids, dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/'): 
+    def _getSweeps(self, field, silent=True): 
+        ''' Construct list of sweep files given GAMA object.
+        '''
+        # legacy survey DR5 brick data 
+        legacy = mrdfits(UT.dat_dir()+'survey-bricks-dr5.fits.gz')
+        # read in GAMA objects in field 
+        gama = GAMA() 
+        if field == 'all': raise ValueError("only select specific GAMA fields; not the entire data release") 
+        gama_data = gama.Read(field, silent=silent)
+
+        leg_chunk = ((legacy.ra <= gama_data['photo']['ra'].max()) & (legacy.ra >= gama_data['photo']['ra'].min()) &
+                (legacy.dec <= gama_data['photo']['dec'].max()) & (legacy.dec >= gama_data['photo']['dec'].min()))
+
+        legacy_gama_bricknames = legacy.brickname[leg_chunk]
+
+        legacy_gama_sweep = []
+        for bname in legacy_gama_bricknames: 
+            if 'p' in bname: 
+                legacy_gama_ra = float(bname.split('p')[0])/10.
+                legacy_gama_dec = float(bname.split('p')[-1])/10.
+            elif 'm' in bname: 
+                legacy_gama_ra = float(bname.split('m')[0])/10.
+                legacy_gama_dec = -1.*float(bname.split('m')[-1])/10.        
+            else: 
+                raise ValueError
+
+            ra_min = str(int(legacy_gama_ra/10)*10)
+            ra_max = str(int(legacy_gama_ra/10 + 1)*10)
+            dec_min = int(np.floor(legacy_gama_dec/0.5)*5)
+            if dec_min < 0: 
+                dec_min = ''.join(['m', str(np.abs(dec_min)).zfill(3)])
+            else: 
+                dec_min = ''.join(['p', str(dec_min).zfill(3)])
+            dec_max = int(np.floor(legacy_gama_dec/0.5+1)*5)
+            if dec_max < 0: 
+                dec_max = ''.join(['m', str(np.abs(dec_max)).zfill(3)])
+            else: 
+                dec_max = ''.join(['p', str(dec_max).zfill(3)])
+            legacy_gama_sweep.append(''.join(['sweep-', ra_min, dec_min, '-', ra_max, dec_max, '.fits']))
+        sweep_file_list = np.unique(legacy_gama_sweep)
+        np.savetxt(''.join([UT.dat_dir(), 'legacy/', field, '.sweep_list.dat']), sweep_file_list, fmt='%s')
+        return legacy.ra[leg_chunk], legacy.dec[leg_chunk]
+    
+    def _getTractorApflux(self, brickname, objids, 
+            tractor_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/'): 
         ''' The catalog is constructed from the sweep catalog and the 
-        GAMA DR2 photo+spec data. The sweep catalog does not include 
+        GAMA DR3 photo+spec data. The sweep catalog does not include 
         all the photometric data from the legacy survey. This methods 
         appends 'apflux_g', 'apflux_r', 'apflux_z' and relevant columsn 
         from the tractor files. 
@@ -421,7 +479,8 @@ class GamaLegacy(Catalog):
 
 def _GamaLegacy_TractorAPFLUX(): 
     ''' Retroactively add apflux columns from the tractor catalogs 
-    to the GamaLegacy catalog constructed and saved to file. 
+    to the GamaLegacy catalog constructed and saved to file. This is a 
+    hack.
     '''
     gleg = GamaLegacy() 
 

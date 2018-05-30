@@ -53,7 +53,43 @@ def GAMA_test():
 
 
 def GAMA_fields():
-    ''' Tests GAMA object for fields
+    ''' Tests GAMA object for fields is working properly
+    '''
+    gama = Cat.GAMA() 
+
+    fig = plt.figure(figsize=(12,6))
+    bkgd = fig.add_subplot(111, frameon=False)
+    bkgd.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
+    bkgd.set_xlabel('RA', labelpad=10, fontsize=25)
+    bkgd.set_ylabel('Dec', labelpad=10, fontsize=25)
+       
+    for i in range(2): 
+        sub = fig.add_subplot(1,2,i+1)
+        data = gama.Read('all', data_release=3, silent=False)
+        sub.scatter(data['photo']['ra'], data['photo']['dec'], c='k', s=1+i*5)
+
+        for field in ['g09', 'g12', 'g15']: 
+            data = gama.Read(field, data_release=3, silent=False)
+            assert 'kcorr_z0.0' in data.keys() 
+            assert 'kcorr_z0.1' in data.keys() 
+            assert np.array_equal(data['photo']['cataid'], data['kcorr_z0.0']['cataid'])
+
+            sub.scatter(data['photo']['ra'], data['photo']['dec'], s=1+i, label=field.upper())
+        if i == 0:
+            sub.set_xlim([110., 240.])
+            sub.set_ylim([-3.5, 3.5])
+        else: 
+            sub.set_xlim([128.8, 130.])
+            sub.set_ylim([-2.1, -1.8])
+        sub.legend(loc='lower left', markerscale=5, prop={'size':20})
+    fig.savefig(UT.fig_dir()+"GAMA_fields.png", bbox_inches='tight')
+    plt.close() 
+    return None 
+
+
+def GAMA_Legacy_sweep():
+    ''' check that appropriate sweep files are listed for the GAMA 
+    survey
     '''
     gama = Cat.GAMA() 
 
@@ -67,13 +103,17 @@ def GAMA_fields():
         assert 'kcorr_z0.0' in data.keys() 
         assert 'kcorr_z0.1' in data.keys() 
         assert np.array_equal(data['photo']['cataid'], data['kcorr_z0.0']['cataid'])
+        
+        gleg = Cat.GamaLegacy()
+        sweep_ra, sweep_dec = gleg._getSweeps(field, silent=False)
 
         sub = fig.add_subplot(111)
         sub.scatter(data['photo']['ra'], data['photo']['dec'], s=1, label=field.upper())
+        sub.scatter(sweep_ra, sweep_dec, c='k', s=2, label=field.upper()+' Sweep') 
     sub.set_xlim([110., 240.])
     sub.set_ylim([-3.5, 3.5])
     sub.legend(loc='lower left', markerscale=5, prop={'size':20})
-    fig.savefig(UT.fig_dir()+"GAMA_fields.png", bbox_inches='tight')
+    fig.savefig(UT.fig_dir()+"GAMA_Legacy_sweep.png", bbox_inches='tight')
     plt.close() 
     return None 
 
@@ -254,4 +294,5 @@ def GAMA_Legacy_photo():
 
 
 if __name__=="__main__": 
-    GAMA_fields()
+    #GAMA_fields()
+    GAMA_Legacy_sweep()
