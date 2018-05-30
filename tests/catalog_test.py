@@ -52,6 +52,32 @@ def GAMA_test():
     return None 
 
 
+def GAMA_fields():
+    ''' Tests GAMA object for fields
+    '''
+    gama = Cat.GAMA() 
+
+    fig = plt.figure(figsize=(6,6))
+    bkgd = fig.add_subplot(111, frameon=False)
+    bkgd.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
+    bkgd.set_xlabel('RA', labelpad=10, fontsize=25)
+    bkgd.set_ylabel('Dec', labelpad=10, fontsize=25)
+    for field in ['g09', 'g12', 'g15']: 
+        data = gama.Read(field, data_release=3, silent=False)
+        assert 'kcorr_z0.0' in data.keys() 
+        assert 'kcorr_z0.1' in data.keys() 
+        assert np.array_equal(data['photo']['cataid'], data['kcorr_z0.0']['cataid'])
+
+        sub = fig.add_subplot(111)
+        sub.scatter(data['photo']['ra'], data['photo']['dec'], s=1, label=field.upper())
+    sub.set_xlim([110., 240.])
+    sub.set_ylim([-3.5, 3.5])
+    sub.legend(loc='lower left', markerscale=5, prop={'size':20})
+    fig.savefig(UT.fig_dir()+"GAMA_fields.png", bbox_inches='tight')
+    plt.close() 
+    return None 
+
+
 def Legacy_test():  
     ''' Test that the Legacy object is sensible
     '''
@@ -228,5 +254,4 @@ def GAMA_Legacy_photo():
 
 
 if __name__=="__main__": 
-    Cat._GamaLegacy_TractorAPFLUX()
-    #GAMA_Legacy_photo_discrepancy()
+    GAMA_fields()

@@ -44,7 +44,7 @@ def DESI_GAMA():
     w_hp = FitsIO.read(UT.dat_dir()+'desi-healpix-weights.fits') 
     
     gama = Cat.GAMA() 
-    data = gama.Read(silent=True)
+    data = gama.Read(data_release=3, silent=True)
     theta_gama = 0.5 * np.pi - np.deg2rad(data['photo']['dec']) 
     phi_gama = np.deg2rad(data['photo']['ra'])
     print('GAMA theta: %f - %f' % (theta_gama.min(), theta_gama.max()))
@@ -57,7 +57,7 @@ def DESI_GAMA():
     HP.graticule()
     HP.projscatter(theta_gama, phi_gama, color='C1', s=1, linewidth=0) 
     HP.projtext(15., 38., 'DESI', color='navy', fontsize=20, lonlat=True) 
-    HP.projtext(250., 10., 'GAMA DR2', color='C1', fontsize=20, lonlat=True) 
+    HP.projtext(250., 10., 'GAMA DR3', color='C1', fontsize=20, lonlat=True) 
     fig.delaxes(fig.axes[1])
     fig.savefig(UT.doc_dir()+"figs/DESI_GAMA.pdf", bbox_inches='tight')
     return None
@@ -973,6 +973,7 @@ def _z_successrate(var, range=None, condition=None):
 
 
 if __name__=="__main__": 
+    DESI_GAMA()
     #GAMALegacy_Halpha_color()
     #BGStemplates()
     #GAMALegacy()
@@ -981,7 +982,7 @@ if __name__=="__main__":
     #skySurfaceBrightness()
     #rMag_normalize()
     #expSpectra()
-    expSpectra_emline()
+    #expSpectra_emline()
     #expSpectra_redshift(seed=1)
     #expSpectra_SDSScomparison()
     #SDSS_emlineComparison()

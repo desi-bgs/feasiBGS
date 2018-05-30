@@ -39,14 +39,15 @@ class GAMA(Catalog):
     def __init__(self): 
         pass 
 
-    def Read(self, data_release=3, silent=True):
+    def Read(self, field, data_release=3, silent=True):
         ''' Read in spherematched photometric and spectroscopic 
         data from GAMA DR2 (constructed using _Build). 
         '''
-        _file = self._File(data_release=data_release)
+        _file = self._File(field, data_release=data_release)
         if not os.path.isfile(_file): # if file is not constructed
             if not silent: print('Building %s' % _file) 
-            self._Build(data_release=data_release, silent=silent)
+            if field == 'all': self._Build(data_release=data_release, silent=silent)
+            else: self._fieldSplit(data_release=data_release, silent=silent)
     
         # read in data and compile onto a dictionary
         f = h5py.File(_file, 'r') 
@@ -75,21 +76,28 @@ class GAMA(Catalog):
                 data[dkey][key] = grp[key].value 
         return data 
     
-    def _File(self, data_release=3): 
+    def _File(self, field, data_release=3): 
         ''' hdf5 file name of spherematched photometric and spectroscopic 
-        data from GAMA DR2. 
+        data from GAMA DR3. 
         '''
-        return ''.join([UT.dat_dir(), 'GAMA_photo_spec.DR', str(data_release), '.hdf5']) # output file 
+        if field == 'all': 
+            return ''.join([UT.dat_dir(), 'GAMA_photo_spec.DR', str(data_release), '.hdf5']) # output file 
+        elif field == 'g09': 
+            return ''.join([UT.dat_dir(), 'GAMA_photo_spec.DR', str(data_release), '.G09.hdf5']) # output file 
+        elif field == 'g12': 
+            return ''.join([UT.dat_dir(), 'GAMA_photo_spec.DR', str(data_release), '.G12.hdf5']) # output file 
+        elif field == 'g15': 
+            return ''.join([UT.dat_dir(), 'GAMA_photo_spec.DR', str(data_release), '.G15.hdf5']) # output file 
 
     def _Build(self, data_release=3, silent=True): 
         ''' Read in the photometric data and the spectroscopic data,
         spherematch them and write the intersecting data to hdf5 file. 
         '''
         if data_release == 3: 
-            # read in photometry (GAMA`s master input catalogue; http://www.gama-survey.org/dr2/schema/table.php?id=156)
+            # read in photometry (GAMA`s master input catalogue; http://www.gama-survey.org/dr3/schema/table.php?id=2) 
             gama_p = mrdfits(UT.dat_dir()+'gama/dr3/InputCatA.fits')
-            # read in spectroscopy (http://www.gama-survey.org/dr2/schema/table.php?id=197)
-            gama_s = mrdfits(UT.dat_dir()+'gama/dr3/SpecLines.fits')
+            # read in emission line measurements (http://www.gama-survey.org/dr3/schema/table.php?id=40) 
+            gama_s = mrdfits(UT.dat_dir()+'gama/dr3/GaussFitSimple.fits')
             # read in kcorrect z = 0.0 (http://www.gama-survey.org/dr2/schema/table.php?id=177)
             gama_k0 = self._readKcorrect(UT.dat_dir()+'gama/dr3/kcorr_model_z00.fits')
             # read in kcorrect z = 0.1 (http://www.gama-survey.org/dr2/schema/table.php?id=178)
@@ -120,17 +128,16 @@ class GAMA(Catalog):
         
         # impose some common sense cuts 
         # only keep gama_p that has gama_k0 matches and SDSS photometry
-        assert np.array_equal(gama_p.cataid, np.arange(len(gama_p.cataid)))
         assert np.array_equal(gama_k0.cataid, gama_k1.cataid) 
-        has_kcorr = np.zeros(len(gama_p.cataid), dtype=bool)
-        has_kcorr[gama_k0.cataid] = True
-        has_sdss_photo = (gama_p.modelmag_u > -9999.) & (gama_p.modelmag_g > -9999.) & (gama_p.modelmag_r > -9999.) &
-                (gama_p.modelmag_i > -9999.) & (gama_p.modelmag_z > -9999.)
+        has_kcorr = np.in1d(gama_p.cataid, gama_k0.cataid)
+        has_sdss_photo = ((gama_p.modelmag_u > -9999.) & (gama_p.modelmag_g > -9999.) & (gama_p.modelmag_r > -9999.) & 
+                (gama_p.modelmag_i > -9999.) & (gama_p.modelmag_z > -9999.)) 
         cut_photo = (has_sdss_photo & has_kcorr)
         if not silent: 
             print("%i galaxies do not have k-correction" % np.sum(np.invert(has_kcorr)))
             print("%i galaxies do not have SDSS photometry" % np.sum(np.invert(has_sdss_photo)))
-            print("these galaxies are removed")  
+            print("these galaxies are removed and we have")  
+            print("%i galaxies in the photometric data" % np.sum(cut_photo))
         
         # spherematch the catalogs
         match = spherematch(gama_p.ra[cut_photo], gama_p.dec[cut_photo], gama_s.ra, gama_s.dec, 0.000277778)
@@ -169,6 +176,31 @@ class GAMA(Catalog):
 
         f.close() 
         return None 
+
+    def _fieldSplit(self, data_release=3, silent=True): 
+        ''' Split the GAMA photo-spectroscopic data into the differnt
+        GAMA regions. Different regions have different r-mag limits and
+        etc so treating them separately is the most sensible!
+        '''
+        all_gama = self.Read('all', data_release=data_release, silent=True)
+        
+        fields = ['g09', 'g12', 'g15']
+        ra_min = [129.0, 174.0, 211.5]
+        ra_max = [141.0, 186.0, 223.5]
+
+        for i_f, field in enumerate(fields): 
+            in_ra = ((all_gama['photo']['ra'] >= ra_min[i_f]) & (all_gama['photo']['ra'] <= ra_max[i_f]))
+        
+            # write each field into hdf5 files
+            f = h5py.File(self._File(field, data_release=data_release), 'w') 
+
+            for k_grp in all_gama.keys(): # photo, spec, kcorr_z0.0, kcorr_z0.1
+                grp = f.create_group(k_grp) 
+                for key in all_gama[k_grp].keys():
+                    grp.create_dataset(key, data=all_gama[k_grp][key][in_ra]) 
+
+            f.close() 
+        return None
 
     def _readKcorrect(self, fitsfile): 
         ''' GAMA Kcorrect raises VerifyError if read in the usual fashion.
