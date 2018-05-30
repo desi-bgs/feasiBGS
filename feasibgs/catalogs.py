@@ -391,45 +391,36 @@ class GamaLegacy(Catalog):
     def _getSweeps(self, field, silent=True): 
         ''' Construct list of sweep files given GAMA object.
         '''
-        # legacy survey DR5 brick data 
-        legacy = mrdfits(UT.dat_dir()+'survey-bricks-dr5.fits.gz')
         # read in GAMA objects in field 
         gama = GAMA() 
         if field == 'all': raise ValueError("only select specific GAMA fields; not the entire data release") 
         gama_data = gama.Read(field, silent=silent)
-
-        leg_chunk = ((legacy.ra < gama_data['photo']['ra'].max()) & (legacy.ra > gama_data['photo']['ra'].min()) &
-                (legacy.dec < gama_data['photo']['dec'].max()) & (legacy.dec > gama_data['photo']['dec'].min()))
-
-        legacy_gama_bricknames = legacy.brickname[leg_chunk]
-
+    
+        # get brickmin and brickmax of sweep files 
+        ra_mins = 10.*np.arange(gama_data['photo']['ra'].min() // 10., (gama_data['photo']['ra'].max() // 10.) + 1) 
+        ra_maxs = ra_mins + 10.
+        dec_mins = 5.*np.arange(gama_data['photo']['dec'].min() // 5., (gama_data['photo']['dec'].max() // 5.) + 1)
+        dec_maxs = dec_mins + 5. 
+        
         legacy_gama_sweep = []
-        for bname in legacy_gama_bricknames: 
-            if 'p' in bname: 
-                legacy_gama_ra = float(bname.split('p')[0])/10.
-                legacy_gama_dec = float(bname.split('p')[-1])/10.
-            elif 'm' in bname: 
-                legacy_gama_ra = float(bname.split('m')[0])/10.
-                legacy_gama_dec = -1.*float(bname.split('m')[-1])/10.        
-            else: 
-                raise ValueError
+        for i in range(len(ra_mins)): 
+            for j in range(len(dec_mins)): 
+                if dec_mins[j] < 0: pm_sign = 'm'
+                else: pm_sign = 'p'
+                brickmin = ''.join([str(int(ra_mins[i])).zfill(3), pm_sign, 
+                    str(int(np.abs(dec_mins[j]))).zfill(3)])
 
-            ra_min = str(int(legacy_gama_ra/10)*10)
-            ra_max = str(int(legacy_gama_ra/10 + 1)*10)
-            dec_min = int(np.floor(legacy_gama_dec/0.5)*5)
-            if dec_min < 0: 
-                dec_min = ''.join(['m', str(np.abs(dec_min)).zfill(3)])
-            else: 
-                dec_min = ''.join(['p', str(dec_min).zfill(3)])
-            dec_max = int(np.floor(legacy_gama_dec/0.5+1)*5)
-            if dec_max < 0: 
-                dec_max = ''.join(['m', str(np.abs(dec_max)).zfill(3)])
-            else: 
-                dec_max = ''.join(['p', str(dec_max).zfill(3)])
-            legacy_gama_sweep.append(''.join(['sweep-', ra_min, dec_min, '-', ra_max, dec_max, '.fits']))
-        sweep_file_list = np.unique(legacy_gama_sweep)
-        np.savetxt(''.join([UT.dat_dir(), 'legacy/', field, '.sweep_list.dat']), sweep_file_list, fmt='%s')
-        return legacy.ra[leg_chunk], legacy.dec[leg_chunk]
+                if dec_maxs[j] < 0: pm_sign = 'm'
+                else: pm_sign = 'p'
+                brickmax = ''.join([str(int(ra_maxs[i])).zfill(3), pm_sign, 
+                    str(int(np.abs(dec_maxs[j]))).zfill(3)])
+                
+                f_sweep = ''.join(['sweep-', brickmin, '-', brickmax, '.fits'])
+                legacy_gama_sweep.append(f_sweep)
+                if not silent: print('... %s' % f_sweep)
+        np.savetxt(''.join([UT.dat_dir(), 'legacy/', field, '.sweep_list.dat']), 
+                legacy_gama_sweep, fmt='%s')
+        return ra_mins, dec_mins 
     
     def _getTractorApflux(self, brickname, objids, 
             tractor_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/'): 

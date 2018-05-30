@@ -14,6 +14,7 @@ from ChangTools.fitstables import mrdfits
 # -- plotting --
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 mpl.rcParams['text.usetex'] = True
 mpl.rcParams['font.family'] = 'serif'
 mpl.rcParams['axes.linewidth'] = 1.5
@@ -105,13 +106,16 @@ def GAMA_Legacy_sweep():
         assert np.array_equal(data['photo']['cataid'], data['kcorr_z0.0']['cataid'])
         
         gleg = Cat.GamaLegacy()
-        sweep_ra, sweep_dec = gleg._getSweeps(field, silent=False)
+        ra_mins, dec_mins = gleg._getSweeps(field, silent=False)
 
         sub = fig.add_subplot(111)
         sub.scatter(data['photo']['ra'], data['photo']['dec'], s=1, label=field.upper())
-        sub.scatter(sweep_ra, sweep_dec, c='k', s=2, label=field.upper()+' Sweep') 
+        for i in range(len(ra_mins)): 
+            for j in range(len(dec_mins)): 
+                sub.add_patch(patches.Rectangle((ra_mins[i], dec_mins[j]), 9.95, 4.95, 
+                    fill=None, alpha=1))
     sub.set_xlim([110., 240.])
-    sub.set_ylim([-3.5, 3.5])
+    sub.set_ylim([-12.5, 12.5])
     sub.legend(loc='lower left', markerscale=5, prop={'size':20})
     fig.savefig(UT.fig_dir()+"GAMA_Legacy_sweep.png", bbox_inches='tight')
     plt.close() 
