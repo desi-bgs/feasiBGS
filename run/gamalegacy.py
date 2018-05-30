@@ -14,7 +14,7 @@ def constructGamaLegacy(field, data_release=3):
     gleg = Cat.GamaLegacy()
     gleg._Build(field, dr_gama=data_release, 
             sweep_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/sweep/5.0/', 
-            silent=False): 
+            silent=False)
     return None 
 
 

@@ -154,7 +154,7 @@ class GAMA(Catalog):
         assert np.array_equal(gama_p.cataid[p_match], gama_k0.cataid[k_match])
     
         # write everything into a hdf5 file 
-        f = h5py.File(self._File(data_release=data_release), 'w') 
+        f = h5py.File(self._File('all', data_release=data_release), 'w') 
         # store photometry data in photometry group 
         grp_p = f.create_group('photo') 
         for key in gama_p.__dict__.keys():
@@ -263,7 +263,7 @@ class GamaLegacy(Catalog):
         '''
         fgleg = self._File(field, dr_gama=dr_gama)
         if not os.path.isfile(fgleg): # if file is not constructed
-            if not silent: print('Building %s' % fgleg)) 
+            if not silent: print('Building %s' % fgleg)
             self._Build(field, dr_gama=dr_gama, silent=silent)
     
         # read in data and compile onto a dictionary
@@ -306,7 +306,7 @@ class GamaLegacy(Catalog):
         fsweep = ''.join([UT.dat_dir(), 'legacy/', field, '.sweep_list.dat'])
         if not os.path.isfile(fsweep): _ = self._getSweeps(field, silent=silent)
         sweep_files = np.loadtxt(fsweep, unpack=True, usecols=[0], dtype='S') 
-        if not silent: print("there are %i sweep files in the %s GAMA region" % (len(sweepfiles), field)) 
+        if not silent: print("there are %i sweep files in the %s GAMA region" % (len(sweep_files), field)) 
         # read in GAMA objects
         gama = GAMA() 
         gama_data = gama.Read(field, data_release=dr_gama, silent=silent)
@@ -398,8 +398,8 @@ class GamaLegacy(Catalog):
         if field == 'all': raise ValueError("only select specific GAMA fields; not the entire data release") 
         gama_data = gama.Read(field, silent=silent)
 
-        leg_chunk = ((legacy.ra <= gama_data['photo']['ra'].max()) & (legacy.ra >= gama_data['photo']['ra'].min()) &
-                (legacy.dec <= gama_data['photo']['dec'].max()) & (legacy.dec >= gama_data['photo']['dec'].min()))
+        leg_chunk = ((legacy.ra < gama_data['photo']['ra'].max()) & (legacy.ra > gama_data['photo']['ra'].min()) &
+                (legacy.dec < gama_data['photo']['dec'].max()) & (legacy.dec > gama_data['photo']['dec'].min()))
 
         legacy_gama_bricknames = legacy.brickname[leg_chunk]
 
