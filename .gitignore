@@ -14,6 +14,7 @@ __pycache__
 *.p
 *.dat
 *.o
+*.key
 
 build
 dist
