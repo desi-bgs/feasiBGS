@@ -2,8 +2,8 @@
 #SBATCH -q regular 
 #SBATCH -N 1 
 #SBATCH -t 03:00:00 
-#SBATCH -J gleg_expSpec_bright_1of2
-#SBATCH -o _gleg_expSpec_bright_10f2.o 
+#SBATCH -J gleg_expSpec_dark
+#SBATCH -o _gleg_expSpec_dark.o 
 #SBATCH -L SCRATCH,project 
 
 now=$(date +"%T") 
@@ -12,7 +12,7 @@ echo "start time ... $now"
 module load python/2.7-anaconda
 source activate myenv0 
 
-sky="bright"
+sky="dark"
 seed=1
 exptime=300
 # exposed spectra (takes ~5x40 mins) 
@@ -22,12 +22,12 @@ exptime=300
 # exposed spectra (takes ~5 mins) 
 #srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra_noemline $sky $seed $exptime
 
-#source /project/projectdirs/desi/software/desi_environment.sh 18.3
+source /project/projectdirs/desi/software/desi_environment.sh 18.3
 
 # run through redrock
-for iblock in {1..20}; do 
+for iblock in 18 19 20 38 39 40; do #{18..20}; do 
     f_spectra=$CSCRATCH"/feasibgs/spectra/gama_legacy.expSpectra."$sky"sky.seed"$seed".exptime"$exptime"."$iblock"of40blocks.fits"
-    f_redrock=$CSCRATCH"/feasibgs/redrock/gama_legacy.expSpectra."$sky"sky.seed"$seed".exptime"$exptime"."$iblock"of40blocks.zbest.fits"
+    f_redrock=$CSCRATCH"/feasibgs/spectra/gama_legacy.expSpectra."$sky"sky.seed"$seed".exptime"$exptime"."$iblock"of40blocks.zbest.fits"
     echo $f_spectra
     echo $f_redrock
     srun -N 1 -n 12 -c 2 rrdesi_mpi --zbest $f_redrock $f_spectra
@@ -46,7 +46,7 @@ done
 #f_spectra=$CSCRATCH"/feasibgs/spectra/gama_legacy.expSpectra."$sky"sky.seed"$seed".exptime"$exptime".noEmLine.fits"
 #f_redrock=$CSCRATCH"/feasibgs/spectra/gama_legacy.expSpectra."$sky"sky.seed"$seed".exptime"$exptime".noEmLine.zbest.fits"
 #f_zoutput=$CSCRATCH"/feasibgs/spectra/gama_legacy.expSpectra."$sky"sky.seed"$seed".exptime"$exptime".noEmLine.zbest.h5"
-#srun -N 1 -n 3 -c 1 rrdesi_mpi --zbest $f_redrock --output $f_zoutput $f_spectra
+#srun -N 1 -n 12 -c 1 rrdesi_mpi --zbest $f_redrock --output $f_zoutput $f_spectra
 
 now=$(date +"%T") 
 echo "end time ... $now"

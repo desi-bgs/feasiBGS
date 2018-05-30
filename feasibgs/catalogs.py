@@ -423,7 +423,7 @@ class GamaLegacy(Catalog):
         return ra_mins, dec_mins 
     
     def _getTractorApflux(self, brickname, objids, 
-            tractor_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/'): 
+            tractor_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/', silent=True): 
         ''' The catalog is constructed from the sweep catalog and the 
         GAMA DR3 photo+spec data. The sweep catalog does not include 
         all the photometric data from the legacy survey. This methods 
@@ -443,8 +443,8 @@ class GamaLegacy(Catalog):
 
         n_brick = 0 
         for ii, AAA, brick in zip(range(len(AAAs)), AAAs, bricks_uniq): 
-            name = ''.join([dir, AAA, '/tractor-', brick, '.fits'])
-            print('%i of %i unique bricks -- %s' % (ii, len(AAAs), brick)) 
+            name = ''.join([tractor_dir, AAA, '/tractor-', brick, '.fits'])
+            if not silent: print('%i of %i unique bricks -- %s' % (ii, len(AAAs), brick)) 
             if not os.path.isfile(name): raise ValueError('%s tractor file not available' % name)
             f_tractor = fits.open(name) 
             tractor = f_tractor[1].data
