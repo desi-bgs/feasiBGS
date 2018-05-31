@@ -297,7 +297,7 @@ class GamaLegacy(Catalog):
         return data 
 
     def _File(self, field, dr_gama=3): 
-        return ''.join([UT.dat_dir(), 'GAMA.dr', str(dr_gama), '.', field, '.LEGACY.hdf5'])
+        return ''.join([UT.dat_dir(), 'GAMA.DR', str(dr_gama), '.', field, '.LEGACY.hdf5'])
 
     def _Build(self, field, dr_gama=3, 
             sweep_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/sweep/5.0/', silent=True): 
@@ -321,6 +321,7 @@ class GamaLegacy(Catalog):
         for i_f, f in enumerate(sweep_files): 
             # read in sweep object 
             sweep = mrdfits(''.join([sweep_dir, f]))  
+            if not silent: print('matching %s' % ''.join([sweep_dir, f])) 
         
             # spherematch the sweep objects with GAMA objects 
             if len(sweep.ra) > len(gama_data['photo']['ra']):
@@ -351,7 +352,6 @@ class GamaLegacy(Catalog):
                     else: 
                         gdict[key] = np.concatenate([gdict[key], gama_data[gkey][key][match[1]]])
 
-            if not silent and (i_f == 0): print(sweep_dict.keys())
             del sweep  # free memory? (apparently not really) 
 
         if not silent: 
@@ -369,8 +369,8 @@ class GamaLegacy(Catalog):
         assert apflux_dict['apflux_g'].shape[0] == len(sweep_dict['brickname']) 
 
         # save data to hdf5 file
-        if not silent: print('writing to %s' % self._File())
-        f = h5py.File(self._File(), 'w') 
+        if not silent: print('writing to %s' % self._File(field, dr_gama=dr_gama))
+        f = h5py.File(self._File(field, dr_gama=dr_gama), 'w') 
         grp_gp = f.create_group('gama-photo') 
         grp_gs = f.create_group('gama-spec') 
         grp_k0 = f.create_group('gama-kcorr-z0.0') 
