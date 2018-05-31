@@ -271,7 +271,7 @@ class GamaLegacy(Catalog):
             self._Build(field, dr_gama=dr_gama, silent=silent)
     
         # read in data and compile onto a dictionary
-        f = h5py.File(self._File(), 'r') 
+        f = h5py.File(self._File(field, dr_gama=dr_gama), 'r') 
         grp_gp = f['gama-photo'] 
         grp_gs = f['gama-spec']
         grp_k0 = f['gama-kcorr-z0.0']

@@ -56,8 +56,9 @@ def DESI_GAMA():
         phi_gama = np.deg2rad(data['photo']['ra'])
         print('GAMA theta: %f - %f' % (theta_gama.min(), theta_gama.max()))
         print('GAMA phi: %f - %f' % (phi_gama.min(), phi_gama.max()))
-        HP.projscatter(theta_gama, phi_gama, color='C'+str(i_f*2+1), s=1, linewidth=0) 
-        HP.projtext(250., 10.+10.*i_f, field.upper(), color='C'+str(i_f*3+1), fontsize=20, lonlat=True) 
+        HP.projscatter(theta_gama, phi_gama, color='C'+str(i_f), s=1, linewidth=0) 
+        HP.projtext(250., 10.+10.*i_f, field.upper(), color='C'+str(i_f), 
+                fontsize=20, lonlat=True) 
     HP.projtext(15., 38., 'DESI', color='navy', fontsize=20, lonlat=True) 
     fig.delaxes(fig.axes[1])
     fig.savefig(UT.doc_dir()+"figs/DESI_GAMA.pdf", bbox_inches='tight')
@@ -65,48 +66,56 @@ def DESI_GAMA():
 
 
 def GAMALegacy_Halpha_color(): 
-    ''' color versus Halpha line flux relation for the GAMA-Legacy matched 
-    legacy. 
+    ''' color versus Halpha line flux relation for the GAMA-Legacy catalog
+    for each of the GAMA DR3 regions. 
     '''
     bands = ['g', 'r', 'z'] 
     # read in GAMA-Legacy objects
     gamaleg = Cat.GamaLegacy() 
-    gleg = gamaleg.Read(silent=True)
-
-    # GAMA Halpha line flux:  
-    gama_ha = gleg['gama-spec']['ha'] 
-    print('%i galaxies in GAMA+Legacy' % len(gama_ha))
     
-    # legacy g,r,z model fluxes in nMgy
-    legacy_photo = np.array([gleg['legacy-photo']['flux_'+band] for band in bands]) 
-    #legacy_modelmag = np.array([UT.flux2mag(legacy_photo[i], bands=bands[i]) for i in range(len(bands))]) 
-    legacy_modelmag = np.array([22.5 - 2.5*np.log10(legacy_photo[i]) for i in range(len(bands))]) 
-    # legacy photometry color 
-    legacy_gr = legacy_modelmag[0] - legacy_modelmag[1]
-    legacy_rz = legacy_modelmag[1] - legacy_modelmag[2]
-    
-    fig = plt.figure(figsize=(6,6))
-    #sub = fig.add_subplot(121) # halpha vs (g - r)
-    sub = fig.add_subplot(111) # halpha vs (g - r)
-    sub.scatter(legacy_gr, gama_ha, c='k', s=1) 
-    sub.set_xlabel(r'$(g - r)$', fontsize=25) 
-    sub.set_xlim([-0.5, 2.5])
-    sub.set_xticks([0., 1., 2.]) 
-    sub.set_ylabel(r'$H_\alpha$ line flux $[10^{-17}erg/s/cm^2]$', fontsize=20)
-    sub.set_yscale('log')
-    sub.set_ylim([1e-2, 1e4])
-    fig.savefig(UT.doc_dir()+"figs/GAMALegacy_Halpha_gr.png", bbox_inches='tight')
+    fig = plt.figure(figsize=(12,6))
+    for i_f, field in enumerate(['g09', 'g12', 'g15']): 
+        gleg = gamaleg.Read(field, dr_gama=3, silent=True)
 
-    #sub = fig.add_subplot(122) # halpha vs (r - z)
-    #sub.scatter(legacy_rz[::10], gama_ha[::10], c='k', s=1) 
-    #sub.set_xlabel(r'$(r - z)$ color Legacy DR5', fontsize=20) 
-    #sub.set_xlim([-0.5, 1.5])
-    #sub.set_xticks([0., 1.]) 
-    #sub.set_yscale('log')
-    #sub.set_ylim([1e-2, 1e4])
-    #sub.set_yticklabels([]) 
-    #fig.subplots_adjust(wspace=0.1)
-    #fig.savefig(UT.doc_dir()+"figs/GAMALegacy_Halpha_color.pdf", bbox_inches='tight')
+        # GAMA Halpha line flux:  
+        gama_ha = gleg['gama-spec']['ha_flux'] 
+        print('%i galaxies in GAMA+Legacy' % len(gama_ha))
+        
+        # legacy g,r,z model fluxes in nMgy
+        legacy_photo = np.array([gleg['legacy-photo']['flux_'+band] for band in bands]) 
+        #legacy_modelmag = np.array([UT.flux2mag(legacy_photo[i], bands=bands[i]) for i in range(len(bands))]) 
+        legacy_modelmag = np.array([22.5 - 2.5*np.log10(legacy_photo[i]) for i in range(len(bands))]) 
+        # legacy photometry color 
+        legacy_gr = legacy_modelmag[0] - legacy_modelmag[1]
+        legacy_rz = legacy_modelmag[1] - legacy_modelmag[2]
+    
+        no_ha = (gama_ha < 0.) 
+        gama_ha[no_ha] = 10**(-1.9)
+        print('%i galaxies with no Halpha' % np.sum(no_ha))
+        
+        sub1 = fig.add_subplot(121) # halpha vs (g - r)
+        sub1.scatter(legacy_gr[::10], gama_ha[::10], s=0.5, c='C'+str(i_f)) 
+    
+        sub2 = fig.add_subplot(122) # halpha vs (r - z)
+        sub2.scatter(legacy_rz[::10], gama_ha[::10], s=0.5, c='C'+str(i_f), 
+                label=field.upper())
+    
+    sub1.set_xlabel(r'$(g - r)$', fontsize=25) 
+    sub1.set_xlim([-0.5, 2.5])
+    sub1.set_xticks([0., 1., 2.]) 
+    sub1.set_ylabel(r'$H_\alpha$ line flux $[10^{-17}erg/s/cm^2]$', fontsize=20)
+    sub1.set_yscale('log')
+    sub1.set_ylim([1e-2, 1e4])
+
+    sub2.set_xlabel(r'$(r - z)$ color Legacy DR5', fontsize=20) 
+    sub2.set_xlim([-0.5, 1.5])
+    sub2.set_xticks([0., 1.]) 
+    sub2.set_yscale('log')
+    sub2.set_ylim([1e-2, 1e4])
+    sub2.set_yticklabels([]) 
+    sub2.legend(loc='lower left', markerscale=20, handletextpad=0, prop={'size': 20}) 
+    fig.subplots_adjust(wspace=0.1)
+    fig.savefig(UT.doc_dir()+"figs/GAMALegacy_Halpha_color.pdf", bbox_inches='tight')
     plt.close() 
     return None 
 
