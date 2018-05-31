@@ -1,7 +1,7 @@
 #!/bin/bash -l 
 #SBATCH -q debug 
 #SBATCH -N 1 
-#SBATCH -t 00:15:00 
+#SBATCH -t 00:10:00 
 #SBATCH -C haswell
 #SBATCH -J gleg_g09
 #SBATCH -o _gleg_g09.o 

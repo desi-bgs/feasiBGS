@@ -20,5 +20,5 @@ def constructGamaLegacy(field, data_release=3):
 
 if __name__=='__main__':
     field = sys.argv[1]
-    dr = sys.argv[2]
+    dr = int(sys.argv[2])
     constructGamaLegacy(field, data_release=dr)
