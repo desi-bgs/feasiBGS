@@ -94,6 +94,7 @@ class GAMA(Catalog):
         spherematch them and write the intersecting data to hdf5 file. 
         '''
         if data_release == 3: 
+            # this includes *three* of the four gama fields G02 field has its own data
             # read in photometry (GAMA`s master input catalogue; http://www.gama-survey.org/dr3/schema/table.php?id=2) 
             gama_p = mrdfits(UT.dat_dir()+'gama/dr3/InputCatA.fits')
             # read in emission line measurements (http://www.gama-survey.org/dr3/schema/table.php?id=40) 
@@ -113,52 +114,54 @@ class GAMA(Catalog):
             # read in kcorrect z = 0.1 (http://www.gama-survey.org/dr2/schema/table.php?id=178)
             gama_k1 = self._readKcorrect(UT.dat_dir()+'gama/kcorr_z01.fits')
         if not silent: 
-            print('colums in GAMA photometry') 
-            print(sorted(gama_p.__dict__.keys()))
-            print('%i objects' % len(gama_p.ra))
+            #print('colums in GAMA photometry') 
+            #print(sorted(gama_p.__dict__.keys()))
+            print('%i GAMA photometry objects' % len(gama_p.ra))
             print('========================')
-            print('colums in GAMA spectroscopy')
-            print(sorted(gama_s.__dict__.keys()))
-            print('%i objects' % len(gama_s.ra)) 
+            #print('colums in GAMA spectroscopy')
+            #print(sorted(gama_s.__dict__.keys()))
+            print('%i GAMA spectroscopy (emission line) objects' % len(gama_s.ra)) 
             print('========================')
-            print('colums in GAMA k-correct')
-            print(sorted(gama_k0.__dict__.keys()))
-            print('%i objects' % len(gama_k0.mass)) 
+            #print('colums in GAMA k-correct')
+            #print(sorted(gama_k0.__dict__.keys()))
+            print('%i GAMA k-correct objects' % len(gama_k0.mass)) 
             print('========================')
-        
-        # impose some common sense cuts 
-        # only keep gama_p that has gama_k0 matches and SDSS photometry
-        assert np.array_equal(gama_k0.cataid, gama_k1.cataid) 
-        has_kcorr = np.in1d(gama_p.cataid, gama_k0.cataid)
+         
+        # impose some common sense cuts to make sure there's SDSS photometry 
         has_sdss_photo = ((gama_p.modelmag_u > -9999.) & (gama_p.modelmag_g > -9999.) & (gama_p.modelmag_r > -9999.) & 
                 (gama_p.modelmag_i > -9999.) & (gama_p.modelmag_z > -9999.)) 
-        cut_photo = (has_sdss_photo & has_kcorr)
-        if not silent: 
-            print("%i galaxies do not have k-correction" % np.sum(np.invert(has_kcorr)))
-            print("%i galaxies do not have SDSS photometry" % np.sum(np.invert(has_sdss_photo)))
-            print("these galaxies are removed and we have")  
-            print("%i galaxies in the photometric data" % np.sum(cut_photo))
-        
-        # spherematch the catalogs
-        match = spherematch(gama_p.ra[cut_photo], gama_p.dec[cut_photo], gama_s.ra, gama_s.dec, 0.000277778)
-        p_match = (np.arange(len(gama_p.ra))[cut_photo])[match[0]] 
-        s_match = (np.arange(len(gama_s.ra)))[match[1]] 
-        assert len(p_match) == len(s_match)
-        if not silent: print('spherematch returns %i matches' % len(p_match))
-        
-        # check that gama_p.cataid[s_match] is subset of gama_k0.cataid
-        assert np.all(np.in1d(gama_p.cataid[p_match], gama_k0.cataid)) 
-         # get ordering for kcorrect data
-        k_match = np.searchsorted(gama_k0.cataid, gama_p.cataid[p_match])
+        # match cataid with spectroscopic data 
+        has_spec = np.in1d(gama_p.cataid, gama_s.cataid) 
+        # match cataid with k-correct data 
+        assert np.array_equal(gama_k0.cataid, gama_k1.cataid) 
+        has_kcorr = np.in1d(gama_p.cataid, gama_k0.cataid)
+        # combined sample cut 
+        sample_cut = (has_spec & has_kcorr & has_sdss_photo)
 
-        assert np.array_equal(gama_p.cataid[p_match], gama_k0.cataid[k_match])
-    
+        if not silent: 
+            print('of %i GAMA photometry objects' % len(gama_p.cataid))
+            print('========================')
+            print('%i have SDSS photometry data' % np.sum(has_sdss_photo))
+            print('========================')
+            print('%i have spectroscopic data' % np.sum(has_spec))
+            print('========================')
+            print('%i have k-correct data' % np.sum(has_kcorr))
+            print('========================')
+            print('%i have all of the above' % np.sum(sample_cut))
+            print('========================')
+        # match up with spectroscopic data 
+        s_match = np.searchsorted(gama_s.cataid, gama_p.cataid[sample_cut]) 
+        assert np.array_equal(gama_s.cataid[s_match], gama_p.cataid[sample_cut]) 
+        # match up with k-correct data 
+        k_match = np.searchsorted(gama_k0.cataid, gama_p.cataid[sample_cut])
+        assert np.array_equal(gama_k0.cataid[k_match], gama_p.cataid[sample_cut])
+        
         # write everything into a hdf5 file 
         f = h5py.File(self._File('all', data_release=data_release), 'w') 
         # store photometry data in photometry group 
         grp_p = f.create_group('photo') 
         for key in gama_p.__dict__.keys():
-            grp_p.create_dataset(key, data=getattr(gama_p, key)[p_match]) 
+            grp_p.create_dataset(key, data=getattr(gama_p, key)[sample_cut]) 
 
         # store spectroscopic data in spectroscopic group 
         grp_s = f.create_group('spec') 
@@ -190,6 +193,7 @@ class GAMA(Catalog):
 
         for i_f, field in enumerate(fields): 
             in_ra = ((all_gama['photo']['ra'] >= ra_min[i_f]) & (all_gama['photo']['ra'] <= ra_max[i_f]))
+            if not silent: print('%i objects in %s field' % (np.sum(in_ra), field.upper()))
         
             # write each field into hdf5 files
             f = h5py.File(self._File(field, data_release=data_release), 'w') 

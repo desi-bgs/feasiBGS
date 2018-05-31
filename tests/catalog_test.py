@@ -66,6 +66,7 @@ def GAMA_fields():
        
     for i in range(2): 
         sub = fig.add_subplot(1,2,i+1)
+        gama._Build(data_release=3, silent=False) 
         data = gama.Read('all', data_release=3, silent=False)
         sub.scatter(data['photo']['ra'], data['photo']['dec'], c='k', s=1+i*5)
 
@@ -298,5 +299,5 @@ def GAMA_Legacy_photo():
 
 
 if __name__=="__main__": 
-    #GAMA_fields()
-    GAMA_Legacy_sweep()
+    GAMA_fields()
+    #GAMA_Legacy_sweep()
