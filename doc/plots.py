@@ -121,33 +121,34 @@ def GAMALegacy_Halpha_color():
 
 
 def BGStemplates(): 
-    ''' plot the redshift distribution and M_0.1r vs ^0.1(g-r) relation of 
-    BGS templates 
+    ''' compare the redshift distribution and M_0.1r vs ^0.1(g-r) relation of 
+    BGS templates to the GAMA properties 
     '''
     # read in GAMA-Legacy objects
-    legacy = Cat.GamaLegacy() 
-    legacy_data = legacy.Read(silent=True)
-
-    # GAMA Halpha 
-    gama_z = legacy_data['gama-spec']['z_helio']
+    gleg = Cat.GamaLegacy() 
+    gleg_data = gleg.Read('g15', silent=True)
 
     bgs3 = FM.BGStree() 
     
     fig = plt.figure(figsize=(12,6))
     # redshift distribution of the templates 
     sub1 = fig.add_subplot(121) 
-    _ = sub1.hist(gama_z, bins=25, range=(0., 1.), histtype='stepfilled', label='GAMA DR2')
+    _ = sub1.hist(gleg_data['gama-spec']['z'], bins=25, range=(0., 1.), histtype='stepfilled', label='GAMA DR3 G15')
     _ = sub1.hist(bgs3.meta['Z'], bins=25, range=(0., 1.), histtype='stepfilled', label='Templates')#, normed=True)
     sub1.legend(loc='upper right', prop={'size': 20}) 
     sub1.set_xlabel('Redshift', fontsize=20) 
     sub1.set_xlim([0., 0.8]) 
     
-    # M_r0.1 vs (g-r)0.1 of the templates
-    Mabs = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # absolute magnitude 
-    print('Number of templates = %i' % Mabs.shape[0]) 
+    # absolute magnitude of the templates
+    Mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] 
+    print('%i templates' % Mabs_temp.shape[0]) 
+    # absolute magnitude of GAMA-Legacy objects
+    Mabs = gleg.AbsMag(gleg_data, kcorr=0.1, H0=70, Om0=0.3) 
+    print('%i GAMA G15 objects' % Mabs.shape[1]) 
 
     sub2 = fig.add_subplot(122)
-    sub2.scatter(Mabs[:,2], Mabs[:,1] - Mabs[:,2], c='k', s=2) 
+    sub2.scatter(Mabs[2,:], Mabs[1,:] - Mabs[2,:], s=1) 
+    sub2.scatter(Mabs_temp[:,2], Mabs_temp[:,1] - Mabs_temp[:,2], s=1) 
     sub2.set_xlabel(r'$M_{0.1r}$', fontsize=20)
     sub2.set_xlim([-14., -24.]) 
     sub2.set_ylabel(r'$^{0.1}(g - r)$', fontsize=20)
@@ -159,19 +160,19 @@ def BGStemplates():
 
 
 def GamaLegacy_matchSpectra(): 
-    ''' match galaxies from the GAMA-Legacy catalog to BGS templates based on 
-    meta data and then plot their spectra
+    ''' match galaxies from the GAMA-Legacy catalog G15 field to BGS templates based on 
+    their meta data and then plot their spectra
     '''
     # read in GAMA-Legacy catalog 
     cata = Cat.GamaLegacy()
-    gleg = cata.Read()
+    gleg = cata.Read('g15')
 
-    redshift = gleg['gama-spec']['z_helio']  # redshift
+    redshift = gleg['gama-spec']['z']  # redshift
     absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
     
     # BGS templates
     bgs3 = FM.BGStree() 
-    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    bgstemp = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=2e4)
     mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
 
     # pick 10 random galaxies from the GAMA-legacy sample
@@ -191,11 +192,12 @@ def GamaLegacy_matchSpectra():
     i_rand = np.array(i_rand)
     
     # meta data of [z, M_r0.1, 0.1(g-r)]
-    gleg_meta = np.vstack([
-        redshift[i_rand], 
-        absmag_ugriz[2,i_rand], 
-        absmag_ugriz[1,i_rand] - absmag_ugriz[2,i_rand]]).T
-    match, _ = bgs3.Query(gleg_meta)
+    #gleg_meta = np.vstack([
+    #    redshift[i_rand], 
+    #    absmag_ugriz[2,i_rand], 
+    #    absmag_ugriz[1,i_rand] - absmag_ugriz[2,i_rand]]).T
+    #match, _ = bgs3.Query(gleg_meta)
+    match = bgs3._GamaLegacy(gleg, index=i_rand)
     
     # velocity dispersion 
     vdisp = np.repeat(100.0, len(i_rand)) # [km/s]
@@ -209,12 +211,12 @@ def GamaLegacy_matchSpectra():
     fig = plt.figure(figsize=(12,6))
     sub1 = fig.add_subplot(121)
     sub2 = fig.add_subplot(122)
-    sub1.scatter(absmag_ugriz[2,:], absmag_ugriz[1,:] - absmag_ugriz[2,:], c='k', s=0.1) 
+    sub1.scatter(absmag_ugriz[2,:][::10], absmag_ugriz[1,:][::10] - absmag_ugriz[2,:][::10], c='k', s=0.1) 
     for ii, i in enumerate(i_rand): 
         sub1.scatter(mabs_temp[match[ii],2], mabs_temp[match[ii],1] - mabs_temp[match[ii],2],
                 color='C'+str(ii), s=60, edgecolors='k', marker='^', label='Template')
         sub1.scatter(absmag_ugriz[2,i], absmag_ugriz[1,i] - absmag_ugriz[2,i], 
-                color='C'+str(ii), s=60, edgecolors='k', marker='s', label='GAMA object')
+                color='C'+str(ii), s=60, edgecolors='k', marker='s', label='GAMA G15')
         if ii == 0: 
             sub1.legend(loc='upper left', markerscale=3, handletextpad=0., prop={'size':20})
 
@@ -243,9 +245,9 @@ def GamaLegacy_emlineSpectra():
     '''
     # read in GAMA-Legacy catalog 
     cata = Cat.GamaLegacy()
-    gleg = cata.Read()
+    gleg = cata.Read('g15')
 
-    redshift = gleg['gama-spec']['z_helio'] # redshift 
+    redshift = gleg['gama-spec']['z'] # redshift 
     absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
 
     # pick a random galaxy from the GAMA-legacy sample
@@ -256,57 +258,74 @@ def GamaLegacy_emlineSpectra():
     match = bgs3._GamaLegacy(gleg, index=i_rand) 
     mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
 
-    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=2e4)
     vdisp = np.repeat(100.0, len(i_rand)) # velocity dispersions [km/s]
-
-    flux, wave, meta = bgstemp.Spectra(
+    
+    # generate emission line flux from GAMA data 
+    emline_flux = s_bgs.EmissionLineFlux(gleg, index=i_rand, dr_gama=3, silent=True)
+    # generate spectra with emission lines and template spectra that's 
+    # flux calibrated to just GAMA (SDSS) photometry.
+    flux, wave, _ = s_bgs.Spectra(
             gleg['gama-photo']['modelmag_r'][i_rand], 
             redshift[i_rand], 
             vdisp,
-            seed=1, templateid=match, silent=False) 
-    flux0 = flux.copy()  
-    wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, i_rand, silent=False) 
-    
-    emline_keys = ['[OII]', r'$\mathrm{H}_\beta$',  r'[OIII]$_b$', r'[OIII]$_r$', 'NII', r'$\mathrm{H}_\alpha$', '[NII]', '[SII]']
-    emline_lambda = [3727., 4861., 4959., 5007., 6548., 6563., 6584., 6716.]
+            seed=1, templateid=match, 
+            emflux=None,# emline_flux, 
+            mag_em=None,#gleg['gama-photo']['modelmag_r'][i_rand], 
+            silent=False) 
+    flux_eml, wave_eml, _ = s_bgs.Spectra(
+            gleg['gama-photo']['modelmag_r'][i_rand], 
+            redshift[i_rand], 
+            vdisp,
+            seed=1, templateid=match, 
+            emflux=emline_flux, 
+            mag_em=gleg['gama-photo']['modelmag_r'][i_rand], 
+            silent=False) 
+
+    emline_keys = [r'[OII]$_b$', r'[OII]$_r$', r'$\mathrm{H}_\beta$',  r'[OIII]$_b$', r'[OIII]$_r$', 
+            r'[OI]$_b$', r'[OI]$_r$', r'[NII]$_b$', r'$\mathrm{H}_\alpha$', r'[NII]$_r$', r'[SII]$_b$', r'[SII]$_r$']
+    emline_lambda = [3726., 3729., 4861., 4959., 5007., 6300., 6364., 6548., 6563., 6583., 6717., 6731.]
     emline_zlambda = (1.+redshift[i_rand]) * np.array(emline_lambda)
 
-    fig = plt.figure(figsize=(12,6))
-    sub2 = fig.add_subplot(111)
-    for ii, i in enumerate(i_rand): 
-        # plot template spectra w/ emission lines
-        sub2.scatter(wave, flux_eml[ii], c='C'+str(ii), s=1, label='Template w/ Em.Lines') 
-        # plot template spectra
-        sub2.plot(wave, flux0[ii], c='k', ls=':', lw=1, label='Template') 
+    #fig = plt.figure(figsize=(12,6))
+    #sub2 = fig.add_subplot(111)
+    #for ii, i in enumerate(i_rand): 
+    #    # plot template spectra w/ emission lines
+    #    sub2.scatter(wave, flux_eml[ii], c='C'+str(ii), s=1, label='Template w/ Em.Lines') 
+    #    # plot template spectra
+    #    sub2.plot(wave, flux0[ii], c='k', ls=':', lw=1, label='Template') 
 
-    for i_l, zlambda in enumerate(emline_zlambda): 
-        sub2.vlines(zlambda, 0., 2.*flux_eml[0].max(), color='k', linestyle=':', linewidth=1) 
-        sub2.text(zlambda, flux_eml[0].max()*float(20-i_l)/20., emline_keys[i_l], ha='left', va='top', fontsize=12) 
-    sub2.legend(loc='upper right', markerscale=10, prop={'size': 15})
-    #sub2.text(0.9, 0.9, 'Template Spectra', ha='right', va='center', transform=sub2.transAxes, fontsize=20)
-    sub2.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
-    sub2.set_xlim([3.5e3, 1e4]) 
-    sub2.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
-    sub2.set_ylim([0., 1.1*flux_eml[0].max()]) 
-    fig.subplots_adjust(wspace=0.3) 
-    fig.savefig(UT.doc_dir()+"figs/GLeg_EmLineSpectra.png", bbox_inches='tight')
-    '''
-    fig = plt.figure(figsize=(12,6))
-    sub1 = fig.add_subplot(121)
-    sub2 = fig.add_subplot(122)
-    sub1.scatter(absmag_ugriz[2,:], absmag_ugriz[1,:] - absmag_ugriz[2,:], c='k', s=1) 
+    #for i_l, zlambda in enumerate(emline_zlambda): 
+    #    sub2.vlines(zlambda, 0., 2.*flux_eml[0].max(), color='k', linestyle=':', linewidth=1) 
+    #    sub2.text(zlambda, flux_eml[0].max()*float(20-i_l)/20., emline_keys[i_l], ha='left', va='top', fontsize=12) 
+    #sub2.legend(loc='upper right', markerscale=10, prop={'size': 15})
+    ##sub2.text(0.9, 0.9, 'Template Spectra', ha='right', va='center', transform=sub2.transAxes, fontsize=20)
+    #sub2.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
+    #sub2.set_xlim([3.5e3, 1e4]) 
+    #sub2.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
+    #sub2.set_ylim([0., 1.1*flux_eml[0].max()]) 
+    #fig.subplots_adjust(wspace=0.3) 
+    #fig.savefig(UT.doc_dir()+"figs/GLeg_EmLineSpectra.png", bbox_inches='tight')
+    fig = plt.figure(figsize=(18,6))
+    gs = mpl.gridspec.GridSpec(1, 2, width_ratios=[1,3])
+
+    sub1 = plt.subplot(gs[0]) #fig.add_subplot(121)
+    sub2 = plt.subplot(gs[1]) #fig.add_subplot(122)
+    sub1.scatter(absmag_ugriz[2,:][::10], absmag_ugriz[1,:][::10] - absmag_ugriz[2,:][::10], c='k', s=0.1) 
     for ii, i in enumerate(i_rand): 
         sub1.scatter(mabs_temp[match[ii],2], mabs_temp[match[ii],1] - mabs_temp[match[ii],2],
                 color='C'+str(ii), s=30, edgecolors='k', marker='^', label='Template')
         sub1.scatter(absmag_ugriz[2,i], absmag_ugriz[1,i] - absmag_ugriz[2,i], 
-                color='C'+str(ii), s=30, edgecolors='k', marker='s', label='GAMA object')
+                color='C'+str(ii), s=30, edgecolors='k', marker='s', label='GAMA G15')
         if ii == 0: 
             sub1.legend(loc='upper left', markerscale=3, handletextpad=0., prop={'size':20})
 
         # plot template spectra w/ emission lines
-        sub2.plot(wave, flux_eml[ii], c='C'+str(ii), label='Template w/ Em.Lines') 
+        sub2.plot(wave_eml, flux_eml[ii], c='C'+str(ii), label='Template w/ Em.Lines') 
         # plot template spectra
-        sub2.plot(wave, flux0[ii], c='k', ls=':', lw=0.5, label='Template') 
+        sub2.plot(wave, flux[ii], c='k', ls=':', lw=0.5, label='Template') 
+        sub2.plot(s_bgs.basewave.astype(float)*(1.+redshift[i_rand]), 1e17*emline_flux.flatten(), 
+                c='C1', lw=1, label='Emission Lines') 
     sub1.set_xlabel('$M_{0.1r}$', fontsize=20) 
     sub1.set_xlim([-14., -24]) 
     sub1.set_ylabel(r'$^{0.1}(g-r)$ color', fontsize=20) 
@@ -317,14 +336,12 @@ def GamaLegacy_emlineSpectra():
         sub2.vlines(zlambda, 0., 2.*flux_eml[0].max(), color='k', linestyle=':', linewidth=1) 
         sub2.text(zlambda, flux_eml[0].max()*float(28-i_l)/20., emline_keys[i_l], ha='left', va='top', fontsize=12) 
     sub2.legend(loc='upper right', prop={'size': 15})
-    #sub2.text(0.9, 0.9, 'Template Spectra', ha='right', va='center', transform=sub2.transAxes, fontsize=20)
     sub2.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
     sub2.set_xlim([3.5e3, 1e4]) 
     sub2.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
     sub2.set_ylim([0., 1.8*flux_eml[0].max()]) 
-    fig.subplots_adjust(wspace=0.3) 
+    fig.subplots_adjust(wspace=0.2) 
     fig.savefig(UT.doc_dir()+"figs/GLeg_EmLineSpectra.pdf", bbox_inches='tight')
-    '''
     plt.close() 
     return None
 
@@ -983,12 +1000,11 @@ def _z_successrate(var, range=None, condition=None):
 
 
 if __name__=="__main__": 
-    DESI_GAMA()
+    #DESI_GAMA()
     #GAMALegacy_Halpha_color()
     #BGStemplates()
-    #GAMALegacy()
     #GamaLegacy_matchSpectra()
-    #GamaLegacy_emlineSpectra()
+    GamaLegacy_emlineSpectra()
     #skySurfaceBrightness()
     #rMag_normalize()
     #expSpectra()

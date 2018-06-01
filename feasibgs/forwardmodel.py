@@ -27,18 +27,23 @@ from desimodel.io import load_throughput
 from desisim.io import empty_metatable
 from desisim.io import read_basis_templates
 from desisim.obs import get_night
-from desisim.templates import BGS
+from desisim.templates import GALAXY 
+from desisim.templates import BGS 
 import desisim.simexp
 import desisim.specsim
 import desimodel.io
 import desispec
 import desitarget
+from desisim import pixelsplines as pxs
 from desispec.spectra import Spectra
 from desispec.resolution import Resolution
+from desispec.interpolation import resample_flux
 from desitarget.cuts import isBGS_bright, isBGS_faint
 
 # -- local -- 
 from feasibgs import catalogs as Cat 
+
+LIGHT = 2.99792458E5  #- speed of light in km/s
 
 
 class BGStree(object):
@@ -87,7 +92,7 @@ class BGStree(object):
         template. This is purely for convenience. 
         '''
         # extract necessary meta data 
-        redshift = gleg['gama-spec']['z_helio']  # redshift
+        redshift = gleg['gama-spec']['z']  # redshift
         # calculate ABSMAG k-correct to z=0.1 
         cata = Cat.GamaLegacy()
         absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3) 
@@ -95,8 +100,8 @@ class BGStree(object):
         if not np.any(index): # match all galaxies in the GamaLegacy object
             ind = np.ones(absmag_ugriz.shape[1], dtype=bool) 
         else: # match only specified galaxies
-            ind = np.zeros(absmag_ugriz.shape[1], dtype=bool) 
-            ind[index] = True 
+            if not isinstance(index, np.ndarray): raise ValueError
+            ind = index 
         
         # stack meta data -- [z, M_r0.1, 0.1(g-r)]
         gleg_meta = np.vstack([
@@ -113,8 +118,9 @@ class BGStree(object):
         return match 
 
 
-class BGStemplates(object):
-    '''Generate spectra for BGS templates.  
+class BGSsourceSpectra(GALAXY):
+    '''Generate source spectra for the forwardmodel using 
+    BGS templates
     '''
     def __init__(self, wavemin=None, wavemax=None, dw=0.2):
         ''' initiate BGS template spectra. Mainly for initializing `desisim.templates.BGS`
@@ -125,16 +131,215 @@ class BGStemplates(object):
         self.dw = dw
         self.wave = np.arange(round(wavemin, 1), wavemax, dw)
 
+        super(BGSsourceSpectra, self).__init__(objtype='BGS', minwave=3600.0, maxwave=10000.0, 
+                cdelt=0.2, wave=self.wave, colorcuts_function=None, normfilter='decam2014-r', 
+                normline=None, add_SNeIa=False, baseflux=None, basewave=None, basemeta=None)
+
+    def Spectra(self, r_mag, zred, vdisp, seed=None, templateid=None, emflux=None, mag_em=None, silent=True):
+        '''
+        '''
+        # meta data of 'mag', 'redshift', 'vdisp'
+        input_meta = empty_metatable(nmodel=len(r_mag), objtype='BGS')
+        input_meta['SEED'] = np.random.randint(2**32, size=len(r_mag)) 
+        input_meta['MAG'] = r_mag # r band apparent magnitude
+        input_meta['REDSHIFT'] = zred # redshift
+        input_meta['VDISP'] = vdisp 
+        input_meta['TEMPLATEID'] = templateid
+
+        flux, self.wave, meta = self._make_galaxy_templates(input_meta, emflux=emflux, mag_em=mag_em, 
+                nocolorcuts=True, restframe=False) 
+
+        return flux, self.wave, meta
+
+    def EmissionLineFlux(self, gleg, index=None, dr_gama=3, silent=True): 
+        ''' Calculate emission line flux for GAMA-Legacy objects. Returns
+        emission line flux in units of 10^(-17)erg/s/cm^2/A
+        '''
+        if dr_gama != 3: raise ValueError("Only supported for GAMA DR3") 
+        # emission lines
+        emline_keys = ['oiib', 'oiir', 'hb',  'oiiib', 'oiiir', 'oib', 'oir', 'niib', 'ha', 'niir', 'siib', 'siir']
+        emline_lambda = [3726., 3729., 4861., 4959., 5007., 6300., 6364., 6548., 6563., 6583., 6717., 6731.]
+   
+        if index is None: 
+            index = np.arange(len(gleg['gama-photo']['ra'])) 
+        else: 
+            assert isinstance(index, np.ndarray)
+        
+        # gama spectra data
+        gleg_s = gleg['gama-spec']
+
+        npix = len(self.basewave)
+        wave = self.basewave.astype(float)
+        emline_flux = np.zeros((len(index), npix))
+        
+        # loop through emission lines and add them to the emline_flux! 
+        for i_k, k in enumerate(emline_keys): 
+            # galaxies with measured emission line (DR3 allows for negative emission lines...) 
+            hasem = (gleg_s[k+'_flux'][index] > 0.)
+            n_hasem = np.sum(hasem) 
+            if n_hasem == 0: 
+                if not silent: print('no galaxies with emission line %s' % k) 
+                continue
+            em_lineflux = gleg_s[k+'_flux'][index][hasem] # line flux [10^(-17) erg/s/cm^2]
+            # width of Gaussian emission line 
+            em_sig = gleg_s['sig_'+k][index][hasem] # Angstrom
+            assert em_sig.min() > 0. 
+
+            # normalization of the Gaussian
+            A = em_lineflux/np.sqrt(2. * np.pi * em_sig**2)
+            
+            emline_flux[hasem] += A[:,None] * \
+                    np.exp(-0.5*(np.tile(wave, n_hasem).reshape(n_hasem, npix) - emline_lambda[i_k])**2/em_sig[:,None]**2)
+        return emline_flux 
+
+    def _make_galaxy_templates(self, input_meta, emflux=None, mag_em=None, nocolorcuts=True, restframe=False):
+        ''' a streamlined version of desisim.template.GALAXY.make_galaxy_templates
+        for BGS galaxies that takes in emission line flux from self.EmissionLineFlux 
+        as an optional input. Particular care was taken to figure out the flux 
+        calibration. 
+
+        flux calibration implementation 
+        --------------------------------------
+        The source spectra for the `feasiBGS` is derived from the 
+        combination of `desisim.templates.BGS.make_templates` spectra 
+        combined with GAMA emission line data:
+        $$s(\lambda) = c(\lambda) + e(\lambda) $$
+        $c(\lambda)$ is the template spectra from 
+        `desisim.templates.BGS.make_templates` and $e(\lambda)$ is the 
+        emission line flux from GAMA data. However, there are some 
+        complications caused by the fact that $s(\lambda)$ has to be 
+        properly normalized.
+
+        Since $e(\lambda)$ is derived from $s_\mathrm{GAMA}(\lambda)$, 
+        which has the flux calibration of above, we first calibrate 
+        $s(\lambda)$ to the $r_\mathrm{SDSS}$ --- i.e. replicate the GAMA 
+        flux calibration:
+        $$s'(\lambda) = f \times c(\lambda) + e(\lambda)$$
+        where
+        $$f = \frac{10^{-0.4\times r_\mathrm{SDSS}} - \int e(\lambda) b_r(\lambda) d\lambda}
+        {\int c(\lambda) b_r(\lambda) d\lambda}$$
+
+        Then flux calibrate $s'(\lambda)$ to the desired $r$-band apparent 
+        magnitude.
+        '''
+        if emflux is not None and mag_em is None: 
+            raise ValueError('To do flux calibration appropriately, please include apparent magnitude that corresponds to the flux calibration of the emission lines') 
+        npix = len(self.basewave)
+    
+        # unpack metadata table.
+        templateseed = input_meta['SEED'].data
+        rand = np.random.RandomState(templateseed[0])
+
+        redshift = input_meta['REDSHIFT'].data
+        mag = input_meta['MAG'].data
+        vdisp = input_meta['VDISP'].data
+        assert input_meta['VDISP'].data.min() > 0
+
+        nmodel = len(input_meta)
+        templateid = input_meta['TEMPLATEID'].data
+
+        # Precompute the velocity dispersion convolution matrix for each unique
+        # value of vdisp.
+        blurmatrix = self._blurmatrix(vdisp)
+
+        # Optionally initialize the emission-line objects and line-ratios.
+        d4000 = self.basemeta['D4000']
+        
+        # input rest-frame emission line flux 
+        if emflux is None: 
+            emflux = np.zeros((nmodel, npix))
+        else: 
+            # check dimensions of emission line flux 
+            assert emflux.shape[0] == nmodel 
+            assert emflux.shape[1] == npix 
+            # emission line flux from EmissionLineFlux is in units of 10^(-17)erg/s/cm^2/A
+            emflux *= 1e-17
+
+        # Build each spectrum in turn.
+        outflux = np.zeros([nmodel, len(self.wave)]) # [erg/s/cm2/A]
+
+        for ii in range(nmodel):
+            templaterand = np.random.RandomState(templateseed[ii])
+
+            zwave = self.basewave.astype(float) * (1.0 + redshift[ii])
+
+            restflux = self.baseflux[templateid[ii]] #+ emflux[ii]
+    
+            # normalize spectra to match input apparent magnitude
+            maggies = self.decamwise.get_ab_maggies(restflux, zwave, mask_invalid=True)
+            emmaggies = self.decamwise.get_ab_maggies(emflux[ii], zwave, mask_invalid=True)
+            if self.normfilter in self.decamwise.names:
+                normmaggies = np.array(maggies[self.normfilter])
+                norm_emmaggies = np.array(emmaggies[self.normfilter])
+            else:
+                normmaggies = np.array(self.normfilt.get_ab_maggies(
+                    restflux, zwave, mask_invalid=True)[self.normfilter])
+                norm_emmaggies = np.array(self.normfilt.get_ab_maggies(
+                    emflux, zwave, mask_invalid=True)[self.normfilter])
+
+            # populate the output flux vector (suitably normalized) and metadata table, 
+            # convolve with the velocity dispersion, resample, and finish up.  
+            # Note that the emission lines already have the velocity dispersion
+            # line-width.
+            if mag_em is None: 
+                magnorm = (10**(-0.4*mag[ii]) - norm_emmaggies) / normmaggies
+                blurflux = ((blurmatrix[vdisp[ii]] * restflux) + emflux[ii]) * magnorm
+                synthnano = dict()
+                for key in maggies.columns:
+                    synthnano[key] = 1E9 * maggies[key] * magnorm # nanomaggies
+            else: 
+                magnorm0 = (10**(-0.4*mag_em[ii]) - norm_emmaggies) / normmaggies
+                norm_restflux = restflux * magnorm0 + emflux[ii] 
+                maggies1 = self.decamwise.get_ab_maggies(norm_restflux, zwave, mask_invalid=True)
+                if self.normfilter in self.decamwise.names:
+                    normmaggies1 = np.array(maggies1[self.normfilter])
+                else:
+                    normmaggies1 = np.array(self.normfilt.get_ab_maggies(
+                        norm_restflux, zwave, mask_invalid=True)[self.normfilter])
+                magnorm1 = 10**(-0.4*mag[ii]) / normmaggies1
+
+                blurflux = ((blurmatrix[vdisp[ii]] * restflux * magnorm0) + emflux[ii]) * magnorm1
+                
+                synthnano = dict()
+                for key in maggies1.columns:
+                    synthnano[key] = 1E9 * maggies1[key] * magnorm1 # nanomaggies
+
+            outflux[ii, :] = resample_flux(self.wave, zwave, blurflux, extrapolate=True)
+
+            input_meta['TEMPLATEID'][ii] = templateid[ii] 
+            input_meta['D4000'][ii] = d4000[templateid[ii]]
+            input_meta['FLUX_G'][ii] = synthnano['decam2014-g']
+            input_meta['FLUX_R'][ii] = synthnano['decam2014-r']
+            input_meta['FLUX_Z'][ii] = synthnano['decam2014-z']
+            input_meta['FLUX_W1'][ii] = synthnano['wise2010-W1']
+            input_meta['FLUX_W2'][ii] = synthnano['wise2010-W2']
+
+        return 1e17 * outflux, self.wave, input_meta
+
+    def _blurmatrix(self, vdisp):
+        """Pre-compute the blur_matrix as a dictionary keyed by each unique value of
+        vdisp.
+
+        """
+        uvdisp = list(set(vdisp))
+
+        blurmatrix = dict()
+        for uvv in uvdisp:
+            sigma = 1.0 + (self.basewave * uvv / LIGHT)
+            blurmatrix[uvv] = pxs.gauss_blur_matrix(self.pixbound, sigma).astype('f4')
+
+        return blurmatrix
+
+    def _oldSpectra(self, r_mag, zred, vdisp, seed=None, templateid=None, silent=True):
+        ''' ***DEFUNCT*** keeping it around for testing purposes
+        Given r-band magnitude, redshift 
+        '''
+        np.random.seed(seed) # set random seed
+
         # initialize the templates once:
         self.bgs_templates = BGS(wave=self.wave, normfilter='decam2014-r') 
         #normfilter='sdss2010-r') # Need to generalize this!
         self.bgs_templates.normline = None # no emission lines!
-
-    def Spectra(self, r_mag, zred, vdisp, seed=None, templateid=None, silent=True):
-        ''' Given data in the output format of `feasibgs.catalog.Read`
-        generate spectra given the `templateid`.
-        '''
-        np.random.seed(seed) # set random seed
 
         # meta data of 'mag', 'redshift', 'vdisp'
         input_meta = empty_metatable(nmodel=len(r_mag), objtype='BGS')
@@ -150,51 +355,44 @@ class BGStemplates(object):
                                                           verbose=(not silent))
         return flux, self.wave, meta
 
-    def addEmissionLines(self, wave, flux, gama_data, gama_indices, silent=True): 
-        ''' add emission lines to spectra
+    def _oldaddEmissionLines(self, wave, flux, gama_data, gama_indices, dr_gama=3, silent=True): 
+        '''***DEFUNCT*** keeping it around for testing purposes
+        add emission lines to spectra
         '''
         assert flux.shape[0] == len(gama_indices)
+        if dr_gama != 3: raise ValueError("Only supported for GAMA DR3") 
         _flux = flux.copy() 
         # emission lines
-        emline_keys = ['oiib','oiir', 'hb',  'oiiib', 'oiiir', 'niib', 'ha', 'niir', 'siib', 'siir']
-        emline_lambda = [3726., 3728., 4861., 4959., 5007., 6548., 6563., 6584., 6716., 6731.]
+        emline_keys = ['oiib', 'oiir', 'hb',  'oiiib', 'oiiir', 'oib', 'oir', 'niib', 'ha', 'niir', 'siib', 'siir']
+        emline_lambda = [3726., 3729., 4861., 4959., 5007., 6300., 6364., 6548., 6563., 6583., 6717., 6731.]
     
         # gama spectra data
         gama_sdata = gama_data['gama-spec']
 
         # redshifts 
-        z_gama = gama_data['gama-spec']['z_helio'][gama_indices]
-
-        # get median emission line widths for case where the emission line is measured 
-        # but the width is not... 
-        emline_sigmed = [] 
-        for k in emline_keys: 
-            hassig = (gama_sdata[k+'sig'] > 0)
-            emline_sigmed.append(np.median(gama_sdata[k+'sig'][hassig]))
+        z_gama = gama_data['gama-spec']['z'][gama_indices]
 
         # loop through emission lines and add them on! 
         for i_k, k in enumerate(emline_keys): 
-            hasem = np.where(gama_sdata[k][gama_indices] != -99.)[0] # galaxies with measured emission line
-            if len(hasem) == 0: 
+            # galaxies with measured emission line (DR3 allows for negative emission lines...) 
+            hasem = (gama_sdata[k+'_flux'][gama_indices] > 0.)
+            n_hasem = np.sum(hasem) 
+            if n_hasem == 0: 
                 if not silent: print('no galaxies with emission line %s' % k) 
                 continue
             
-            em_lineflux = gama_sdata[k][gama_indices][hasem] # line flux [10^(-17) erg/s/cm^2]
+            em_lineflux = gama_sdata[k+'_flux'][gama_indices][hasem] # line flux [10^(-17) erg/s/cm^2]
             # width of Gaussian emission line 
-            em_sig = gama_sdata[k+'sig'][gama_indices][hasem] # Angstrom
-            # fit the width of the emission line is not fit 
-            # accurately, then use the median value of the data  
-            nosig = (em_sig <= 0.) & (em_sig != -10.)
-            em_sig[nosig] = emline_sigmed[i_k]
-            em_sig[em_sig == -10.] = 10.
+            em_sig = gama_sdata['sig_'+k][gama_indices][hasem] # Angstrom
+            assert em_sig.min() > 0. 
 
             # normalization of the Gaussian
             A = em_lineflux/np.sqrt(2. * np.pi * em_sig**2)
 
             lambda_eml_red = emline_lambda[i_k] * (1 + z_gama[hasem]) 
 
-            emline_flux = A[:,None] * np.exp(-0.5*(np.tile(wave, len(hasem)).reshape(len(hasem), len(wave)) - lambda_eml_red[:,None])**2/em_sig[:,None]**2)
-
+            emline_flux = A[:,None] * \
+                    np.exp(-0.5*(np.tile(wave, n_hasem).reshape(n_hasem, len(wave)) - lambda_eml_red[:,None])**2/em_sig[:,None]**2)
             _flux[hasem] += emline_flux 
 
         return wave, _flux 

@@ -247,7 +247,7 @@ class GamaLegacy(Catalog):
         else: 
             mag_ugriz =np.array([data['gama-kcorr-z0.1'][b+'_model'] for b in bands_sdss]) 
 
-        redshift = data['gama-spec']['z_helio']  # redshift
+        redshift = data['gama-spec']['z']  # redshift
         # distance modulus 
         cosmo = FlatLambdaCDM(H0=H0, Om0=Om0)
         D_L = cosmo.luminosity_distance(redshift).value # Mpc 

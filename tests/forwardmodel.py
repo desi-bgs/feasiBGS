@@ -11,6 +11,7 @@ import astropy.units as u
 from astropy.io import fits
 from astropy.table import Table
 from astropy.cosmology import FlatLambdaCDM
+from desisim.io import empty_metatable
 from desispec.io import read_spectra
 from desispec.io import write_spectra
 from desispec.spectra import Spectra
@@ -546,6 +547,85 @@ def GamaLegacy_expSpectra():
     return None
 
 
+def GamaLegacy_EmissionLineFlux(): 
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read('g15')
+
+    redshift = gleg['gama-spec']['z'] # redshift 
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
+
+    # pick a random galaxy from the GAMA-legacy sample
+    i_rand = np.random.choice(range(len(redshift)), size=10) 
+
+    # match random galaxy to BGS templates
+    bgs3 = FM.BGStree() 
+    match = bgs3._GamaLegacy(gleg, index=i_rand) 
+
+    s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=2e4)
+    emline_flux = s_bgs.EmissionLineFlux(gleg, index=i_rand, dr_gama=3, silent=True)
+    
+    fig = plt.figure(figsize=(10,3)) 
+    sub = fig.add_subplot(111)
+    for i in range(emline_flux.shape[0]): 
+        sub.plot(s_bgs.basewave.astype(float), emline_flux[i,:], lw=0.5)
+    
+    for l_em in [3726., 3729., 4861., 4959., 5007., 6300., 6364., 6548., 6563., 6583., 6717., 6731.]: 
+        sub.vlines(l_em, 0., 100., color='k', linestyle=':', linewidth=1) 
+    sub.set_xlim([3000., 7000.])
+    fig.savefig(UT.fig_dir()+"GamaLegacy_EmissionLineFlux.png", bbox_inches='tight')
+    plt.close() 
+    return None 
+
+
+def GamaLegacy_makegalaxytemplate_hack(): 
+    '''
+    '''
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read('g15')
+
+    redshift = gleg['gama-spec']['z'] # redshift 
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
+
+    # pick a random galaxy from the GAMA-legacy sample
+    i_rand = np.random.choice(range(len(redshift)), size=1) 
+
+    # match random galaxy to BGS templates
+    bgs3 = FM.BGStree() 
+    match = bgs3._GamaLegacy(gleg, index=i_rand) 
+    mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
+
+    s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=2e4)
+    vdisp = np.repeat(100.0, len(i_rand)) # velocity dispersions [km/s]
+    
+    emline_flux = None#s_bgs.EmissionLineFlux(gleg, index=i_rand, dr_gama=3, silent=True)
+    flux, wave, meta = s_bgs.Spectra(
+            gleg['gama-photo']['modelmag_r'][i_rand], 
+            redshift[i_rand], 
+            vdisp,
+            seed=1, templateid=match, 
+            emflux=emline_flux, 
+            mag_em=None, #gleg['gama-photo']['modelmag_r'][i_rand], 
+            silent=False) 
+    fig = plt.figure(figsize=(12,5)) 
+    sub = fig.add_subplot(111)
+    sub.plot(wave, flux[0], c='k', lw=0.5) 
+    
+    flux1, wave1, meta1 = s_bgs._oldSpectra(
+            gleg['gama-photo']['modelmag_r'][i_rand], 
+            redshift[i_rand], 
+            vdisp,
+            seed=1, templateid=match, silent=False) 
+    sub.plot(wave1, flux1[0], c='C1', lw=0.5, ls='--') 
+    #wave1_eml, flux1_eml = s_bgs._oldaddEmissionLines(wave1, flux1, gleg, i_rand, silent=False) 
+    #sub.plot(wave1_eml, flux1_eml[0], c='C1', lw=0.5, ls='--') 
+    sub.set_xlim([3600., 9800.]) 
+    fig.savefig(UT.fig_dir()+"GamaLegacy_makegalaxytemplate.png", bbox_inches='tight')
+    plt.close() 
+    return None 
+
+
 def matchGamaLegacy(): 
     ''' match galaxies from the GAMA-Legacy catalog to 
     BGS templates and compare the meta data 
@@ -605,6 +685,8 @@ def matchGamaLegacy():
 
 
 if __name__=="__main__": 
-    expSpectra_redrock_outlier()
+    #GamaLegacy_EmissionLineFlux()
+    GamaLegacy_makegalaxytemplate_hack()
+    #expSpectra_redrock_outlier()
     #weird_expSpectra_dark_vs_bright(89)
     #weird_expSpectra_zoom(89, sky='bright', xrange0=[1.05, 1.07], yrange0=[0,1e5], xrange1=[7600, 7800], yrange1=[0., 50.])
