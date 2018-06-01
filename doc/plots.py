@@ -308,7 +308,6 @@ def GamaLegacy_emlineSpectra():
     #fig.savefig(UT.doc_dir()+"figs/GLeg_EmLineSpectra.png", bbox_inches='tight')
     fig = plt.figure(figsize=(18,6))
     gs = mpl.gridspec.GridSpec(1, 2, width_ratios=[1,3])
-
     sub1 = plt.subplot(gs[0]) #fig.add_subplot(121)
     sub2 = plt.subplot(gs[1]) #fig.add_subplot(122)
     sub1.scatter(absmag_ugriz[2,:][::10], absmag_ugriz[1,:][::10] - absmag_ugriz[2,:][::10], c='k', s=0.1) 
@@ -401,9 +400,9 @@ def rMag_normalize():
     '''
     # read in GAMA-Legacy catalog 
     cata = Cat.GamaLegacy()
-    gleg = cata.Read()
+    gleg = cata.Read('g15')
 
-    redshift = gleg['gama-spec']['z_helio'] # redshift 
+    redshift = gleg['gama-spec']['z'] # redshift 
     absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
 
     # pick a random galaxy from the GAMA-legacy sample
@@ -413,39 +412,30 @@ def rMag_normalize():
     bgs3 = FM.BGStree() 
     match = bgs3._GamaLegacy(gleg, index=i_rand) 
     mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
-
-    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    
+    # using the template generate source spectra *without* emission lines 
+    s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=2e4)
     vdisp = np.repeat(100.0, len(i_rand)) # velocity dispersions [km/s]
     
-    # gama model r-band magnitude
-    flux_mr_eml, wave_mr, _ = bgstemp.Spectra(
-            gleg['gama-photo']['modelmag_r'][i_rand], 
-            redshift[i_rand], 
-            vdisp,
-            seed=1, templateid=match, silent=False) 
-    #flux_mr0 = flux_mr.copy()  
-    #wave_mr, flux_mr_eml = bgstemp.addEmissionLines(wave_mr, flux_mr0, gleg, i_rand, silent=False) 
-    
+    # normalize by gama model r-band magnitude
+    flux_gama, wave_gama, _ = s_bgs.Spectra(
+            gleg['gama-photo']['modelmag_r'][i_rand], redshift[i_rand], vdisp, 
+            seed=1, templateid=match, emflux=None, mag_em=None) 
+
     # derive r-band aperture magnitude from Legacy photometry 
     r_apflux = gleg['legacy-photo']['apflux_r'][:,1]  # nanomaggies
     r_mag = UT.flux2mag(r_apflux, method='log')  # convert to mag 
-    r_mag_max = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,-1], method='log')
-
-    flux_eml, wave, meta = bgstemp.Spectra(
-            r_mag[i_rand], 
-            redshift[i_rand], 
-            vdisp,
-            seed=1, templateid=match, silent=False) 
-    #flux0 = flux.copy()  
-    #wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, i_rand, silent=False) 
+    flux_eml, wave_eml, _ = s_bgs.Spectra(
+            r_mag[i_rand], redshift[i_rand], vdisp, seed=1, templateid=match, 
+            emflux=None, mag_em=None, silent=False) 
     print('model magnitude: %f' % gleg['gama-photo']['modelmag_r'][i_rand]) 
     print('r aperture magnitude 0.75 arcsec: %f' % r_mag[i_rand]) 
-    print('r aperture magnitude 7.0 arcsec: %f' % r_mag_max[i_rand]) 
 
-    fig = plt.figure(figsize=(12,6))
-    sub1 = fig.add_subplot(121)
-    sub2 = fig.add_subplot(122)
-    sub1.scatter(absmag_ugriz[2,:], absmag_ugriz[1,:] - absmag_ugriz[2,:], c='k', s=1) 
+    fig = plt.figure(figsize=(18,6))
+    gs = mpl.gridspec.GridSpec(1, 2, width_ratios=[1,3])
+    sub1 = plt.subplot(gs[0]) #fig.add_subplot(121)
+    sub2 = plt.subplot(gs[1]) #fig.add_subplot(122)
+    sub1.scatter(absmag_ugriz[2,:][::10], absmag_ugriz[1,:][::10] - absmag_ugriz[2,:][::10], c='k', s=1) 
     for ii, i in enumerate(i_rand): 
         sub1.scatter(mabs_temp[match[ii],2], mabs_temp[match[ii],1] - mabs_temp[match[ii],2],
                 color='C'+str(ii), s=30, edgecolors='k', marker='^', label='Template')
@@ -455,9 +445,9 @@ def rMag_normalize():
             sub1.legend(loc='upper left', markerscale=3, handletextpad=0., prop={'size':20})
 
         # plot template spectra w/ emission lines
-        sub2.plot(wave, flux_mr_eml[ii], c='C'+str(ii), label='GAMA model $r$-band mag') 
+        sub2.plot(wave_gama, flux_gama[ii], c='C'+str(ii), label='GAMA model $r$-band mag') 
         # plot template spectra
-        sub2.plot(wave, flux_eml[ii], c='k', ls=':', lw=0.5, label="Legacy $r$-band $0.75''$ apflux") 
+        sub2.plot(wave_eml, flux_eml[ii], c='k', ls=':', lw=0.5, label="Legacy $r$-band $0.75''$ apflux") 
     sub1.set_xlabel('$M_{0.1r}$', fontsize=20) 
     sub1.set_xlim([-14., -24]) 
     sub1.set_ylabel(r'$^{0.1}(g-r)$ color', fontsize=20) 
@@ -468,9 +458,100 @@ def rMag_normalize():
     sub2.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
     sub2.set_xlim([3.5e3, 1e4]) 
     sub2.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
-    sub2.set_ylim([0., 1.25*flux_mr_eml[0].max()]) 
-    fig.subplots_adjust(wspace=0.3) 
+    sub2.set_ylim([0., 1.25*flux_gama[0].max()]) 
+    fig.subplots_adjust(wspace=0.2) 
     fig.savefig(UT.doc_dir()+"figs/GLeg_rMag_norm.pdf", bbox_inches='tight')
+    plt.close() 
+    return None
+
+
+def rMag_normalize_emline(): 
+    ''' Compare the normalization of the template spectra using model r-magnitude 
+    and apflux derived magnitude
+    '''
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read('g15')
+
+    redshift = gleg['gama-spec']['z'] # redshift 
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
+
+    # pick a random galaxy from the GAMA-legacy sample
+    i_rand = np.random.choice(range(len(redshift)), size=1) 
+
+    # match random galaxy to BGS templates
+    bgs3 = FM.BGStree() 
+    match = bgs3._GamaLegacy(gleg, index=i_rand) 
+    mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
+    
+    # using the template generate source spectra *without* emission lines 
+    s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=2e4)
+    vdisp = np.repeat(100.0, len(i_rand)) # velocity dispersions [km/s]
+    
+    # emission line flux 
+    emline_flux = s_bgs.EmissionLineFlux(gleg, index=i_rand, dr_gama=3, silent=True)
+    print 'emline flux max ', emline_flux.max()
+    # normalize by gama model r-band magnitude
+    flux_gama, wave_gama, _ = s_bgs.Spectra(
+            gleg['gama-photo']['modelmag_r'][i_rand], redshift[i_rand], vdisp, 
+            seed=1, templateid=match, 
+            emflux=emline_flux, mag_em=gleg['gama-photo']['modelmag_r'][i_rand]) 
+
+    emline_flux = s_bgs.EmissionLineFlux(gleg, index=i_rand, dr_gama=3, silent=True)
+    print 'emline flux max ', emline_flux.max()
+    # derive r-band aperture magnitude from Legacy photometry 
+    r_apflux = gleg['legacy-photo']['apflux_r'][:,1]  # nanomaggies
+    r_mag = UT.flux2mag(r_apflux, method='log')  # convert to mag 
+    flux_eml, wave_eml, _ = s_bgs.Spectra(
+            r_mag[i_rand], redshift[i_rand], vdisp, seed=1, templateid=match, 
+            emflux=emline_flux, mag_em=gleg['gama-photo']['modelmag_r'][i_rand])
+    print('model magnitude: %f' % gleg['gama-photo']['modelmag_r'][i_rand]) 
+    print('r aperture magnitude 0.75 arcsec: %f' % r_mag[i_rand]) 
+    
+    emline_keys = [r'[OII]$_b$', r'[OII]$_r$', r'$\mathrm{H}_\beta$',  
+            r'[OIII]$_b$', r'[OIII]$_r$', r'[OI]$_b$', r'[OI]$_r$', 
+            r'[NII]$_b$', r'$\mathrm{H}_\alpha$', r'[NII]$_r$', 
+            r'[SII]$_b$', r'[SII]$_r$']
+    emline_lambda = [3726., 3729., 4861., 4959., 5007., 6300., 6364., 6548., 6563., 6583., 6717., 6731.]
+    emline_zlambda = (1.+redshift[i_rand]) * np.array(emline_lambda)
+
+
+    fig = plt.figure(figsize=(18,6))
+    gs = mpl.gridspec.GridSpec(1, 2, width_ratios=[1,3])
+    sub1 = plt.subplot(gs[0]) #fig.add_subplot(121)
+    sub2 = plt.subplot(gs[1]) #fig.add_subplot(122)
+    sub1.scatter(absmag_ugriz[2,:][::10], absmag_ugriz[1,:][::10] - absmag_ugriz[2,:][::10], 
+            c='k', s=1) 
+    for ii, i in enumerate(i_rand): 
+        sub1.scatter(mabs_temp[match[ii],2], mabs_temp[match[ii],1] - mabs_temp[match[ii],2],
+                color='C'+str(ii), s=30, edgecolors='k', marker='^', label='Template')
+        sub1.scatter(absmag_ugriz[2,i], absmag_ugriz[1,i] - absmag_ugriz[2,i], 
+                color='C'+str(ii), s=30, edgecolors='k', marker='s', label='GAMA object')
+        if ii == 0: 
+            sub1.legend(loc='upper left', markerscale=3, handletextpad=0., prop={'size':20})
+
+        # plot template spectra w/ emission lines
+        sub2.plot(wave_gama, flux_gama[ii], c='C'+str(ii), label='GAMA model $r$-band mag') 
+        # plot template spectra
+        sub2.plot(wave_eml, flux_eml[ii], c='k', lw=0.5, label="Legacy $r$-band $0.75''$ apflux") 
+    sub1.set_xlabel('$M_{0.1r}$', fontsize=20) 
+    sub1.set_xlim([-14., -24]) 
+    sub1.set_ylabel(r'$^{0.1}(g-r)$ color', fontsize=20) 
+    sub1.set_ylim([-0.2, 1.6])
+    sub1.set_yticks([-0.2, 0.2, 0.6, 1.0, 1.4]) 
+
+    for i_l, zlambda in enumerate(emline_zlambda): 
+        sub2.vlines(zlambda, 0., 2.*flux_gama[0].max(), color='k', linestyle=':', linewidth=0.5)
+        sub2.text(zlambda, flux_gama[0].max()*float(28-i_l)/20., emline_keys[i_l], ha='left', 
+                va='top', fontsize=12) 
+
+    sub2.legend(loc='upper right', prop={'size': 15})
+    sub2.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
+    sub2.set_xlim([3.5e3, 1e4]) 
+    sub2.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
+    sub2.set_ylim([0., 2.*flux_gama[0].max()]) 
+    fig.subplots_adjust(wspace=0.2) 
+    fig.savefig(UT.doc_dir()+"figs/GLeg_rMag_norm_emline.pdf", bbox_inches='tight')
     plt.close() 
     return None
 
@@ -1004,10 +1085,11 @@ if __name__=="__main__":
     #GAMALegacy_Halpha_color()
     #BGStemplates()
     #GamaLegacy_matchSpectra()
-    GamaLegacy_emlineSpectra()
+    #GamaLegacy_emlineSpectra()
     #skySurfaceBrightness()
     #rMag_normalize()
-    #expSpectra()
+    #rMag_normalize_emline()
+    expSpectra()
     #expSpectra_emline()
     #expSpectra_redshift(seed=1)
     #expSpectra_SDSScomparison()

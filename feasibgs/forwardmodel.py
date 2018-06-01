@@ -119,8 +119,8 @@ class BGStree(object):
 
 
 class BGSsourceSpectra(GALAXY):
-    '''Generate source spectra for the forwardmodel using 
-    BGS templates
+    '''Generate source spectra for the forwardmodel using BGS templates
+    and GAMA emission line fluxes 
     '''
     def __init__(self, wavemin=None, wavemax=None, dw=0.2):
         ''' initiate BGS template spectra. Mainly for initializing `desisim.templates.BGS`
@@ -297,6 +297,7 @@ class BGSsourceSpectra(GALAXY):
                     normmaggies1 = np.array(self.normfilt.get_ab_maggies(
                         norm_restflux, zwave, mask_invalid=True)[self.normfilter])
                 magnorm1 = 10**(-0.4*mag[ii]) / normmaggies1
+                print magnorm1
 
                 blurflux = ((blurmatrix[vdisp[ii]] * restflux * magnorm0) + emflux[ii]) * magnorm1
                 
