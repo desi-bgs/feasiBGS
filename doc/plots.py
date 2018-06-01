@@ -467,7 +467,8 @@ def rMag_normalize():
 
 def rMag_normalize_emline(): 
     ''' Compare the normalization of the template spectra using model r-magnitude 
-    and apflux derived magnitude
+    and apflux derived magnitude with emission lines. The emission lines are included 
+    in the normalization
     '''
     # read in GAMA-Legacy catalog 
     cata = Cat.GamaLegacy()
@@ -562,14 +563,14 @@ def expSpectra():
     '''
     # read in GAMA-Legacy catalog 
     cata = Cat.GamaLegacy()
-    gleg = cata.Read()
+    gleg = cata.Read('g15')
 
-    redshift = gleg['gama-spec']['z_helio'] # redshift 
+    redshift = gleg['gama-spec']['z'] # redshift 
     absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
     
     # pick a random galaxy from the GAMA-legacy sample
     #i_rand = np.random.choice(range(len(redshift)), size=1) 
-    i_rand = [34893]
+    i_rand = np.array([38164])
     print('i_rand = %i' % i_rand[0]) 
 
     # match random galaxy to BGS templates
@@ -577,21 +578,20 @@ def expSpectra():
     match = bgs3._GamaLegacy(gleg, index=i_rand) 
     mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
 
-    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=2e4)
     vdisp = np.repeat(100.0, len(i_rand)) # velocity dispersions [km/s]
     
+    # r-band modelmag magnitude from GAMA photometry
+    r_mag_gama = gleg['gama-photo']['modelmag_r'][i_rand]
     # r-band aperture magnitude from Legacy photometry 
-    r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][i_rand,1], method='log')  
-    assert np.isfinite(r_mag)
-    print('r_mag = %f' % r_mag)
+    r_mag_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][i_rand,1], method='log')  
+    assert np.isfinite(r_mag_apflux)
+    print('r_mag = %f' % r_mag_apflux)
+    
+    emline_flux = s_bgs.EmissionLineFlux(gleg, index=i_rand, dr_gama=3, silent=True)
 
-    flux, wave, meta = bgstemp.Spectra(
-            r_mag, 
-            redshift[i_rand], 
-            vdisp,
-            seed=1, templateid=match, silent=False) 
-    flux0 = flux.copy()  
-    wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, i_rand, silent=False) 
+    flux_eml, wave, _ = s_bgs.Spectra(r_mag_apflux, redshift[i_rand], vdisp,
+            seed=1, templateid=match, emflux=emline_flux, mag_em=r_mag_gama) 
 
     # simulate exposure using 
     fdesi = FM.fakeDESIspec() 
@@ -600,9 +600,9 @@ def expSpectra():
     # write out simulated spectra
     for b in ['b', 'r', 'z']: 
         tbl_bright = Table([bgs_spectra_bright.wave[b], bgs_spectra_bright.flux[b][0].flatten()], names=('lambda', 'flux')) 
-        tbl_bright.write('obj'+str(i_rand[0])+'_brightsky_'+b+'.fits', format='fits', overwrite=True) 
+        tbl_bright.write(UT.dat_dir()+'spectra/obj'+str(i_rand[0])+'_brightsky_'+b+'.fits', format='fits', overwrite=True) 
         tbl_dark = Table([bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten()], names=('lambda', 'flux'))
-        tbl_dark.write('obj'+str(i_rand[0])+'darksky_'+b+'.fits', format='fits', overwrite=True) 
+        tbl_dark.write(UT.dat_dir()+'spectra/obj'+str(i_rand[0])+'darksky_'+b+'.fits', format='fits', overwrite=True) 
     
     # plot the spectra
     fig, (sub1, sub2) = plt.subplots(1,2, figsize=(12,4), gridspec_kw={'width_ratios':[1,3]})
@@ -623,7 +623,7 @@ def expSpectra():
         sub2.plot(bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten(), 
                 c='C0', lw=0.2, alpha=0.7, label=lbl0) 
     # plot template spectra
-    sub2.plot(wave, flux[0], c='k', lw=0.3, ls=':', label='Template')
+    #sub2.plot(wave, flux[0], c='k', lw=0.3, ls=':', label='Template')
     
     sub2.text(0.95, 0.9, r'$z_\mathrm{GAMA} = '+str(redshift[i_rand[0]])+'$', 
             ha='right', va='center', transform=sub2.transAxes, fontsize=20)
@@ -636,7 +636,7 @@ def expSpectra():
     sub2.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
     sub2.set_xlim([3600., 9800.]) 
     sub2.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
-    sub2.set_ylim([0., 3*flux0[0].max()]) 
+    sub2.set_ylim([0., 1.5*flux_eml[0].max()]) 
     sub2.legend(loc='upper left', prop={'size': 15}) 
     fig.savefig(UT.doc_dir()+"figs/Gleg_expSpectra.pdf", bbox_inches='tight')
     plt.close() 
@@ -649,14 +649,14 @@ def expSpectra_emline():
     '''
     # read in GAMA-Legacy catalog 
     cata = Cat.GamaLegacy()
-    gleg = cata.Read()
+    gleg = cata.Read('g15')
 
-    redshift = gleg['gama-spec']['z_helio'] # redshift 
+    redshift = gleg['gama-spec']['z'] # redshift 
     absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
 
     # pick a random galaxy from the GAMA-legacy sample
     #i_rand = np.random.choice(range(len(redshift)), size=1) 
-    i_rand = [34893]
+    i_rand = np.array([38164])
     print('i_rand = %i' % i_rand[0]) 
 
     # match random galaxy to BGS templates
@@ -664,15 +664,19 @@ def expSpectra_emline():
     match = bgs3._GamaLegacy(gleg, index=i_rand) 
     mabs_temp = bgs3.meta['SDSS_UGRIZ_ABSMAG_Z01'] # template absolute magnitude 
 
-    bgstemp = FM.BGStemplates(wavemin=1500.0, wavemax=2e4)
+    s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=2e4)
     vdisp = np.repeat(100.0, len(i_rand)) # velocity dispersions [km/s]
     
     # r-band aperture magnitude from Legacy photometry 
-    r_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][i_rand,1], method='log')  
-    print('r_mag = %f' % r_mag)
+    r_mag_gama = gleg['gama-photo']['modelmag_r'][i_rand]
+    r_mag_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][i_rand,1], method='log')  
+    print('GAMA r_mag = %f' % r_mag_gama)
+    print('apflux r_mag = %f' % r_mag_apflux)
 
-    flux, wave, meta = bgstemp.Spectra(r_mag, redshift[i_rand], vdisp, seed=1, templateid=match, silent=False) 
-    wave, flux_eml = bgstemp.addEmissionLines(wave, flux, gleg, i_rand, silent=False) 
+    emline_flux = s_bgs.EmissionLineFlux(gleg, index=i_rand, dr_gama=3, silent=True)
+
+    flux_eml, wave, _ = s_bgs.Spectra(r_mag_apflux, redshift[i_rand], vdisp, seed=1, 
+            templateid=match, emflux=emline_flux, mag_em=r_mag_gama, silent=False) 
 
     # simulate exposure using 
     fdesi = FM.fakeDESIspec() 
@@ -691,22 +695,25 @@ def expSpectra_emline():
         sub.plot(bgs_spectra_dark.wave[b], bgs_spectra_dark.flux[b][0].flatten(), 
                 c='C0', lw=0.5, label=lbl0) 
     
-    emline_labels = ['[OII]', r'$\mathrm{H}_\beta$',  r'[OIII]$_b$', r'[OIII]$_r$', r'[NII]$_b$', r'$\mathrm{H}_\alpha$', 
-            r'[NII]$_r$', '[SII]']
-    emline_lambda = [3727., 4861., 4959., 5007., 6548., 6563., 6584., 6716.]
-    emline_keys = ['oiib', 'hb',  'oiiib', 'oiiir', 'niib', 'ha', 'niir', 'siib']
-
+    emline_keys = ['oiib', 'oiir', 'hb',  'oiiib', 'oiiir', 'oib', 'oir', 'niib', 
+            'ha', 'niir', 'siib', 'siir']
+    emline_labels = [r'[OII]$_b$', r'[OII]$_r$', r'$\mathrm{H}_\beta$',  
+            r'[OIII]$_b$', r'[OIII]$_r$', r'[OI]$_b$', r'[OI]$_r$', 
+            r'[NII]$_b$', r'$\mathrm{H}_\alpha$', r'[NII]$_r$', 
+            r'[SII]$_b$', r'[SII]$_r$']
+    emline_lambda = [3726., 3729., 4861., 4959., 5007., 6300., 6364., 6548., 6563., 6583., 6717., 6731.]
     emline_zlambda = (1.+redshift[i_rand][0]) * np.array(emline_lambda)
     
     for i_l, zlambda in enumerate(emline_zlambda): 
         # mark the redshifted wavelength of the emission line 
-        sub.vlines(zlambda, 0., 2.*flux_eml[0].max(), color='k', linestyle=':', linewidth=2) 
-        sub.text(1.05*zlambda, flux[0].max()*float(20-i_l)/10., emline_labels[i_l], ha='left', va='top', fontsize=12) 
+        sub.vlines(zlambda, 0., 2.*flux_eml[0].max(), color='k', linestyle=':', linewidth=0.5) 
+        sub.text(1.05*zlambda, flux_eml[0].max()*float(15-i_l)/11., emline_labels[i_l],
+                ha='left', va='top', fontsize=12) 
 
         # lineflux of the emissionline 
-        emlineflux = gleg['gama-spec'][emline_keys[i_l]][i_rand][0]
+        emlineflux = gleg['gama-spec'][emline_keys[i_l]+'_flux'][i_rand][0]
         # width of emline 
-        emlinesig = gleg['gama-spec'][emline_keys[i_l]+'sig'][i_rand][0]
+        emlinesig = gleg['gama-spec']['sig_'+emline_keys[i_l]][i_rand][0]
         if (emlineflux == -99.) or (emlinesig <= 0.): continue 
         A = emlineflux/np.sqrt(2.*np.pi*emlinesig**2)
 
@@ -722,7 +729,7 @@ def expSpectra_emline():
     sub.set_xlabel('Wavelength [$\AA$] ', fontsize=20) 
     sub.set_xlim([3600., 9800.]) 
     sub.set_ylabel('$f(\lambda)\,\,[10^{-17}erg/s/cm^2/\AA]$', fontsize=20) 
-    sub.set_ylim([0., 3*flux[0].max()]) 
+    sub.set_ylim([0., 1.5*flux_eml[0].max()]) 
     #sub.legend(loc='upper left', prop={'size': 15}) 
     fig.savefig(UT.doc_dir()+"figs/Gleg_expSpectra_emline.pdf", bbox_inches='tight')
     plt.close() 
@@ -742,13 +749,13 @@ def expSpectra_emline():
     
         # mark the redshifted wavelength of the emission line 
         sub.vlines(zlambda, 0., 2.*flux_eml[0].max(), color='k', linestyle=':', linewidth=0.5) 
-        sub.text(0.9, 0.85, emline_labels[i_l]+'\n $\sigma='+str(gleg['gama-spec'][emline_keys[i_l]+'sig'][i_rand][0])+'$', 
+        sub.text(0.9, 0.85, emline_labels[i_l]+'\n $\sigma='+str(gleg['gama-spec']['sig_'+emline_keys[i_l]][i_rand][0])+'$', 
                 ha='right', va='center', transform=sub.transAxes, fontsize=20)
 
         # lineflux of the emissionline 
-        emlineflux = gleg['gama-spec'][emline_keys[i_l]][i_rand][0]
+        emlineflux = gleg['gama-spec'][emline_keys[i_l]+'_flux'][i_rand][0]
         # width of emline 
-        emlinesig = gleg['gama-spec'][emline_keys[i_l]+'sig'][i_rand][0]
+        emlinesig = gleg['gama-spec']['sig_'+emline_keys[i_l]][i_rand][0]
         if (emlineflux == -99.) or (emlinesig <= 0.): continue 
         A = emlineflux/np.sqrt(2.*np.pi*emlinesig**2)
 
@@ -756,7 +763,7 @@ def expSpectra_emline():
 
         sub.plot(wave, f_eml(wave), c='k', linestyle=':', linewidth=1)
         sub.set_xlim([zlambda-50., zlambda+50.]) 
-        sub.set_ylim([0., 3*flux[0].max()]) 
+        sub.set_ylim([0., 3*flux_eml[0].max()]) 
 
     fig.savefig(UT.doc_dir()+"figs/Gleg_expSpectra_emline_zoom.pdf", bbox_inches='tight')
     plt.close() 
@@ -1089,8 +1096,8 @@ if __name__=="__main__":
     #skySurfaceBrightness()
     #rMag_normalize()
     #rMag_normalize_emline()
-    expSpectra()
-    #expSpectra_emline()
+    #expSpectra()
+    expSpectra_emline()
     #expSpectra_redshift(seed=1)
     #expSpectra_SDSScomparison()
     #SDSS_emlineComparison()
