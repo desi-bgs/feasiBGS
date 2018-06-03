@@ -720,8 +720,7 @@ def expSpectra_emline():
         f_eml = lambda ww: A*np.exp(-0.5*(ww-zlambda)**2/emlinesig**2)
 
         #sub.plot(wave, f_eml(wave), c='k', linestyle=':', linewidth=2)
-        print('-- %s --' % emline_keys[i_l]) 
-        print('%f vs %f' % (emlineflux, integ.simps(f_eml(wave), x=wave)))
+        assert np.abs(emlineflux - integ.simps(f_eml(wave), x=wave)) < 0.01
 
     sub.text(0.95, 0.9, r'$z_\mathrm{GAMA} = '+str(redshift[i_rand[0]])+'$', 
             ha='right', va='center', transform=sub.transAxes, fontsize=20)

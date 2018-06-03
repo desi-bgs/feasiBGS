@@ -297,6 +297,8 @@ class BGSsourceSpectra(GALAXY):
                     normmaggies1 = np.array(self.normfilt.get_ab_maggies(
                         norm_restflux, zwave, mask_invalid=True)[self.normfilter])
                 magnorm1 = 10**(-0.4*mag[ii]) / normmaggies1
+                # we checked to make sure these are the same 
+                #magnorm1 = 10**(-0.4*mag[ii]) / 10**(-0.4*mag_em[ii]) 
 
                 blurflux = ((blurmatrix[vdisp[ii]] * restflux * magnorm0) + emflux[ii]) * magnorm1
                 
