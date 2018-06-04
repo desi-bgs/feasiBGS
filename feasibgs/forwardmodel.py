@@ -138,9 +138,13 @@ class BGSsourceSpectra(GALAXY):
     def Spectra(self, r_mag, zred, vdisp, seed=None, templateid=None, emflux=None, mag_em=None, silent=True):
         '''
         '''
+        if isinstance(r_mag, np.ndarray):
+            nobj = len(r_mag) 
+        else: 
+            nobj = 1
         # meta data of 'mag', 'redshift', 'vdisp'
-        input_meta = empty_metatable(nmodel=len(r_mag), objtype='BGS')
-        input_meta['SEED'] = np.random.randint(2**32, size=len(r_mag)) 
+        input_meta = empty_metatable(nmodel=nobj, objtype='BGS')
+        input_meta['SEED'] = np.random.randint(2**32, size=nobj) 
         input_meta['MAG'] = r_mag # r band apparent magnitude
         input_meta['REDSHIFT'] = zred # redshift
         input_meta['VDISP'] = vdisp 
@@ -498,6 +502,16 @@ class fakeDESIspec(object):
         sim = self._simulate_spectra(wave, flux, fibermap=frame_fibermap, 
                 skycondition=skycondition, obsconditions=obvs_dict, 
                 redshift=None, seed=seed, psfconvolve=True)
+
+        for table in sim.camera_output :
+            tbl = table['num_source_electrons']
+            if tbl.min() < 0.: 
+                print(tbl.shape)
+                neg = (tbl.min(axis=0) < 0) 
+                print('--------------------') 
+                print('the following galaxies have negative num_source_electrons')
+                print(np.arange(tbl.shape[1])[neg])
+                table['num_source_electrons'][:,neg] = 0. #np.zeros(tbl.shape[0])
         
         # put in random noise 
         random_state = np.random.RandomState(seed)
