@@ -151,7 +151,7 @@ class BGSsourceSpectra(GALAXY):
         input_meta['TEMPLATEID'] = templateid
 
         flux, self.wave, meta = self._make_galaxy_templates(input_meta, emflux=emflux, mag_em=mag_em, 
-                nocolorcuts=True, restframe=False) 
+                nocolorcuts=True, restframe=False, silent=silent) 
 
         return flux, self.wave, meta
 
@@ -196,7 +196,7 @@ class BGSsourceSpectra(GALAXY):
                     np.exp(-0.5*(np.tile(wave, n_hasem).reshape(n_hasem, npix) - emline_lambda[i_k])**2/em_sig[:,None]**2)
         return emline_flux 
 
-    def _make_galaxy_templates(self, input_meta, emflux=None, mag_em=None, nocolorcuts=True, restframe=False):
+    def _make_galaxy_templates(self, input_meta, emflux=None, mag_em=None, nocolorcuts=True, restframe=False, silent=True):
         ''' a streamlined version of desisim.template.GALAXY.make_galaxy_templates
         for BGS galaxies that takes in emission line flux from self.EmissionLineFlux 
         as an optional input. Particular care was taken to figure out the flux 
@@ -293,6 +293,16 @@ class BGSsourceSpectra(GALAXY):
                     synthnano[key] = 1E9 * maggies[key] * magnorm # nanomaggies
             else: 
                 magnorm0 = (10**(-0.4*mag_em[ii]) - norm_emmaggies) / normmaggies
+                if magnorm0[0] < 0.: 
+                    # this really shouldn't happen if the GAMA spectrophoto calibration
+                    # is done correctly, but the magnitude from gama emission line flux 
+                    # alone is brighter than the photometric magnitude...
+                    # but since it happens set template flux to 0 
+                    magnorm0 = 0.
+                    if not silent: 
+                        print('--------------------') 
+                        print('the %i th galaxy has brighter emission lines than photometry...' % ii)
+
                 norm_restflux = restflux * magnorm0 + emflux[ii] 
                 maggies1 = self.decamwise.get_ab_maggies(norm_restflux, zwave, mask_invalid=True)
                 if self.normfilter in self.decamwise.names:
@@ -305,7 +315,6 @@ class BGSsourceSpectra(GALAXY):
                 #magnorm1 = 10**(-0.4*mag[ii]) / 10**(-0.4*mag_em[ii]) 
 
                 blurflux = ((blurmatrix[vdisp[ii]] * restflux * magnorm0) + emflux[ii]) * magnorm1
-                
                 synthnano = dict()
                 for key in maggies1.columns:
                     synthnano[key] = 1E9 * maggies1[key] * magnorm1 # nanomaggies
@@ -506,7 +515,6 @@ class fakeDESIspec(object):
         for table in sim.camera_output :
             tbl = table['num_source_electrons']
             if tbl.min() < 0.: 
-                print(tbl.shape)
                 neg = (tbl.min(axis=0) < 0) 
                 print('--------------------') 
                 print('the following galaxies have negative num_source_electrons')
@@ -648,13 +656,13 @@ class fakeDESIspec(object):
                 xy[unassigned,1] = np.asarray(fiberpos['Y'][unassigned], dtype=xy.dtype) * u.mm
             
         #- Determine source types
-        source_types = desisim.simexp.get_source_types(fibermap)
-        if np.any(source_types != "bgs"): raise ValueError("source types are not all BGS!") 
+        #source_types = desisim.simexp.get_source_types(fibermap)
+        #if np.any(source_types != "bgs"): raise ValueError("source types are not all BGS!") 
 
-        desi.instrument.fiberloss_method = 'fastsim'
+        #desi.instrument.fiberloss_method = 'fastsim'
 
-        source_fraction=None
-        source_half_light_radius=None
+        #source_fraction=None
+        #source_half_light_radius=None
 
         # BGS parameters based on SDSS main sample, in g-band
         # see analysis from J. Moustakas in
@@ -674,40 +682,36 @@ class fakeDESIspec(object):
         # source_fraction[:,1] is BULGE profile (devaucouleurs) fraction
         # 1 - np.sum(source_fraction,axis=1) is POINT source profile fraction
         # see specsim.GalsimFiberlossCalculator.create_source routine
-        source_fraction=np.zeros((nspec,2)) 
-        source_fraction[:,0]=0.52 # disk comp in BGS
-        source_fraction[:,1]=0.48 # bulge comp in BGS       
+        #source_fraction=np.zeros((nspec,2)) 
+        #source_fraction[:,0]=0.52 # disk comp in BGS
+        #source_fraction[:,1]=0.48 # bulge comp in BGS       
 
         # source_half_light_radius[:,0] is the half light radius in arcsec for the DISK profile
         # source_half_light_radius[:,1] is the half light radius in arcsec for the BULGE profile        
         # see specsim.GalsimFiberlossCalculator.create_source routine
-        source_half_light_radius=np.zeros((nspec,2))
+        #source_half_light_radius=np.zeros((nspec,2))
         
         # 4.7 is angular size of z=0.1 disk, and 1.3 is angular size of z=0.1 bulge
-        bgs_disk_z01 = 4.7  # in arcsec
-        bgs_bulge_z01 = 1.3 # in arcsec
+        #bgs_disk_z01 = 4.7  # in arcsec
+        #bgs_bulge_z01 = 1.3 # in arcsec
         
         # Convert to angular size of the objects in this sample with given redshifts
-        if redshift is None:
-            angscales = np.ones(len(source_types))
-        else:
-            # Avoid infinities
-            if np.any(redshift <= 0.):
-                bgs_redshifts[redshift <= 0.] = 0.0001
-            angscales = ( ang_diam_dist(0.1) / ang_diam_dist(redshift) ).value
-        source_half_light_radius[:,0]= bgs_disk_z01 * angscales # disk comp in BGS, arcsec
-        source_half_light_radius[:,1]= bgs_bulge_z01 * angscales  # bulge comp in BGS, arcsec
+        #if redshift is None:
+        #    angscales = np.ones(len(source_types))
+        #else:
+        #    # Avoid infinities
+        #    if np.any(redshift <= 0.):
+        #        bgs_redshifts[redshift <= 0.] = 0.0001
+        #    angscales = ( ang_diam_dist(0.1) / ang_diam_dist(redshift) ).value
+        #source_half_light_radius[:,0]= bgs_disk_z01 * angscales # disk comp in BGS, arcsec
+        #source_half_light_radius[:,1]= bgs_bulge_z01 * angscales  # bulge comp in BGS, arcsec
             
         #- Work around randomness in specsim quickfiberloss calculations
         #- while not impacting global random state.
         #- See https://github.com/desihub/specsim/issues/83
         randstate = np.random.get_state()
         np.random.seed(seed)
-        desi.simulate(sky_surface_brightness, source_fluxes=flux, focal_positions=xy, source_types=source_types,
-                source_fraction=source_fraction,
-                source_half_light_radius=source_half_light_radius,
-                source_minor_major_axis_ratio=None,
-                source_position_angle=None)
+        desi.simulate(sky_surface_brightness, source_fluxes=flux, focal_positions=xy)
         np.random.set_state(randstate)
         return desi
 
@@ -718,10 +722,7 @@ class SimulatorHacked(Simulator):
                 verbose=verbose) 
 
     def simulate(self, sky_surface_brightness, sky_positions=None, focal_positions=None,
-            source_fluxes=None, source_types=None, source_fraction=None,
-            source_half_light_radius=None,
-            source_minor_major_axis_ratio=None, source_position_angle=None,
-            save_fiberloss=None):
+            source_fluxes=None):
         ''' The main function that I'm going to hack. 
         
         notes
@@ -828,7 +829,7 @@ class SimulatorHacked(Simulator):
             source_flux *
             self.atmosphere.extinction[:, np.newaxis] #* fiberloss
             ).to(source_fiber_flux.unit)
-    
+
         # check that input sky_surface_brightness is the same size 
         # as the source_flux 
         assert source_flux.shape[0] == sky_surface_brightness.shape[0] 
