@@ -1,9 +1,9 @@
 #!/bin/bash -l 
-#SBATCH -q regular 
+#SBATCH -q debug 
 #SBATCH -N 1 
-#SBATCH -t 02:00:00 
-#SBATCH -J gleg_expSpec_g09_dark
-#SBATCH -o _gleg_expSpec_g09_dark.o 
+#SBATCH -t 00:10:00 
+#SBATCH -J gleg_expSpec_g15_faint_dark
+#SBATCH -o _gleg_expSpec_g15_faint_dark.o 
 #SBATCH -L SCRATCH,project 
 
 now=$(date +"%T") 
@@ -13,13 +13,13 @@ module load python/2.7-anaconda
 source activate myenv0 
 
 sky="dark"
-field="g09"
+field="g15"
 seed=1
 exptime=300
 # exposed spectra (each block takes ~5 mins?) 
-srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra $field $sky $seed $exptime
+#srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra $field $sky $seed $exptime
 # exposed spectra (takes ~5 mins) 
-#srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra_faintemline $sky $seed $exptime
+srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra_faintemline $field $sky $seed $exptime
 # exposed spectra (takes ~5 mins) 
 #srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra_noemline $sky $seed $exptime
 
