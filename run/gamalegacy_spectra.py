@@ -103,7 +103,7 @@ def expSpectra_faintEmLine(field, dr_gama=3, skycondition='bright', seed=1, expt
     # randomly select 1000 galaxies with faint Halpha line flux
     np.random.seed(seed)
     has_faint_emline = (ha_gama < 10.)
-    faint_emline = np.random.choice(np.arange(ngal)[hasmatch & has_rapflux & has_faint_emline], 1000) 
+    faint_emline = np.random.choice(np.arange(ngal)[hasmatch & has_rapflux & has_faint_emline], 1000, replace=False) 
 
     s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=2e4)
     # emission line fluxes
