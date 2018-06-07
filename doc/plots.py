@@ -940,8 +940,8 @@ def expSpectra_faintemline_redrock(exptime=480):
     and redshift success rate vs apflux r-mag  
     '''
     cata = Cat.GamaLegacy()
-    gleg = cata.Read()
-    redshift = gleg['gama-spec']['z_helio']
+    gleg = cata.Read('g15')
+    redshift = gleg['gama-spec']['z']
     ngal = len(redshift)
     print('%i galaxies in the GAMA-Legacy survey' % ngal)
 
@@ -949,12 +949,12 @@ def expSpectra_faintemline_redrock(exptime=480):
     g_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_g'][:,1])
     r_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
     # H-alpha line flux from GAMA spectroscopy
-    gama_ha = gleg['gama-spec']['ha']
+    gama_ha = gleg['gama-spec']['ha_flux']
 
-    fzdata = lambda s, et: ''.join([UT.dat_dir(), 'spectra/', 
-        'gama_legacy.expSpectra.', s, 'sky.seed1.exptime', str(exptime), '.faintEmLine.zbest.fits'])
+    fzdata = lambda s, et: ''.join([UT.dat_dir(), 'redrock/', 
+        'GamaLegacy.g15.expSpectra.', s, 'sky.seed1.exptime', str(exptime), '.faintEmLine.redrock.fits'])
     findex = lambda s, et: ''.join([UT.dat_dir(), 'spectra/', 
-        'gama_legacy.expSpectra.', s, 'sky.seed1.exptime', str(exptime), '.faintEmLine.index']) 
+        'GamaLegacy.g15.expSpectra.', s, 'sky.seed1.exptime', str(exptime), '.faintEmLine.index']) 
     
     # read in redrock redshifts
     zdark_data = fits.open(fzdata('dark', exptime))[1].data
@@ -974,12 +974,17 @@ def expSpectra_faintemline_redrock(exptime=480):
     fig = plt.figure(figsize=(15, 4))
     # panel 1 Halpha line flux versus g-r apflux legacy color 
     sub = fig.add_subplot(131)
-    sub.scatter(g_mag_legacy_apflux - r_mag_legacy_apflux, gama_ha, s=1, c='k')
-    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark], gama_ha[i_dark], c='C1', s=0.5)
+    hasha = (gama_ha > 0)
+    faintem = np.zeros(ngal, dtype=bool)
+    faintem[i_dark] = True
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[hasha], gama_ha[hasha], s=1, c='k')
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[np.invert(hasha)], np.repeat(1e-2, np.sum(np.invert(hasha))), s=1, c='k')
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[faintem & hasha], gama_ha[faintem & hasha], c='C1', s=0.5)
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[faintem & np.invert(hasha)], np.repeat(1e-2, np.sum(faintem & np.invert(hasha))), c='C1', s=0.5)
     sub.set_xlabel(r'$(g-r)$ from Legacy ap. flux', fontsize=20)
     sub.set_xlim([-0.2, 2.])
     sub.set_ylabel(r'$H_\alpha$ line flux GAMA DR2 $[10^{-17}erg/s/cm^2]$', fontsize=15)
-    sub.set_ylim([1e-2, 1e4])
+    sub.set_ylim([5e-3, 2e4])
     sub.set_yscale('log')
 
     # panel 2 z_redrock vs r_true
@@ -998,16 +1003,16 @@ def expSpectra_faintemline_redrock(exptime=480):
     mm_bright, e1_bright, ee1_bright = _z_successrate(r_mag_legacy_apflux[i_dark], #range=(18, 22), 
             condition=((zbright_data['ZWARN'] == 0) & (dz_1pz_bright < 0.003)))
     sub = fig.add_subplot(133)
-    sub.plot([17., 22.], [1., 1.], c='k', ls='--', lw=2)
+    sub.plot([17., 23.], [1., 1.], c='k', ls='--', lw=2)
     sub.errorbar(mm_dark, e1_dark, ee1_dark, c='C0', fmt='o', label="w/ Dark Sky")
     sub.errorbar(mm_bright, e1_bright, ee1_bright, fmt='.C1', label="w/ Bright Sky")
     sub.set_xlabel(r'$r_\mathrm{apflux}$ magnitude', fontsize=20)
-    sub.set_xlim([18.5, 22.])
+    sub.set_xlim([17., 23.])
     sub.set_ylabel(r'fraction of $\Delta z /(1+z_\mathrm{GAMA}) < 0.003$', fontsize=20)
-    sub.set_ylim([0., 1.2])
+    sub.set_ylim([-0.05, 1.2])
     sub.legend(loc='lower left', handletextpad=0., prop={'size': 20})
     fig.subplots_adjust(wspace=0.3)
-    fig.savefig(UT.doc_dir()+"figs/expSpectra_faintemline_redrock_exptime"+str(exptime)+".pdf", 
+    fig.savefig(UT.doc_dir()+"figs/gLeg_g15_expSpectra_faintemline_redrock_exptime"+str(exptime)+".pdf", 
         bbox_inches='tight')
     plt.close() 
     return None
@@ -1175,9 +1180,6 @@ def SDSS_emlineComparison():
     return None
 
 
-
-
-
 if __name__=="__main__": 
     #DESI_GAMA()
     #GAMALegacy_Halpha_color()
@@ -1189,9 +1191,9 @@ if __name__=="__main__":
     #rMag_normalize_emline()
     #expSpectra()
     #expSpectra_emline()
-    expSpectra_redrock(exptime=300)
+    #expSpectra_redrock(exptime=300)
     #expSpectra_redshift(seed=1)
     #expSpectra_SDSScomparison()
     #SDSS_emlineComparison()
     #for et in [300, 480, 1000]: 
-    #    expSpectra_faintemline_redrock(exptime=et)
+    expSpectra_faintemline_redrock(exptime=300)
