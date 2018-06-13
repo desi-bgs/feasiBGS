@@ -93,16 +93,16 @@ def zeff_hist(prop, ztrue, zest, range=None, threshold=0.003, nbins=20, bin_min=
     dz_1pz = np.abs(dz)/(1.+ztrue)
     s1 = (dz_1pz < threshold)
 
-    h0, bins = np.histogram(var, bins=nbins, range=range)
-    hv, _ = np.histogram(var, bins=bins, weights=var)
-    h1, _ = np.histogram(var[s1], bins=bins)
+    h0, bins = np.histogram(prop, bins=nbins, range=range)
+    hv, _ = np.histogram(prop, bins=bins, weights=prop)
+    h1, _ = np.histogram(prop[s1], bins=bins)
 
     good = h0 > bin_min 
     hv = hv[good]
     h0 = h0[good]
     h1 = h1[good]
 
-    vv = hv / h0 # weighted mean of var
+    vv = hv / h0 # weighted mean of prop 
 
     def _eff(k, n):
         eff = k.astype("float") / (n.astype('float') + (n==0))
