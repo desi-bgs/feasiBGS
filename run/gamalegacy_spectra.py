@@ -8,7 +8,6 @@ from feasibgs import util as UT
 from feasibgs import catalogs as Cat
 from feasibgs import forwardmodel as FM 
 
-from desispec.io import read_spectra
 from redrock.external.desi import rrdesi
 
 

@@ -365,7 +365,10 @@ class GamaLegacy(Catalog):
         if not silent: 
             # writeout all the GAMA objects without sweep objects
             nosweep = ~np.in1d(gama_data['photo']['objid'], gama_photo_dict['objid']) 
-            f_nosweep = ''.join([UT.dat_dir(), 'GAMA.DR', str(dr_gama), '.', field, '.nosweep_match.dat'])
+            f_nosweep = ''.join([UT.dat_dir(), 
+                'GAMA.DR', str(dr_gama), '.', field, '.nosweep_match.dat'])
+            print('========================')
+            print('Writing out GAMA object RA and Dec to %s' % f_nosweep) 
             np.savetxt(f_nosweep, np.array([gama_data['photo']['ra'], gama_data['photo']['dec']]).T, header='RA, Dec')
 
         # read apfluxes from tractor catalogs 
