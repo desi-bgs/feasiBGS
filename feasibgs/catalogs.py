@@ -369,8 +369,8 @@ class GamaLegacy(Catalog):
             f_nosweep = ''.join([UT.dat_dir(), 
                 'GAMA.DR', str(dr_gama), '.', field, '.nosweep_match.fits'])
             print('========================')
-            print('Writing out GAMA object RA and Dec to %s' % f_nosweep) 
-            tb = aTable([gama_data['photo']['ra'], gama_data['photo']['dec']], names=('ra', 'dec'))
+            print('Writing out RA, Dec of %i GAMA objects without Legacy sweep objects to %s' % f_nosweep) 
+            tb = aTable([gama_data['photo']['ra'][nosweep], gama_data['photo']['dec']][nosweep], names=('ra', 'dec'))
             tb.meta['COMMENTS'] = 'RA, Dec of GAMA objects without matches in Legacy DR5 sweep' 
             tb.write(f_nosweep, format='fits') 
             #np.savetxt(f_nosweep, np.array([gama_data['photo']['ra'], gama_data['photo']['dec']]).T, header='RA, Dec')
