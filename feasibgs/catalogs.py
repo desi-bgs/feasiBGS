@@ -362,6 +362,11 @@ class GamaLegacy(Catalog):
         assert len(sweep_dict['ra']) == len(gama_spec_dict['ra']) 
         assert len(sweep_dict['ra']) == len(gama_kcorr0_dict['mass']) 
         assert len(sweep_dict['ra']) == len(gama_kcorr1_dict['mass']) 
+        if not silent: 
+            # writeout all the GAMA objects without sweep objects
+            nosweep = ~np.in1d(gama_data['photo']['objid'], gama_photo_dict['objid']) 
+            f_nosweep = ''.join([UT.dat_dir(), 'GAMA.DR', str(dr_gama), '.', field, '.nosweep_match.dat'])
+            np.savetxt(f_nosweep, np.array([gama_data['photo']['ra'], gama_data['photo']['dec']]).T, header='RA, Dec')
 
         # read apfluxes from tractor catalogs 
         apflux_dict = self._getTractorApflux(sweep_dict['brickname'], sweep_dict['objid'], 
