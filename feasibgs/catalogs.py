@@ -8,6 +8,7 @@ import os
 import numpy as np
 import h5py
 from astropy.io import fits 
+from astropy.table import Table as aTable
 from astropy.cosmology import FlatLambdaCDM
 from pydl.pydlutils.spheregroup import spherematch
 
@@ -366,10 +367,13 @@ class GamaLegacy(Catalog):
             # writeout all the GAMA objects without sweep objects
             nosweep = ~np.in1d(gama_data['photo']['objid'], gama_photo_dict['objid']) 
             f_nosweep = ''.join([UT.dat_dir(), 
-                'GAMA.DR', str(dr_gama), '.', field, '.nosweep_match.dat'])
+                'GAMA.DR', str(dr_gama), '.', field, '.nosweep_match.fits'])
             print('========================')
             print('Writing out GAMA object RA and Dec to %s' % f_nosweep) 
-            np.savetxt(f_nosweep, np.array([gama_data['photo']['ra'], gama_data['photo']['dec']]).T, header='RA, Dec')
+            tb = aTable([gama_data['photo']['ra'], gama_data['photo']['dec']], names=('ra', 'dec'))
+            tb.meta['COMMENTS'] = 'RA, Dec of GAMA objects without matches in Legacy DR5 sweep' 
+            tb.write(f_nosweep, format='fits') 
+            #np.savetxt(f_nosweep, np.array([gama_data['photo']['ra'], gama_data['photo']['dec']]).T, header='RA, Dec')
 
         # read apfluxes from tractor catalogs 
         apflux_dict = self._getTractorApflux(sweep_dict['brickname'], sweep_dict['objid'], 
