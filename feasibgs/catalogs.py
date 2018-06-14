@@ -374,7 +374,7 @@ class GamaLegacy(Catalog):
             tb = aTable([gama_data['photo']['ra'][nosweep], gama_data['photo']['dec'][nosweep]], 
                     names=('ra', 'dec'))
             tb.meta['COMMENTS'] = 'RA, Dec of GAMA objects without matches in Legacy DR5 sweep' 
-            tb.write(f_nosweep, format='fits') 
+            tb.write(f_nosweep, format='fits', overwrite=True) 
             #np.savetxt(f_nosweep, np.array([gama_data['photo']['ra'], gama_data['photo']['dec']]).T, header='RA, Dec')
 
         # read apfluxes from tractor catalogs 
