@@ -930,208 +930,6 @@ def expSpectra_redrock(exptime=300):
     return None
 
 
-def expSpectra_faintemline_redrock(exptime=480): 
-    ''' Redrock redshift success rate of simulated exposures of simulated spectra with
-    faint emission lines with dark versus bright sky.
-    
-    Creates a three panel plot: Halpha line flux vs g-r legacy color, z_redrock vs z_true, 
-    and redshift success rate vs apflux r-mag  
-    '''
-    cata = Cat.GamaLegacy()
-    gleg = cata.Read('g15')
-    redshift = gleg['gama-spec']['z']
-    ngal = len(redshift)
-    print('%i galaxies in the GAMA-Legacy survey' % ngal)
-
-    # apparent magnitude from Legacy photometry aperture flux
-    g_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_g'][:,1])
-    r_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
-    # H-alpha line flux from GAMA spectroscopy
-    gama_ha = gleg['gama-spec']['ha_flux']
-
-    fzdata = lambda s, et: ''.join([UT.dat_dir(), 'redrock/', 
-        'GamaLegacy.g15.expSpectra.', s, 'sky.seed1.exptime', str(exptime), '.faintEmLine.redrock.fits'])
-    findex = lambda s, et: ''.join([UT.dat_dir(), 'spectra/', 
-        'GamaLegacy.g15.expSpectra.', s, 'sky.seed1.exptime', str(exptime), '.faintEmLine.index']) 
-    
-    # read in redrock redshifts
-    zdark_data = fits.open(fzdata('dark', exptime))[1].data
-    i_dark = np.loadtxt(findex('dark', exptime), unpack=True, usecols=[0], dtype='i')
-
-    zbright_data = fits.open(fzdata('bright', exptime))[1].data
-    i_bright = np.loadtxt(findex('bright', exptime), unpack=True, usecols=[0], dtype='i')
-    assert np.array_equal(i_dark, i_bright)
-    print('%i redshifts' % len(zdark_data['Z']))
-    print('%i spectra w/ dark sky have ZWARN != 0' % np.sum(zdark_data['ZWARN'] != 0))
-    print('%i spectra w/ bright sky have ZWARN != 0' % np.sum(zbright_data['ZWARN'] != 0))
-    
-    # calculate delta z / (1+z)  for dark and brigth skies 
-    dz_1pz_dark = (zdark_data['Z'] - redshift[i_dark])/(1.+redshift[i_dark])
-    dz_1pz_bright = (zbright_data['Z'] - redshift[i_dark])/(1.+redshift[i_dark])
-
-    fig = plt.figure(figsize=(15, 4))
-    # panel 1 Halpha line flux versus g-r apflux legacy color 
-    sub = fig.add_subplot(131)
-    hasha = (gama_ha > 0)
-    faintem = np.zeros(ngal, dtype=bool)
-    faintem[i_dark] = True
-    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[hasha], gama_ha[hasha], s=1, c='k')
-    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[np.invert(hasha)], np.repeat(1e-2, np.sum(np.invert(hasha))), s=1, c='k')
-    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[faintem & hasha], gama_ha[faintem & hasha], c='C1', s=0.5)
-    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[faintem & np.invert(hasha)], np.repeat(1e-2, np.sum(faintem & np.invert(hasha))), c='C1', s=0.5)
-    sub.set_xlabel(r'$(g-r)$ from Legacy ap. flux', fontsize=20)
-    sub.set_xlim([-0.2, 2.])
-    sub.set_ylabel(r'$H_\alpha$ line flux GAMA DR2 $[10^{-17}erg/s/cm^2]$', fontsize=15)
-    sub.set_ylim([5e-3, 2e4])
-    sub.set_yscale('log')
-
-    # panel 2 z_redrock vs r_true
-    sub = fig.add_subplot(132)
-    sub.scatter(redshift[i_dark], dz_1pz_bright, c='C1', s=10)
-    sub.scatter(redshift[i_dark], dz_1pz_dark, c='C0', s=2)
-    sub.set_xlabel(r"$z_\mathrm{true}$ GAMA", fontsize=25)
-    sub.set_xlim([0., 0.36])
-    sub.set_ylabel(r"$\Delta z / (1+z_\mathrm{true})$", fontsize=20)
-    sub.set_ylim([-0.05, 1.])
-
-    # panel 3 
-    sub = fig.add_subplot(133)
-    mm_dark, e1_dark, ee1_dark = _z_successrate(r_mag_legacy_apflux[i_dark], #range=(18, 22), 
-            condition=((zdark_data['ZWARN'] == 0) & (dz_1pz_dark < 0.003)))
-    mm_bright, e1_bright, ee1_bright = _z_successrate(r_mag_legacy_apflux[i_dark], #range=(18, 22), 
-            condition=((zbright_data['ZWARN'] == 0) & (dz_1pz_bright < 0.003)))
-    sub = fig.add_subplot(133)
-    sub.plot([17., 23.], [1., 1.], c='k', ls='--', lw=2)
-    sub.errorbar(mm_dark, e1_dark, ee1_dark, c='C0', fmt='o', label="w/ Dark Sky")
-    sub.errorbar(mm_bright, e1_bright, ee1_bright, fmt='.C1', label="w/ Bright Sky")
-    sub.set_xlabel(r'$r_\mathrm{apflux}$ magnitude', fontsize=20)
-    sub.set_xlim([17., 23.])
-    sub.set_ylabel(r'fraction of $\Delta z /(1+z_\mathrm{GAMA}) < 0.003$', fontsize=20)
-    sub.set_ylim([-0.05, 1.2])
-    sub.legend(loc='lower left', handletextpad=0., prop={'size': 20})
-    fig.subplots_adjust(wspace=0.3)
-    fig.savefig(UT.doc_dir()+"figs/gLeg_g15_expSpectra_faintemline_redrock_exptime"+str(exptime)+".pdf", 
-        bbox_inches='tight')
-    plt.close() 
-    return None
-
-
-def expSpectra_blocks_redrock(field, iblocks=30, exptime=300): 
-    ''' Redrock redshift success rate of simulated exposures of 
-    simulated spectra with dark versus bright sky of 1000 randomly 
-    selected galaxies.
-    
-    Creates a three panel plot: Halpha line flux vs g-r legacy color, z_redrock vs z_true, 
-    and redshift success rate vs apflux r-mag  
-    '''
-    if field == 'g15': nblocks = 64
-    else: raise ValueError
-    cata = Cat.GamaLegacy()
-    gleg = cata.Read(field)
-    redshift = gleg['gama-spec']['z']
-    ngal = len(redshift)
-    print('%i galaxies in the GAMA-Legacy G15 region' % ngal)
-
-    # apparent magnitude from Legacy photometry aperture flux
-    g_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_g'][:,1])
-    r_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
-    # H-alpha line flux from GAMA spectroscopy
-    gama_ha = gleg['gama-spec']['ha_flux']
-   
-    i_dark, i_bright = [], [] 
-    zbest_d, zbest_b = [], [] 
-    zwarn_d, zwarn_b = [], [] 
-    for iblock in range(1,iblocks+1):
-        print('%i th block' % iblock)
-        fzdata = lambda s, et: ''.join([UT.dat_dir(), 'redrock/', 
-            'GamaLegacy.g15.expSpectra.', s, 'sky.seed1.exptime', str(exptime), '.', str(iblock), 'of64blocks.redrock.fits']) 
-        findex = lambda s, et: ''.join([UT.dat_dir(), 'spectra/', 
-            'GamaLegacy.g15.expSpectra.', s, 'sky.seed1.exptime', str(exptime), '.', str(iblock), 'of64blocks.index']) 
-    
-        # read in redrock redshifts
-        zdark_data = fits.open(fzdata('dark', exptime))[1].data
-        i_dark_i = np.loadtxt(findex('dark', exptime), unpack=True, usecols=[0], dtype='i')
-
-        zbright_data = fits.open(fzdata('bright', exptime))[1].data
-        i_bright_i = np.loadtxt(findex('bright', exptime), unpack=True, usecols=[0], dtype='i')
-
-        assert np.array_equal(i_dark_i, i_bright_i)
-        # all the block indices
-        i_dark.append(i_dark_i) 
-        i_bright.append(i_bright_i) 
-
-        # all the redrock z estimates 
-        zbest_d.append(zdark_data['Z'])
-        zbest_b.append(zbright_data['Z'])
-        # zwarnings 
-        zwarn_d.append(zdark_data['ZWARN'])
-        zwarn_b.append(zbright_data['ZWARN'])
-
-    i_dark = np.concatenate(i_dark) 
-    i_bright = np.concatenate(i_bright) 
-    
-    zbest_d = np.concatenate(zbest_d)
-    zbest_b = np.concatenate(zbest_b)
-    zwarn_d = np.concatenate(zwarn_d)
-    zwarn_b = np.concatenate(zwarn_b)
-
-    print('%i redshifts' % len(zbest_d))
-    print('%i spectra w/ dark sky have ZWARN != 0' % np.sum(zwarn_d != 0))
-    print('%i spectra w/ bright sky have ZWARN != 0' % np.sum(zwarn_b != 0))
-    
-    # calculate delta z / (1+z)  for dark and brigth skies 
-    dz_1pz_dark = (zbest_d - redshift[i_dark])/(1.+redshift[i_dark])
-    dz_1pz_bright = (zbest_b - redshift[i_dark])/(1.+redshift[i_dark])
-
-    fig = plt.figure(figsize=(15, 4))
-    # panel 1 Halpha line flux versus g-r apflux legacy color 
-    sub = fig.add_subplot(131)
-    hasha = (gama_ha > 0.) 
-    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[hasha], gama_ha[hasha], s=1, c='k')
-    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[~hasha], np.repeat(1e-2, np.sum(~hasha)), s=1, c='k')
-    hasha = (gama_ha[i_dark] > 0.) 
-    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][hasha], gama_ha[i_dark][hasha], c='C1', s=0.5)
-    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][~hasha], np.repeat(1e-2, np.sum(~hasha)), c='C1', s=0.5)
-    sub.set_xlabel(r'$(g-r)$ from Legacy ap. flux', fontsize=20)
-    sub.set_xlim([-0.2, 2.])
-    sub.set_ylabel(r'$H_\alpha$ line flux GAMA DR3 $[10^{-17}erg/s/cm^2]$', fontsize=15)
-    sub.set_ylim([5e-3, 2e4])
-    sub.set_yscale('log')
-
-    # panel 2 z_redrock vs r_true
-    sub = fig.add_subplot(132)
-    sub.scatter(redshift[i_dark], dz_1pz_bright, c='C1', s=10)
-    sub.scatter(redshift[i_dark], dz_1pz_dark, c='C0', s=2)
-    sub.set_xlabel(r"$z_\mathrm{true}$ GAMA", fontsize=25)
-    sub.set_xlim([0., 0.36])
-    sub.set_ylabel(r"$\Delta z / (1+z_\mathrm{true})$", fontsize=20)
-    sub.set_ylim([-0.05, 1.])
-    
-    print('%i spectra w/ dark sky fail' % np.sum(~((zwarn_d == 0) & (dz_1pz_dark < 0.003))))
-    print('%i spectra w/ bright sky fail' % np.sum(~((zwarn_b == 0) & (dz_1pz_bright < 0.003))))
-
-    # panel 3 
-    sub = fig.add_subplot(133)
-    mm_dark, e1_dark, ee1_dark = _z_successrate(r_mag_legacy_apflux[i_dark], #range=(18, 22), 
-            condition=((zwarn_d == 0) & (dz_1pz_dark < 0.003)))
-    mm_bright, e1_bright, ee1_bright = _z_successrate(r_mag_legacy_apflux[i_dark], #range=(18, 22), 
-            condition=((zwarn_b == 0) & (dz_1pz_bright < 0.003)))
-    sub = fig.add_subplot(133)
-    sub.plot([15., 25.], [1., 1.], c='k', ls='--', lw=2)
-    sub.errorbar(mm_dark, e1_dark, ee1_dark, c='C0', fmt='o', label="w/ Dark Sky")
-    sub.errorbar(mm_bright, e1_bright, ee1_bright, fmt='.C1', label="w/ Bright Sky")
-    sub.set_xlabel(r'$r_\mathrm{apflux}$ magnitude', fontsize=20)
-    sub.set_xlim([16., 23.])
-    sub.set_ylabel(r'fraction of $\Delta z /(1+z_\mathrm{GAMA}) < 0.003$', fontsize=20)
-    sub.set_ylim([0., 1.2])
-    sub.legend(loc='lower left', handletextpad=0., prop={'size': 20})
-    fig.subplots_adjust(wspace=0.3)
-    fig.savefig(UT.doc_dir()+"figs/gLeg_"+field+"_expSpectra_"+str(iblocks)+"blocks_redrock_exptime"+str(exptime)+".pdf", 
-        bbox_inches='tight')
-    plt.close() 
-    return None
-
-
 def _expSpectra_blocks_redrock_rapflux19(field, iblocks=30, exptime=300): 
     ''' why is redshift efficiency lower at 
     r-band aperture flux magnitude ~ 19...
@@ -1259,22 +1057,564 @@ def expSpectra_blocks_zsuccess(field, iblocks=30, exptime=300):
     redshift = gleg['gama-spec']['z']
     ngal = len(redshift)
     print('%i galaxies in the GAMA-Legacy G15 region' % ngal)
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
 
     # apparent magnitude from Legacy photometry aperture flux
     g_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_g'][:,1])
     r_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
     # H-alpha line flux from GAMA spectroscopy
     gama_ha = gleg['gama-spec']['ha_flux']
-   
+  
+    i_dark, i_bright, zbest_d, zbest_b, zwarn_d, zwarn_b = _read_expSpectra_blocks(field, iblocks=iblocks, exptime=exptime)
+    print('%i redshifts' % len(zbest_d))
+    print('%i spectra w/ dark sky have ZWARN != 0' % np.sum(zwarn_d != 0))
+    print('%i spectra w/ bright sky have ZWARN != 0' % np.sum(zwarn_b != 0))
+    
+    # calculate delta z / (1+z)  for dark and brigth skies 
+    dz_1pz_dark = np.abs(zbest_d - redshift[i_dark])/(1.+redshift[i_dark])
+    dz_1pz_bright = np.abs(zbest_b - redshift[i_dark])/(1.+redshift[i_dark])
+    
+    fig = plt.figure(figsize=(15, 4))
+    # panel 1 Halpha line flux versus g-r apflux legacy color 
+    sub = fig.add_subplot(131)
+    hasha = (gama_ha > 0.) 
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[hasha], gama_ha[hasha], s=1, c='k')
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[~hasha], np.repeat(1e-2, np.sum(~hasha)), s=1, c='k')
+    hasha = (gama_ha[i_dark] > 0.) 
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][hasha], gama_ha[i_dark][hasha], c='C1', s=0.5)
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][~hasha], np.repeat(1e-2, np.sum(~hasha)), c='C1', s=0.5)
+    sub.set_xlabel(r'$(g-r)$ from Legacy ap. flux', fontsize=20)
+    sub.set_xlim([-0.2, 2.])
+    sub.set_ylabel(r'$H_\alpha$ line flux GAMA DR3 $[10^{-17}erg/s/cm^2]$', fontsize=15)
+    sub.set_ylim([5e-3, 2e4])
+    sub.set_yscale('log')
+    # panel 2 z_redrock vs r_true
+    sub = fig.add_subplot(132)
+    sub.scatter(redshift[i_dark], dz_1pz_bright, c='C1', s=10)
+    sub.scatter(redshift[i_dark], dz_1pz_dark, c='C0', s=2)
+    sub.set_xlabel(r"$z_\mathrm{true}$ GAMA", fontsize=25)
+    sub.set_xlim([0., 0.36])
+    sub.set_ylabel(r"$\Delta z / (1+z_\mathrm{true})$", fontsize=20)
+    sub.set_ylim([-0.05, 1.])
+    print('%i spectra w/ dark sky fail' % np.sum(~((zwarn_d == 0) & (dz_1pz_dark < 0.003))))
+    print('%i spectra w/ bright sky fail' % np.sum(~((zwarn_b == 0) & (dz_1pz_bright < 0.003))))
+    # panel 3 
+    sub = fig.add_subplot(133)
+    mm_dark, e1_dark, ee1_dark = _z_successrate(r_mag_legacy_apflux[i_dark], #range=(18, 22), 
+            condition=((zwarn_d == 0) & (dz_1pz_dark < 0.003)))
+    mm_bright, e1_bright, ee1_bright = _z_successrate(r_mag_legacy_apflux[i_dark], #range=(18, 22), 
+            condition=((zwarn_b == 0) & (dz_1pz_bright < 0.003)))
+    sub = fig.add_subplot(133)
+    sub.plot([15., 25.], [1., 1.], c='k', ls='--', lw=2)
+    sub.errorbar(mm_dark, e1_dark, ee1_dark, c='C0', fmt='o', label="w/ Dark Sky")
+    sub.errorbar(mm_bright, e1_bright, ee1_bright, fmt='.C1', label="w/ Bright Sky")
+    sub.set_xlabel(r'$r_\mathrm{apflux}$ magnitude', fontsize=20)
+    sub.set_xlim([16., 23.])
+    sub.set_ylabel(r'fraction of $\Delta z /(1+z_\mathrm{GAMA}) < 0.003$', fontsize=20)
+    sub.set_ylim([0., 1.2])
+    sub.legend(loc='lower left', handletextpad=0., prop={'size': 20})
+    fig.subplots_adjust(wspace=0.3)
+    fig.savefig(UT.doc_dir()+"figs/gLeg_"+field+"_expSpectra_"+str(iblocks)+"blocks_exptime"+str(exptime)+"_zsuccess.pdf", 
+        bbox_inches='tight')
+    plt.close() 
+
+    # --- H-alpha vs (g-r) color ---
+    fig = plt.figure(figsize=(16,5))
+    bkgd = fig.add_subplot(111, frameon=False)
+    sub = fig.add_subplot(131)
+    hasha = (gama_ha[i_dark] > 0.) 
+    gr = np.concatenate([(g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][hasha], (g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][~hasha]])
+    ha = np.concatenate([gama_ha[i_dark][hasha], np.repeat(1e-2, np.sum(~hasha))])
+    w = np.ones(len(ha))
+    hb = sub.hexbin(gr, ha, C=w, reduce_C_function=np.sum, vmax=1000., mincnt=20, gridsize=50, yscale='log')
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'$N_\mathrm{gal}$', fontsize=20)
+    sub.text(0.1, 0.9, r'$N_{bin} > 20$', ha='left', va='center', 
+            transform=sub.transAxes, fontsize=20)
+    sub.set_xlim([-0.2, 2.])
+    sub.set_ylim([5e-3, 2e4])
+    # --- H-alpha vs (g-r) color : Dark Sky ---
+    sub = fig.add_subplot(132)
+    hasha = (gama_ha[i_dark] > 0.) 
+    dz_1pz_dark[zwarn_d != 0] = 1.
+    dz_1pz_d = np.concatenate([dz_1pz_dark[hasha], dz_1pz_dark[~hasha]]) 
+    w_dz_1pz_d = np.zeros(len(dz_1pz_d))
+    w_dz_1pz_d[dz_1pz_d < 0.003] = 1. 
+    hb = sub.hexbin(gr, ha, C=w_dz_1pz_d, vmin=0.0, vmax=1.0, mincnt=20, gridsize=50, yscale='log')
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'Redshift Success Rate', fontsize=20)
+    sub.set_xlim([-0.2, 2.])
+    sub.set_ylim([5e-3, 2e4])
+    sub.set_title('w/ Dark Sky', fontsize=20) 
+    # --- H-alpha vs (g-r) color : Dark Sky ---
+    sub = fig.add_subplot(133)
+    hasha = (gama_ha[i_dark] > 0.) 
+    dz_1pz_bright[zwarn_b != 0] = 1.
+    dz_1pz_b = np.concatenate([dz_1pz_bright[hasha], dz_1pz_bright[~hasha]]) 
+    w_dz_1pz_b = np.zeros(len(dz_1pz_b))
+    w_dz_1pz_b[dz_1pz_b < 0.003] = 1. 
+    hb = sub.hexbin(gr, ha, C=w_dz_1pz_b, vmin=0.0, vmax=1.0, mincnt=20, gridsize=50, yscale='log')
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'Redshift Success Rate', fontsize=20)
+    sub.set_xlim([-0.2, 2.])
+    sub.set_ylim([5e-3, 2e4])
+    sub.set_title('w/ Bright Sky', fontsize=20) 
+
+    bkgd.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
+    bkgd.set_xlabel(r'$(g-r)$ from Legacy ap. flux', labelpad=5, fontsize=20)
+    bkgd.set_ylabel(r'$H_\alpha$ line flux GAMA DR3 $[10^{-17}erg/s/cm^2]$', labelpad=7, fontsize=20)
+
+    fig.subplots_adjust(wspace=0.3)
+    fig.savefig(UT.doc_dir()+"figs/gLeg_"+field+"_expSpectra_"+str(iblocks)+"blocks_exptime"+str(exptime)+"_zsuccess_HA_gr.pdf", 
+        bbox_inches='tight')
+    plt.close() 
+    
+    # M_r vs (g-r) color
+    fig = plt.figure(figsize=(16,5))
+    bkgd = fig.add_subplot(111, frameon=False)
+    sub = fig.add_subplot(131)
+    w = np.ones(len(i_dark))
+    hb = sub.hexbin(absmag_ugriz[2,i_dark], absmag_ugriz[1,i_dark] - absmag_ugriz[2,i_dark], 
+            C=w, reduce_C_function=np.sum, vmax=1000., mincnt=20., gridsize=50)
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'$N_\mathrm{gal}$', fontsize=20)
+    sub.text(0.1, 0.9, r'$N_{bin} > 20$', ha='left', va='center', 
+            transform=sub.transAxes, fontsize=20)
+    sub.set_xlim([-14., -24]) 
+    sub.set_ylim([-0.2, 1.6])
+    sub.set_yticks([-0.2, 0.2, 0.6, 1.0, 1.4]) 
+
+    sub = fig.add_subplot(132)
+    dz_1pz_dark[zwarn_d != 0] = 1.
+    w_dz_1pz_dark = np.zeros(len(dz_1pz_dark))
+    w_dz_1pz_dark[dz_1pz_dark < 0.003] = 1. 
+    hb = sub.hexbin(absmag_ugriz[2,i_dark], absmag_ugriz[1,i_dark] - absmag_ugriz[2,i_dark], 
+            C=w_dz_1pz_dark, vmin=0.0, vmax=1.0, mincnt=20, gridsize=50)
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'Redshift Success Rate', fontsize=20)
+    sub.set_xlim([-14., -24]) 
+    sub.set_ylim([-0.2, 1.6])
+    sub.set_title('w/ Dark Sky', fontsize=20) 
+    sub.set_yticks([-0.2, 0.2, 0.6, 1.0, 1.4]) 
+    
+    sub = fig.add_subplot(133)
+    dz_1pz_bright[zwarn_b != 0] = 1.
+    w_dz_1pz_bright = np.zeros(len(dz_1pz_bright))
+    w_dz_1pz_bright[dz_1pz_bright < 0.003] = 1. 
+    hb = sub.hexbin(absmag_ugriz[2,i_dark], absmag_ugriz[1,i_dark] - absmag_ugriz[2,i_dark], 
+            C=w_dz_1pz_bright, vmin=0.0, vmax=1.0, mincnt=20, gridsize=50)
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'Redshift Success Rate', fontsize=20)
+    sub.set_xlim([-14., -24]) 
+    sub.set_ylim([-0.2, 1.6])
+    sub.set_title('w/ Bright Sky', fontsize=20) 
+    sub.set_yticks([-0.2, 0.2, 0.6, 1.0, 1.4]) 
+
+    bkgd.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
+    bkgd.set_xlabel(r'GAMA $M_{0.1r}$', labelpad=5, fontsize=20)
+    bkgd.set_ylabel(r'GAMA $^{0.1}(g-r)$ color', labelpad=7, fontsize=20)
+
+    fig.subplots_adjust(wspace=0.3)
+    fig.savefig(UT.doc_dir()+"figs/gLeg_"+field+"_expSpectra_"+str(iblocks)+"blocks_exptime"+str(exptime)+"_zsuccess_Mr_gr.pdf", 
+        bbox_inches='tight')
+    plt.close() 
+    return None
+
+
+def expSpectra_blocks_faintemline_zsuccess(field, iblocks=30, exptime=480): 
+    ''' Redrock redshift success rate of simulated exposures of 
+    simulated spectra with dark versus bright sky of 1000 randomly 
+    selected galaxies.
+    
+    Creates a three panel plot: Halpha line flux vs g-r legacy color, z_redrock vs z_true, 
+    and redshift success rate vs apflux r-mag  
+    '''
+    if field == 'g15': nblocks = 64
+    else: raise ValueError
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read(field)
+    redshift = gleg['gama-spec']['z']
+    ngal = len(redshift)
+    print('%i galaxies in the GAMA-Legacy G15 region' % ngal)
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
+
+    # apparent magnitude from Legacy photometry aperture flux
+    g_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_g'][:,1])
+    r_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
+    # H-alpha line flux from GAMA spectroscopy
+    gama_ha = gleg['gama-spec']['ha_flux']
+    
+    i_dark, i_bright, zbest_d, zbest_b, zwarn_d, zwarn_b = _read_expSpectra_blocks(field, iblocks=iblocks, exptime=exptime)
+    
+    faintemline = (gama_ha[i_dark] < 10.) 
+    i_dark = i_dark[faintemline]
+    i_bright = i_bright[faintemline]
+    zbest_d = zbest_d[faintemline]
+    zbest_b = zbest_b[faintemline]
+    zwarn_d = zwarn_d[faintemline]
+    zwarn_b = zwarn_b[faintemline]
+
+    print('%i redshifts' % len(zbest_d))
+    print('%i spectra w/ dark sky have ZWARN != 0' % np.sum(zwarn_d != 0))
+    print('%i spectra w/ bright sky have ZWARN != 0' % np.sum(zwarn_b != 0))
+    
+    # calculate delta z / (1+z)  for dark and brigth skies 
+    dz_1pz_dark = np.abs(zbest_d - redshift[i_dark])/(1.+redshift[i_dark])
+    dz_1pz_bright = np.abs(zbest_b - redshift[i_dark])/(1.+redshift[i_dark])
+    
+    fig = plt.figure(figsize=(15, 4))
+    # panel 1 Halpha line flux versus g-r apflux legacy color 
+    sub = fig.add_subplot(131)
+    hasha = (gama_ha > 0.) 
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[hasha], gama_ha[hasha], s=1, c='k')
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[~hasha], np.repeat(1e-2, np.sum(~hasha)), s=1, c='k')
+    hasha = (gama_ha[i_dark] > 0.) 
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][hasha], gama_ha[i_dark][hasha], c='C1', s=0.5)
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][~hasha], np.repeat(1e-2, np.sum(~hasha)), c='C1', s=0.5)
+    sub.set_xlabel(r'$(g-r)$ from Legacy ap. flux', fontsize=20)
+    sub.set_xlim([-0.2, 2.])
+    sub.set_ylabel(r'$H_\alpha$ line flux GAMA DR3 $[10^{-17}erg/s/cm^2]$', fontsize=15)
+    sub.set_ylim([5e-3, 2e4])
+    sub.set_yscale('log')
+    # panel 2 z_redrock vs r_true
+    sub = fig.add_subplot(132)
+    sub.scatter(redshift[i_dark], dz_1pz_bright, c='C1', s=10)
+    sub.scatter(redshift[i_dark], dz_1pz_dark, c='C0', s=2)
+    sub.set_xlabel(r"$z_\mathrm{true}$ GAMA", fontsize=25)
+    sub.set_xlim([0., 0.36])
+    sub.set_ylabel(r"$\Delta z / (1+z_\mathrm{true})$", fontsize=20)
+    sub.set_ylim([-0.05, 1.])
+    print('%i spectra w/ dark sky fail' % np.sum(~((zwarn_d == 0) & (dz_1pz_dark < 0.003))))
+    print('%i spectra w/ bright sky fail' % np.sum(~((zwarn_b == 0) & (dz_1pz_bright < 0.003))))
+    # panel 3 
+    sub = fig.add_subplot(133)
+    mm_dark, e1_dark, ee1_dark = _z_successrate(r_mag_legacy_apflux[i_dark], #range=(18, 22), 
+            condition=((zwarn_d == 0) & (dz_1pz_dark < 0.003)))
+    mm_bright, e1_bright, ee1_bright = _z_successrate(r_mag_legacy_apflux[i_dark], #range=(18, 22), 
+            condition=((zwarn_b == 0) & (dz_1pz_bright < 0.003)))
+    sub = fig.add_subplot(133)
+    sub.plot([15., 25.], [1., 1.], c='k', ls='--', lw=2)
+    sub.errorbar(mm_dark, e1_dark, ee1_dark, c='C0', fmt='o', label="w/ Dark Sky")
+    sub.errorbar(mm_bright, e1_bright, ee1_bright, fmt='.C1', label="w/ Bright Sky")
+    sub.set_xlabel(r'$r_\mathrm{apflux}$ magnitude', fontsize=20)
+    sub.set_xlim([16., 23.])
+    sub.set_ylabel(r'fraction of $\Delta z /(1+z_\mathrm{GAMA}) < 0.003$', fontsize=20)
+    sub.set_ylim([0., 1.2])
+    sub.legend(loc='lower left', handletextpad=0., prop={'size': 20})
+    fig.subplots_adjust(wspace=0.3)
+    fig.savefig(UT.doc_dir()+"figs/gLeg_"+field+"_expSpectra_faintemline_"+str(iblocks)+"blocks_exptime"+str(exptime)+"_zsuccess.pdf", 
+        bbox_inches='tight')
+    plt.close() 
+
+    # --- H-alpha vs (g-r) color ---
+    fig = plt.figure(figsize=(16,5))
+    bkgd = fig.add_subplot(111, frameon=False)
+    sub = fig.add_subplot(131)
+    hasha = (gama_ha[i_dark] > 0.) 
+    gr = np.concatenate([(g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][hasha], (g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][~hasha]])
+    ha = np.concatenate([gama_ha[i_dark][hasha], np.repeat(1e-2, np.sum(~hasha))])
+    w = np.ones(len(ha))
+    hb = sub.hexbin(gr, ha, C=w, reduce_C_function=np.sum, vmax=500., mincnt=20, gridsize=50, yscale='log')
+    cb = plt.colorbar(hb, ax=sub)
+    sub.text(0.1, 0.9, r'$N_{bin} > 20$', ha='left', va='center', 
+            transform=sub.transAxes, fontsize=20)
+    cb.set_label(r'$N_\mathrm{gal}$', fontsize=20)
+    sub.set_xlim([-0.2, 2.])
+    sub.set_ylim([5e-3, 2e4])
+    sub.set_title(r'Faint H$\alpha$ Galaxies', fontsize=20)
+    # --- H-alpha vs (g-r) color : dark sky ---
+    sub = fig.add_subplot(132)
+    dz_1pz_dark[zwarn_d != 0] = 1.
+    dz_1pz_d = np.concatenate([dz_1pz_dark[hasha], dz_1pz_dark[~hasha]]) 
+    w_dz_1pz_d = np.zeros(len(dz_1pz_d))
+    w_dz_1pz_d[dz_1pz_d < 0.003] = 1. 
+    hb = sub.hexbin(gr, ha, C=w_dz_1pz_d, vmin=0.0, vmax=1.0, mincnt=20, gridsize=50, yscale='log')
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'Redshift Success Rate', fontsize=20)
+    sub.set_xlim([-0.2, 2.])
+    sub.set_ylim([5e-3, 2e4])
+    sub.set_title('w/ Dark Sky', fontsize=20)
+    # --- H-alpha vs (g-r) color : bright sky ---
+    sub = fig.add_subplot(133)
+    hasha = (gama_ha[i_dark] > 0.) 
+    dz_1pz_bright[zwarn_b != 0] = 1.
+    dz_1pz_b = np.concatenate([dz_1pz_bright[hasha], dz_1pz_bright[~hasha]]) 
+    w_dz_1pz_b = np.zeros(len(dz_1pz_b))
+    w_dz_1pz_b[dz_1pz_b < 0.003] = 1. 
+    hb = sub.hexbin(gr, ha, C=w_dz_1pz_b, vmin=0.0, vmax=1.0, mincnt=20, gridsize=50, yscale='log')
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'Redshift Success Rate', fontsize=20)
+    sub.set_xlim([-0.2, 2.])
+    sub.set_ylim([5e-3, 2e4])
+    sub.set_title('w/ Bright Sky', fontsize=20)
+    bkgd.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
+    bkgd.set_xlabel(r'$(g-r)$ from Legacy ap. flux', labelpad=5, fontsize=20)
+    bkgd.set_ylabel(r'$H_\alpha$ line flux GAMA DR3 $[10^{-17}erg/s/cm^2]$', labelpad=7, fontsize=20)
+
+    fig.subplots_adjust(wspace=0.3)
+    fig.savefig(UT.doc_dir()+"figs/gLeg_"+field+"_expSpectra_faintemline_"+str(iblocks)+"blocks_exptime"+str(exptime)+"_zsuccess_HA_gr.pdf", 
+        bbox_inches='tight')
+    plt.close() 
+    
+    # --- H-alpha vs (g-r) color ---
+    fig = plt.figure(figsize=(16,5))
+    bkgd = fig.add_subplot(111, frameon=False)
+    sub = fig.add_subplot(131)
+    w = np.ones(len(i_dark))
+    hb = sub.hexbin(absmag_ugriz[2,i_dark], absmag_ugriz[1,i_dark] - absmag_ugriz[2,i_dark], 
+            C=w, reduce_C_function=np.sum, vmax=1000., mincnt=20., gridsize=50)
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'$N_\mathrm{gal}$', fontsize=20)
+    sub.text(0.1, 0.9, r'$N_{bin} > 20$', ha='left', va='center', 
+            transform=sub.transAxes, fontsize=20)
+    sub.set_xlim([-14., -24]) 
+    sub.set_ylim([-0.2, 1.6])
+    sub.set_yticks([-0.2, 0.2, 0.6, 1.0, 1.4]) 
+    sub.set_title(r'Faint H$\alpha$ Galaxies', fontsize=20)
+    # --- H-alpha vs (g-r) color : Dark Sky ---
+    sub = fig.add_subplot(132)
+    dz_1pz_dark[zwarn_d != 0] = 1.
+    w_dz_1pz_dark = np.zeros(len(dz_1pz_dark))
+    w_dz_1pz_dark[dz_1pz_dark < 0.003] = 1. 
+    hb = sub.hexbin(absmag_ugriz[2,i_dark], absmag_ugriz[1,i_dark] - absmag_ugriz[2,i_dark], 
+            C=w_dz_1pz_dark, vmin=0.0, vmax=1.0, mincnt=20, gridsize=50)
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'Redshift Success Rate', fontsize=20)
+    sub.set_xlim([-14., -24]) 
+    sub.set_ylim([-0.2, 1.6])
+    sub.set_title('w/ Dark Sky', fontsize=20) 
+    sub.set_yticks([-0.2, 0.2, 0.6, 1.0, 1.4]) 
+    # --- H-alpha vs (g-r) color : Bright Sky ---
+    sub = fig.add_subplot(133)
+    dz_1pz_bright[zwarn_b != 0] = 1.
+    w_dz_1pz_bright = np.zeros(len(dz_1pz_bright))
+    w_dz_1pz_bright[dz_1pz_bright < 0.003] = 1. 
+    hb = sub.hexbin(absmag_ugriz[2,i_dark], absmag_ugriz[1,i_dark] - absmag_ugriz[2,i_dark], 
+            C=w_dz_1pz_bright, vmin=0.0, vmax=1.0, mincnt=20, gridsize=50)
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'Redshift Success Rate', fontsize=20)
+    sub.set_xlim([-14., -24]) 
+    sub.set_ylim([-0.2, 1.6])
+    sub.set_title('w/ Bright Sky', fontsize=20) 
+    sub.set_yticks([-0.2, 0.2, 0.6, 1.0, 1.4]) 
+
+    bkgd.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
+    bkgd.set_xlabel(r'GAMA $M_{0.1r}$', labelpad=5, fontsize=20)
+    bkgd.set_ylabel(r'GAMA $^{0.1}(g-r)$ color', labelpad=7, fontsize=20)
+
+    fig.subplots_adjust(wspace=0.3)
+    fig.savefig(UT.doc_dir()+"figs/gLeg_"+field+"_expSpectra_faintemline_"+str(iblocks)+"blocks_exptime"+str(exptime)+"_zsuccess_Mr_gr.pdf", 
+        bbox_inches='tight')
+    plt.close() 
+    return None
+
+
+def _expSpectra_blocks_rapflux19_zsuccess(field, iblocks=30, exptime=480): 
+    ''' Redrock redshift success rate of simulated exposures of 
+    simulated spectra with dark versus bright sky of 1000 randomly 
+    selected galaxies.
+    
+    Creates a three panel plot: Halpha line flux vs g-r legacy color, z_redrock vs z_true, 
+    and redshift success rate vs apflux r-mag  
+    '''
+    if field == 'g15': nblocks = 64
+    else: raise ValueError
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read(field)
+    redshift = gleg['gama-spec']['z']
+    ngal = len(redshift)
+    print('%i galaxies in the GAMA-Legacy G15 region' % ngal)
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
+
+    # apparent magnitude from Legacy photometry aperture flux
+    g_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_g'][:,1])
+    r_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
+    # H-alpha line flux from GAMA spectroscopy
+    gama_ha = gleg['gama-spec']['ha_flux']
+    
+    i_dark, i_bright, zbest_d, zbest_b, zwarn_d, zwarn_b = _read_expSpectra_blocks(field, iblocks=iblocks, exptime=exptime)
+    
+    faintemline = (gama_ha[i_dark] < 10.) 
+
+    rapflux_cut = ((r_mag_legacy_apflux[i_dark] < 19.2) & (r_mag_legacy_apflux[i_dark] > 18.8)) 
+    i_dark = i_dark[rapflux_cut]
+    i_bright = i_bright[rapflux_cut]
+    zbest_d = zbest_d[rapflux_cut]
+    zbest_b = zbest_b[rapflux_cut]
+    zwarn_d = zwarn_d[rapflux_cut]
+    zwarn_b = zwarn_b[rapflux_cut]
+
+    print('%i redshifts' % len(zbest_d))
+    print('%i spectra w/ dark sky have ZWARN != 0' % np.sum(zwarn_d != 0))
+    print('%i spectra w/ bright sky have ZWARN != 0' % np.sum(zwarn_b != 0))
+    
+    # calculate delta z / (1+z)  for dark and brigth skies 
+    dz_1pz_dark = np.abs(zbest_d - redshift[i_dark])/(1.+redshift[i_dark])
+    dz_1pz_bright = np.abs(zbest_b - redshift[i_dark])/(1.+redshift[i_dark])
+    print('%i spectra w/ dark sky fail' % np.sum(~((zwarn_d == 0) & (dz_1pz_dark < 0.003))))
+    print('%i spectra w/ bright sky fail' % np.sum(~((zwarn_b == 0) & (dz_1pz_bright < 0.003))))
+    
+    fig = plt.figure(figsize=(15, 4))
+    # panel 1 Halpha line flux versus g-r apflux legacy color 
+    sub = fig.add_subplot(131)
+    hasha = (gama_ha > 0.) 
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[hasha], gama_ha[hasha], s=1, c='k')
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[~hasha], np.repeat(1e-2, np.sum(~hasha)), s=1, c='k')
+    hasha = (gama_ha[i_dark] > 0.) 
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][hasha], gama_ha[i_dark][hasha], c='C1', s=0.5)
+    sub.scatter((g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][~hasha], np.repeat(1e-2, np.sum(~hasha)), c='C1', s=0.5)
+    sub.set_xlabel(r'$(g-r)$ from Legacy ap. flux', fontsize=20)
+    sub.set_xlim([-0.2, 2.])
+    sub.set_ylabel(r'$H_\alpha$ line flux GAMA DR3 $[10^{-17}erg/s/cm^2]$', fontsize=15)
+    sub.set_ylim([5e-3, 2e4])
+    sub.set_yscale('log')
+    # panel 2 z_redrock vs r_true
+    sub = fig.add_subplot(132)
+    sub.scatter(redshift[i_dark], dz_1pz_bright, c='C1', s=10)
+    sub.scatter(redshift[i_dark], dz_1pz_dark, c='C0', s=2)
+    sub.set_xlabel(r"$z_\mathrm{true}$ GAMA", fontsize=25)
+    sub.set_xlim([0., 0.36])
+    sub.set_ylabel(r"$\Delta z / (1+z_\mathrm{true})$", fontsize=20)
+    sub.set_ylim([-0.05, 1.])
+    # panel 3 
+    sub = fig.add_subplot(133)
+    prop = (g_mag_legacy_apflux - r_mag_legacy_apflux)
+    mm_dark, e1_dark, ee1_dark = _z_successrate(prop[i_dark], range=(-0.2, 2.2), 
+            condition=((zwarn_d == 0) & (dz_1pz_dark < 0.003)))
+    mm_bright, e1_bright, ee1_bright = _z_successrate(prop[i_dark], range=(-0.2, 2.2), 
+            condition=((zwarn_b == 0) & (dz_1pz_bright < 0.003)))
+    sub.plot([prop.min()-0.5*np.abs(prop.min()), 1.5*prop.max()], [1., 1.], c='k', ls='--', lw=2)
+    sub.errorbar(mm_dark, e1_dark, ee1_dark, c='C0', fmt='o', label="w/ Dark Sky")
+    sub.errorbar(mm_bright, e1_bright, ee1_bright, fmt='.C1', label="w/ Bright Sky")
+    sub.set_xlabel(r'$(g-r)$ from Legacy ap. flux', fontsize=20)
+    #sub.set_xlim([mm_dark.min()-0.1*np.abs(mm_dark.min()), mm_dark.max()+0.1*np.abs(mm_dark.max())])
+    sub.set_xlim([-0.2, 2.2]) 
+    sub.set_ylabel(r'fraction of $\Delta z /(1+z_\mathrm{GAMA}) < 0.003$', fontsize=20)
+    sub.set_ylim([0., 1.2])
+    sub.legend(loc='lower left', handletextpad=0., prop={'size': 20})
+    fig.subplots_adjust(wspace=0.3)
+    fig.savefig(UT.doc_dir()+"figs/gLeg_"+field+"_expSpectra_rapflux19_"+str(iblocks)+"blocks_exptime"+str(exptime)+"_zsuccess.pdf", 
+        bbox_inches='tight')
+    plt.close() 
+
+    # --- H-alpha vs (g-r) color ---
+    fig = plt.figure(figsize=(16,5))
+    bkgd = fig.add_subplot(111, frameon=False)
+    sub = fig.add_subplot(131)
+    hasha = (gama_ha[i_dark] > 0.) 
+    gr = np.concatenate([(g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][hasha], (g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][~hasha]])
+    ha = np.concatenate([gama_ha[i_dark][hasha], np.repeat(1e-2, np.sum(~hasha))])
+    w = np.ones(len(ha))
+    hb = sub.hexbin(gr, ha, C=w, reduce_C_function=np.sum, vmax=100., mincnt=10, gridsize=20, yscale='log')
+    cb = plt.colorbar(hb, ax=sub)
+    sub.text(0.1, 0.9, r'$N_{bin} > 10$', ha='left', va='center', 
+            transform=sub.transAxes, fontsize=20)
+    cb.set_label(r'$N_\mathrm{gal}$', fontsize=20)
+    sub.set_xlim([-0.2, 2.])
+    sub.set_ylim([5e-3, 2e4])
+    sub.set_title(r'$18.8 < r_\mathrm{apflux} < 19.2$', fontsize=20)
+    # --- H-alpha vs (g-r) color : dark sky ---
+    sub = fig.add_subplot(132)
+    dz_1pz_dark[zwarn_d != 0] = 1.
+    dz_1pz_d = np.concatenate([dz_1pz_dark[hasha], dz_1pz_dark[~hasha]]) 
+    w_dz_1pz_d = np.zeros(len(dz_1pz_d))
+    w_dz_1pz_d[dz_1pz_d < 0.003] = 1. 
+    hb = sub.hexbin(gr, ha, C=w_dz_1pz_d, vmin=0.0, vmax=1.0, mincnt=10, gridsize=20, yscale='log')
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'Redshift Success Rate', fontsize=20)
+    sub.set_xlim([-0.2, 2.])
+    sub.set_ylim([5e-3, 2e4])
+    sub.set_title('w/ Dark Sky', fontsize=20)
+    # --- H-alpha vs (g-r) color : bright sky ---
+    sub = fig.add_subplot(133)
+    hasha = (gama_ha[i_dark] > 0.) 
+    dz_1pz_bright[zwarn_b != 0] = 1.
+    dz_1pz_b = np.concatenate([dz_1pz_bright[hasha], dz_1pz_bright[~hasha]]) 
+    w_dz_1pz_b = np.zeros(len(dz_1pz_b))
+    w_dz_1pz_b[dz_1pz_b < 0.003] = 1. 
+    hb = sub.hexbin(gr, ha, C=w_dz_1pz_b, vmin=0.0, vmax=1.0, mincnt=10, gridsize=20, yscale='log')
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'Redshift Success Rate', fontsize=20)
+    sub.set_xlim([-0.2, 2.])
+    sub.set_ylim([5e-3, 2e4])
+    sub.set_title('w/ Bright Sky', fontsize=20)
+    bkgd.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
+    bkgd.set_xlabel(r'$(g-r)$ from Legacy ap. flux', labelpad=5, fontsize=20)
+    bkgd.set_ylabel(r'$H_\alpha$ line flux GAMA DR3 $[10^{-17}erg/s/cm^2]$', labelpad=7, fontsize=20)
+
+    fig.subplots_adjust(wspace=0.3)
+    fig.savefig(UT.doc_dir()+"figs/gLeg_"+field+"_expSpectra_rapflux19_"+str(iblocks)+"blocks_exptime"+str(exptime)+"_zsuccess_HA_gr.pdf", 
+        bbox_inches='tight')
+    plt.close() 
+    
+    # --- H-alpha vs (g-r) color ---
+    fig = plt.figure(figsize=(16,5))
+    bkgd = fig.add_subplot(111, frameon=False)
+    sub = fig.add_subplot(131)
+    w = np.ones(len(i_dark))
+    hb = sub.hexbin(absmag_ugriz[2,i_dark], absmag_ugriz[1,i_dark] - absmag_ugriz[2,i_dark], 
+            C=w, reduce_C_function=np.sum, vmax=100., mincnt=10, gridsize=20)
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'$N_\mathrm{gal}$', fontsize=20)
+    sub.text(0.1, 0.9, r'$N_{bin} > 10$', ha='left', va='center', 
+            transform=sub.transAxes, fontsize=20)
+    sub.set_xlim([-14., -24]) 
+    sub.set_ylim([-0.2, 1.6])
+    sub.set_yticks([-0.2, 0.2, 0.6, 1.0, 1.4]) 
+    sub.set_title(r'$18.8 < r_\mathrm{apflux} < 19.2$', fontsize=20)
+    # --- H-alpha vs (g-r) color : Dark Sky ---
+    sub = fig.add_subplot(132)
+    dz_1pz_dark[zwarn_d != 0] = 1.
+    w_dz_1pz_dark = np.zeros(len(dz_1pz_dark))
+    w_dz_1pz_dark[dz_1pz_dark < 0.003] = 1. 
+    hb = sub.hexbin(absmag_ugriz[2,i_dark], absmag_ugriz[1,i_dark] - absmag_ugriz[2,i_dark], 
+            C=w_dz_1pz_dark, vmin=0.0, vmax=1.0, mincnt=10, gridsize=20)
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'Redshift Success Rate', fontsize=20)
+    sub.set_xlim([-14., -24]) 
+    sub.set_ylim([-0.2, 1.6])
+    sub.set_title('w/ Dark Sky', fontsize=20) 
+    sub.set_yticks([-0.2, 0.2, 0.6, 1.0, 1.4]) 
+    # --- H-alpha vs (g-r) color : Bright Sky ---
+    sub = fig.add_subplot(133)
+    dz_1pz_bright[zwarn_b != 0] = 1.
+    w_dz_1pz_bright = np.zeros(len(dz_1pz_bright))
+    w_dz_1pz_bright[dz_1pz_bright < 0.003] = 1. 
+    hb = sub.hexbin(absmag_ugriz[2,i_dark], absmag_ugriz[1,i_dark] - absmag_ugriz[2,i_dark], 
+            C=w_dz_1pz_bright, vmin=0.0, vmax=1.0, mincnt=10, gridsize=20)
+    cb = plt.colorbar(hb, ax=sub)
+    cb.set_label(r'Redshift Success Rate', fontsize=20)
+    sub.set_xlim([-14., -24]) 
+    sub.set_ylim([-0.2, 1.6])
+    sub.set_title('w/ Bright Sky', fontsize=20) 
+    sub.set_yticks([-0.2, 0.2, 0.6, 1.0, 1.4]) 
+
+    bkgd.tick_params(labelcolor='none', top='off', bottom='off', left='off', right='off')
+    bkgd.set_xlabel(r'GAMA $M_{0.1r}$', labelpad=5, fontsize=20)
+    bkgd.set_ylabel(r'GAMA $^{0.1}(g-r)$ color', labelpad=7, fontsize=20)
+
+    fig.subplots_adjust(wspace=0.3)
+    fig.savefig(UT.doc_dir()+"figs/gLeg_"+field+"_expSpectra_rapflux19_"+str(iblocks)+"blocks_exptime"+str(exptime)+"_zsuccess_Mr_gr.pdf", 
+        bbox_inches='tight')
+    plt.close() 
+    return None
+
+
+def _read_expSpectra_blocks(field, iblocks=30, exptime=300): 
+    ''' read in the blocks of expSpectra given the field, number of blocks, 
+    and exposure time 
+    '''
+    if field == 'g15': nblocks = 64
+    else: raise ValueError
     i_dark, i_bright = [], [] 
     zbest_d, zbest_b = [], [] 
     zwarn_d, zwarn_b = [], [] 
     for iblock in range(1,iblocks+1):
         print('%i th block' % iblock)
         fzdata = lambda s, et: ''.join([UT.dat_dir(), 'redrock/', 
-            'GamaLegacy.g15.expSpectra.', s, 'sky.seed1.exptime', str(exptime), '.', str(iblock), 'of64blocks.redrock.fits']) 
+            'GamaLegacy.', field, '.expSpectra.', s, 'sky.seed1.exptime', str(exptime), '.', str(iblock), 'of64blocks.redrock.fits']) 
         findex = lambda s, et: ''.join([UT.dat_dir(), 'spectra/', 
-            'GamaLegacy.g15.expSpectra.', s, 'sky.seed1.exptime', str(exptime), '.', str(iblock), 'of64blocks.index']) 
+            'GamaLegacy.', field, '.expSpectra.', s, 'sky.seed1.exptime', str(exptime), '.', str(iblock), 'of64blocks.index']) 
     
         # read in redrock redshifts
         zdark_data = fits.open(fzdata('dark', exptime))[1].data
@@ -1301,48 +1641,7 @@ def expSpectra_blocks_zsuccess(field, iblocks=30, exptime=300):
     zbest_b = np.concatenate(zbest_b)
     zwarn_d = np.concatenate(zwarn_d)
     zwarn_b = np.concatenate(zwarn_b)
-
-    print('%i redshifts' % len(zbest_d))
-    print('%i spectra w/ dark sky have ZWARN != 0' % np.sum(zwarn_d != 0))
-    print('%i spectra w/ bright sky have ZWARN != 0' % np.sum(zwarn_b != 0))
-    
-    # calculate delta z / (1+z)  for dark and brigth skies 
-    dz_1pz_dark = np.abs(zbest_d - redshift[i_dark])/(1.+redshift[i_dark])
-    dz_1pz_bright = np.abs(zbest_b - redshift[i_dark])/(1.+redshift[i_dark])
-
-    fig = plt.figure(figsize=(12,5))
-    sub = fig.add_subplot(121)
-    hasha = (gama_ha[i_dark] > 0.) 
-    gr = np.concatenate([(g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][hasha], (g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][~hasha]])
-    ha = np.concatenate([gama_ha[i_dark][hasha], np.repeat(1e-2, np.sum(~hasha))])
-    w = np.ones(len(ha))
-    hb = sub.hexbin(gr, ha, C=w, reduce_C_function=np.sum, gridsize=50, yscale='log')
-    cb = plt.colorbar(hb, ax=sub)
-    cb.set_label(r'$N_\mathrm{gal}$', fontsize=20)
-    sub.set_xlabel(r'$(g-r)$ from Legacy ap. flux', fontsize=20)
-    sub.set_xlim([-0.2, 2.])
-    sub.set_ylabel(r'$H_\alpha$ line flux GAMA DR3 $[10^{-17}erg/s/cm^2]$', fontsize=15)
-    sub.set_ylim([5e-3, 2e4])
-
-    sub = fig.add_subplot(122)
-    hasha = (gama_ha[i_dark] > 0.) 
-    gr = np.concatenate([(g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][hasha], (g_mag_legacy_apflux - r_mag_legacy_apflux)[i_dark][~hasha]])
-    ha = np.concatenate([gama_ha[i_dark][hasha], np.repeat(1e-2, np.sum(~hasha))])
-    dz_1pz_dark[zwarn_d != 0] = 1.
-    dz_1pz_d = np.concatenate([dz_1pz_dark[hasha], dz_1pz_dark[~hasha]]) 
-    w_dz_1pz_d = np.zeros(len(dz_1pz_d))
-    w_dz_1pz_d[dz_1pz_d < 0.003] = 1. 
-    hb = sub.hexbin(gr, ha, C=w_dz_1pz_d, vmin=0.0, vmax=1.0, gridsize=50, yscale='log')
-    cb = plt.colorbar(hb, ax=sub)
-    cb.set_label(r'Redshift Success Rate', fontsize=20)
-    sub.set_xlabel(r'$(g-r)$ from Legacy ap. flux', fontsize=20)
-    sub.set_xlim([-0.2, 2.])
-    sub.set_ylim([5e-3, 2e4])
-    fig.subplots_adjust(wspace=0.3)
-    fig.savefig(UT.doc_dir()+"figs/gLeg_"+field+"_expSpectra_"+str(iblocks)+"blocks_zsuccess_exptime"+str(exptime)+".pdf", 
-        bbox_inches='tight')
-    plt.close() 
-    return None
+    return i_dark, i_bright, zbest_d, zbest_b, zwarn_d, zwarn_b
 
 
 def _z_successrate(var, range=None, condition=None, nbins=20): 
@@ -1526,5 +1825,6 @@ if __name__=="__main__":
     #expSpectra_redrock(exptime=300)
     #expSpectra_faintemline_redrock(exptime=300)
     #expSpectra_blocks_redrock('g15', iblocks=30, exptime=300)
-    #_expSpectra_blocks_redrock_rapflux19('g15', iblocks=30, exptime=300)
-    expSpectra_blocks_zsuccess('g15', iblocks=30, exptime=300)
+    #expSpectra_blocks_zsuccess('g15', iblocks=30, exptime=300)
+    #expSpectra_blocks_faintemline_zsuccess('g15', iblocks=30, exptime=300)
+    _expSpectra_blocks_rapflux19_zsuccess('g15', iblocks=30, exptime=300)
