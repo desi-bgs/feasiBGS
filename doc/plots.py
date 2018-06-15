@@ -948,6 +948,7 @@ def expSpectra_blocks_zsuccess(field, iblocks=30, exptime=300):
     absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
 
     # apparent magnitude from Legacy photometry aperture flux
+    r_mag_legacy = UT.flux2mag(gleg['legacy-photo']['flux_r'])
     g_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_g'][:,1])
     r_mag_legacy_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
     # H-alpha line flux from GAMA spectroscopy
@@ -961,6 +962,27 @@ def expSpectra_blocks_zsuccess(field, iblocks=30, exptime=300):
     # calculate delta z / (1+z)  for dark and brigth skies 
     dz_1pz_dark = np.abs(zbest_d - redshift[i_dark])/(1.+redshift[i_dark])
     dz_1pz_bright = np.abs(zbest_b - redshift[i_dark])/(1.+redshift[i_dark])
+
+    fig = plt.figure(figsize=(5,4))
+    sub = fig.add_subplot(111)
+    rmag = r_mag_legacy
+    print rmag.min(), rmag.max()
+    rmag_range = [15, 22]
+    mm_dark, e1_dark, ee1_dark = _z_successrate(rmag[i_dark], range=rmag_range, 
+            condition=((zwarn_d == 0) & (dz_1pz_dark < 0.003)))
+    mm_bright, e1_bright, ee1_bright = _z_successrate(rmag[i_dark], range=rmag_range, 
+            condition=((zwarn_b == 0) & (dz_1pz_bright < 0.003)))
+    sub.plot([15., 25.], [1., 1.], c='k', ls='--', lw=2)
+    sub.errorbar(mm_dark, e1_dark, ee1_dark, c='C0', fmt='o', label="w/ Dark Sky")
+    sub.errorbar(mm_bright, e1_bright, ee1_bright, fmt='.C1', label="w/ Bright Sky")
+    sub.set_xlabel(r'$r$ magnitude Legacy', fontsize=20)
+    sub.set_xlim(rmag_range)
+    sub.set_ylabel(r'Redshift Success Rate', fontsize=20)
+    sub.set_ylim([0., 1.2])
+    sub.legend(loc='lower left', handletextpad=0., prop={'size': 20})
+    fig.savefig(UT.doc_dir()+"figs/gLeg_"+field+"_expSpectra_"+str(iblocks)+"blocks_exptime"+str(exptime)+"_zsuccess_rmag.png", 
+        bbox_inches='tight')
+    plt.close() 
     
     fig = plt.figure(figsize=(20, 4))
     # panel 1 Halpha line flux versus g-r apflux legacy color 
@@ -993,18 +1015,20 @@ def expSpectra_blocks_zsuccess(field, iblocks=30, exptime=300):
     print('%i spectra w/ bright sky fail' % np.sum(~((zwarn_b == 0) & (dz_1pz_bright < 0.003))))
     # panel 3 
     sub = fig.add_subplot(143)
-    mm_dark, e1_dark, ee1_dark = _z_successrate(r_mag_legacy_apflux[i_dark], #range=(18, 22), 
+    rmag = r_mag_legacy_apflux
+    rmag_range = [16, 23]
+    mm_dark, e1_dark, ee1_dark = _z_successrate(rmag[i_dark], range=rmag_range, 
             condition=((zwarn_d == 0) & (dz_1pz_dark < 0.003)))
-    mm_bright, e1_bright, ee1_bright = _z_successrate(r_mag_legacy_apflux[i_dark], #range=(18, 22), 
+    mm_bright, e1_bright, ee1_bright = _z_successrate(rmag[i_dark], range=rmag_range, 
             condition=((zwarn_b == 0) & (dz_1pz_bright < 0.003)))
     sub.plot([15., 25.], [1., 1.], c='k', ls='--', lw=2)
     sub.errorbar(mm_dark, e1_dark, ee1_dark, c='C0', fmt='o', label="w/ Dark Sky")
     sub.errorbar(mm_bright, e1_bright, ee1_bright, fmt='.C1', label="w/ Bright Sky")
     sub.set_xlabel(r'$r_\mathrm{ap.flux}$ magnitude', fontsize=20)
-    sub.set_xlim([16., 23.])
+    sub.set_xlim(rmag_range)
     sub.set_ylabel(r'Redshift Success Rate', fontsize=20)
     sub.set_ylim([0., 1.2])
-    # panel 3 
+    # panel 4 
     sub = fig.add_subplot(144)
     prop = np.log10(gama_ha)
     prop[gama_ha <= 0.] = -2
@@ -1943,7 +1967,7 @@ if __name__=="__main__":
     #SDSS_emlineComparison()
     #for et in [300, 480, 1000]: 
     #expSpectra_redrock(exptime=300)
-    #expSpectra_blocks_zsuccess('g15', iblocks=30, exptime=300)
+    expSpectra_blocks_zsuccess('g15', iblocks=30, exptime=300)
     #expSpectra_blocks_faintemline_zsuccess('g15', iblocks=30, exptime=300)
     #expSpectra_blocks_noHalpha_zsuccess('g15', iblocks=30, exptime=300)
-    _expSpectra_blocks_rapflux19_zsuccess('g15', iblocks=30, exptime=300)
+    #_expSpectra_blocks_rapflux19_zsuccess('g15', iblocks=30, exptime=300)
