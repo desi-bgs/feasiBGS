@@ -128,6 +128,65 @@ def expSpectra_faintEmLine(field, dr_gama=3, skycondition='bright', seed=1, expt
     return None 
 
 
+def expSpectra_fixedvdispEmLine(field, dr_gama=3, skycondition='bright', seed=1, exptime=480, 
+        vdisp=150.):
+    ''' synthetic spectra with simulated exposure for the galaxies in the 
+    5th "block" of the Gama-Legacy survey where emission lines have *fixed* 
+    velocity dispersions. 
+    '''
+    if skycondition not in ['bright', 'dark']: raise ValueError
+    # read in GAMA-Legacy catalog 
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read(field)
+
+    redshift = gleg['gama-spec']['z'] # redshift 
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
+    ngal = len(redshift) # number of galaxies
+    print('%i galaxies in %s region of GLeg catalog' % (ngal, field))
+
+    # match galaxies in the catalog to BGS templates
+    bgs3 = FM.BGStree() 
+    match = bgs3._GamaLegacy(gleg) 
+    hasmatch = (match != -999) 
+    print('%i galaxies do not have matches' % (len(match) - np.sum(hasmatch)))
+    
+    # r-band aperture magnitude from Legacy photometry 
+    r_mag_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
+    # r-band magnitude from GAMA (SDSS) photometry 
+    r_mag_gama = gleg['gama-photo']['modelmag_r']
+    vdisp = np.repeat(100.0, ngal) # velocity dispersions [km/s]
+   
+    i_block = 4 
+    in_block = (hasmatch & 
+            (np.arange(ngal) >= i_block * 1000) & 
+            (np.arange(ngal) < (i_block+1) * 1000))
+
+    s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=2e4)
+    # emission line fluxes
+    emline_flux = s_bgs._EmissionLineFlux_vdisp(gleg, vdisp=vdisp, 
+            index=np.arange(ngal)[in_block], dr_gama=dr_gama, silent=True)
+    
+    flux_eml, wave, _ = s_bgs.Spectra(r_mag_apflux[in_block], redshift[in_block], 
+            vdisp[in_block], seed=seed, templateid=match[in_block], 
+            emflux=emline_flux, mag_em=r_mag_gama[in_block], silent=False) 
+
+    # simulate exposure using 
+    f = ''.join([UT.dat_dir(), 'spectra/',
+        'GamaLegacy.', field, '.expSpectra.', skycondition, 'sky.seed', str(seed), 
+        '.exptime', str(exptime), '.', str(i_block+1), 'of', str(n_block), 
+        'blocks_fixedvdispEmLine_', str(int(vdisp)), 'kms.fits']) 
+    fdesi = FM.fakeDESIspec() 
+    bgs_spectra = fdesi.simExposure(wave, flux_eml, skycondition=skycondition, 
+            exptime=exptime, filename=f) 
+    # save indices for future reference 
+    f_indx = ''.join([UT.dat_dir(), 'spectra/'
+        'GamaLegacy.', field, '.expSpectra.', skycondition, 'sky.seed', str(seed), 
+        '.exptime', str(exptime), '.', str(i_block+1), 'of', str(n_block), 
+        'blocks_fixedvdispEmLine_', str(int(vdisp)), 'kms.index']) 
+    np.savetxt(f_indx, np.arange(ngal)[in_block], fmt='%i')
+    return None 
+
+
 def expSpectra_noEmLine(skycondition='bright', seed=1, exptime=480):
     ''' simulated spectra with simulated exposure for the galaxies in the 
     Gama-Legacy survey that have **no** emission lines (i.e. we don't run 
@@ -226,6 +285,9 @@ if __name__=='__main__':
         expSpectra(field, skycondition=sky, seed=seed, exptime=exptime)
     elif tt == 'spectra_faintemline': 
         expSpectra_faintEmLine(field, skycondition=sky, seed=seed, exptime=exptime)
+    elif tt == 'spectra_fixedvdispEmline': 
+        expSpectra_fixedvdispEmLine(field, skycondition=sky, seed=seed, exptime=exptime, 
+        vdisp=150.)
     else: 
         raise ValueError 
     #elif tt == 'spectra_noemline': 

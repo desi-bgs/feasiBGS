@@ -196,6 +196,50 @@ class BGSsourceSpectra(GALAXY):
                     np.exp(-0.5*(np.tile(wave, n_hasem).reshape(n_hasem, npix) - emline_lambda[i_k])**2/em_sig[:,None]**2)
         return emline_flux 
 
+    def _EmissionLineFlux_vdisp(self, gleg, vdisp=150., index=None, dr_gama=3, silent=True): 
+        ''' Calculate emission line only spectra flux for GAMA-Legacy objects with fixed 
+        emission line velocity dispersion. **This is mainly for testing purposes**. Returns
+        emission line flux in units of 10^(-17)erg/s/cm^2/A
+        '''
+        if dr_gama != 3: raise ValueError("Only supported for GAMA DR3") 
+        # emission lines
+        emline_keys = ['oiib', 'oiir', 'hb',  'oiiib', 'oiiir', 'oib', 'oir', 'niib', 'ha', 'niir', 'siib', 'siir']
+        emline_lambda = [3726., 3729., 4861., 4959., 5007., 6300., 6364., 6548., 6563., 6583., 6717., 6731.]
+   
+        if index is None: 
+            index = np.arange(len(gleg['gama-photo']['ra'])) 
+        else: 
+            assert isinstance(index, np.ndarray)
+        
+        # gama spectra data
+        gleg_s = gleg['gama-spec']
+
+        npix = len(self.basewave)
+        wave = self.basewave.astype(float)
+        emline_flux = np.zeros((len(index), npix))
+        
+        # loop through emission lines and add them to the emline_flux! 
+        for i_k, k in enumerate(emline_keys): 
+            # galaxies with measured emission line (DR3 allows for negative emission lines...) 
+            hasem = (gleg_s[k+'_flux'][index] > 0.)
+            n_hasem = np.sum(hasem) 
+            if n_hasem == 0: 
+                if not silent: print('no galaxies with emission line %s' % k) 
+                continue
+            em_lineflux = gleg_s[k+'_flux'][index][hasem] # line flux [10^(-17) erg/s/cm^2]
+            # width of Gaussian emission line derived from *fixed* velocity dispersion.
+            em_sig = vdisp * (emline_lambda[i_k] * (1.+gleg_s['z'][index][hasem])) / 299792.458 # this line of code is the main difference
+            if not silent: 
+                print('%s emission line width range: %f - %f' % (k, em_sig.min(), em_sig.max()))
+
+
+            # normalization of the Gaussian
+            A = em_lineflux/np.sqrt(2. * np.pi * em_sig**2)
+            
+            emline_flux[hasem] += A[:,None] * \
+                    np.exp(-0.5*(np.tile(wave, n_hasem).reshape(n_hasem, npix) - emline_lambda[i_k])**2/em_sig[:,None]**2)
+        return emline_flux 
+
     def _make_galaxy_templates(self, input_meta, emflux=None, mag_em=None, nocolorcuts=True, restframe=False, silent=True):
         ''' a streamlined version of desisim.template.GALAXY.make_galaxy_templates
         for BGS galaxies that takes in emission line flux from self.EmissionLineFlux 
