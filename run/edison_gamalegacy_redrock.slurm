@@ -2,8 +2,8 @@
 #SBATCH -q debug  
 #SBATCH -N 1 
 #SBATCH -t 00:15:00 
-#SBATCH -J gleg_expSpec_g15_dark_fainteml_redrock
-#SBATCH -o _gleg_expSpec_g15_dark_fainteml_redrock.o 
+#SBATCH -J gleg_expSpec_g15_dark_fixedvdisp_redrock
+#SBATCH -o _gleg_expSpec_g15_dark_fixedvdisp_redrock.o 
 #SBATCH -L SCRATCH,project 
 
 now=$(date +"%T") 
@@ -40,9 +40,18 @@ dir_redr=$CSCRATCH"/feasibgs/redrock/"
 #done 
 
 # run through redrock (parallized; takes ~11mins) 
-f_spectra=$CSCRATCH"/feasibgs/spectra/GamaLegacy."$field".expSpectra."$sky"sky.seed"$seed".exptime"$exptime".faintEmLine.fits"
-f_redrock=$CSCRATCH"/feasibgs/redrock/GamaLegacy."$field".expSpectra."$sky"sky.seed"$seed".exptime"$exptime".faintEmLine.redrock.fits"
-f_zoutput=$CSCRATCH"/feasibgs/redrock/GamaLegacy."$field".expSpectra."$sky"sky.seed"$seed".exptime"$exptime".faintEmLine.redrock.h5"
+#f_spectra=$CSCRATCH"/feasibgs/spectra/GamaLegacy."$field".expSpectra."$sky"sky.seed"$seed".exptime"$exptime".faintEmLine.fits"
+#f_redrock=$CSCRATCH"/feasibgs/redrock/GamaLegacy."$field".expSpectra."$sky"sky.seed"$seed".exptime"$exptime".faintEmLine.redrock.fits"
+#f_zoutput=$CSCRATCH"/feasibgs/redrock/GamaLegacy."$field".expSpectra."$sky"sky.seed"$seed".exptime"$exptime".faintEmLine.redrock.h5"
+#echo $f_spectra
+#echo $f_redrock
+#echo $f_zoutput
+#srun -N 1 -n 12 -c 2 rrdesi_mpi --zbest $f_redrock --output $f_zoutput $f_spectra
+
+# run through redrock (parallized; takes ~11mins) 
+f_spectra=$CSCRATCH"/feasibgs/spectra/GamaLegacy.g15.expSpectra."$sky"sky.seed"$seed".exptime"$exptime".5of64blocks_fixedvdispEmLine_150kms.fits"
+f_redrock=$CSCRATCH"/feasibgs/redrock/GamaLegacy.g15.expSpectra."$sky"sky.seed"$seed".exptime"$exptime".5of64blocks_fixedvdispEmLine_150kms.zbest.fits"
+f_zoutput=$CSCRATCH"/feasibgs/redrock/GamaLegacy.g15.expSpectra."$sky"sky.seed"$seed".exptime"$exptime".5of64blocks_fixedvdispEmLine_150kms.zbest.h5"
 echo $f_spectra
 echo $f_redrock
 echo $f_zoutput

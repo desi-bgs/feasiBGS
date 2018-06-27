@@ -154,8 +154,10 @@ def expSpectra_fixedvdispEmLine(field, dr_gama=3, skycondition='bright', seed=1,
     r_mag_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
     # r-band magnitude from GAMA (SDSS) photometry 
     r_mag_gama = gleg['gama-photo']['modelmag_r']
-    vdisp = np.repeat(100.0, ngal) # velocity dispersions [km/s]
+    vdisp_arr = np.repeat(100.0, ngal) # velocity dispersions [km/s]
    
+    n_block = (ngal // 1000) + 1 
+
     i_block = 4 
     in_block = (hasmatch & 
             (np.arange(ngal) >= i_block * 1000) & 
@@ -167,7 +169,7 @@ def expSpectra_fixedvdispEmLine(field, dr_gama=3, skycondition='bright', seed=1,
             index=np.arange(ngal)[in_block], dr_gama=dr_gama, silent=True)
     
     flux_eml, wave, _ = s_bgs.Spectra(r_mag_apflux[in_block], redshift[in_block], 
-            vdisp[in_block], seed=seed, templateid=match[in_block], 
+            vdisp_arr[in_block], seed=seed, templateid=match[in_block], 
             emflux=emline_flux, mag_em=r_mag_gama[in_block], silent=False) 
 
     # simulate exposure using 
@@ -287,7 +289,7 @@ if __name__=='__main__':
         expSpectra_faintEmLine(field, skycondition=sky, seed=seed, exptime=exptime)
     elif tt == 'spectra_fixedvdispEmline': 
         expSpectra_fixedvdispEmLine(field, skycondition=sky, seed=seed, exptime=exptime, 
-        vdisp=150.)
+                vdisp=150.)
     else: 
         raise ValueError 
     #elif tt == 'spectra_noemline': 

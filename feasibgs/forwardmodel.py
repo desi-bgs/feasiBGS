@@ -232,7 +232,6 @@ class BGSsourceSpectra(GALAXY):
             if not silent: 
                 print('%s emission line width range: %f - %f' % (k, em_sig.min(), em_sig.max()))
 
-
             # normalization of the Gaussian
             A = em_lineflux/np.sqrt(2. * np.pi * em_sig**2)
             
