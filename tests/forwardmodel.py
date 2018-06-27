@@ -587,21 +587,23 @@ def GamaLegacy_EmissionLineFlux_vdisp():
     absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
 
     # pick a random galaxy from the GAMA-legacy sample
-    i_rand = np.random.choice(range(len(redshift)), size=5) 
+    i_rand = np.random.choice(range(len(redshift)), size=1) 
 
     # match random galaxy to BGS templates
     bgs3 = FM.BGStree() 
     match = bgs3._GamaLegacy(gleg, index=i_rand) 
 
     s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=2e4)
-    emline_flux = s_bgs._EmissionLineFlux_vdisp(gleg, index=i_rand, dr_gama=3, silent=False)
+    emline_flux = s_bgs.EmissionLineFlux(gleg, index=i_rand, dr_gama=3, silent=False)
+    emline_flux_vdisp = s_bgs._EmissionLineFlux_vdisp(gleg, index=i_rand, dr_gama=3, silent=False)
     
     emline_groups = [[3700., 3750.], [4800, 5050], [6540., 6600.]]
     fig = plt.figure(figsize=(16,6)) 
     for i_em, emline_group in enumerate(emline_groups): 
         sub = fig.add_subplot(1,3,i_em+1)
         for i in range(emline_flux.shape[0]): 
-            sub.plot(s_bgs.basewave.astype(float), emline_flux[i,:], lw=1.5)
+            sub.plot(s_bgs.basewave.astype(float), emline_flux_vdisp[i,:], c='C'+str(i), lw=1.5)
+            sub.plot(s_bgs.basewave.astype(float), emline_flux[i,:], c='C'+str(i), lw=1.5, ls=':')
     
         for l_em in [3726., 3729., 4861., 4959., 5007., 6300., 6364., 6548., 6563., 6583., 6717., 6731.]: 
             sub.vlines(l_em, 0., 100., color='k', linestyle='--', linewidth=2) 
