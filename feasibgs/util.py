@@ -31,7 +31,7 @@ def flux2mag(flux, band='g', method='asinh'):
 
 
 def dat_dir(): 
-    ''' dat directory is symlinked to a local path where the data files are located
+    ''' 
     '''
     return os.environ.get('FEASIBGS_DIR') 
 

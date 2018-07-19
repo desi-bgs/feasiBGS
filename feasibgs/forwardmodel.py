@@ -859,6 +859,8 @@ class SimulatorHacked(Simulator):
             source_fluxes = self.source.flux_out.to(
                 source_flux.unit)[np.newaxis, :]
         elif source_fluxes.shape != (self.num_fibers, nwlen):
+            print('source_flux shape', source_fluxes.shape)
+            print('(%i, %i)' % (self.num_fibers, nwlen))
             raise ValueError('Invalid shape for source_fluxes.')
         try:
             source_flux[:] = source_fluxes.to(source_flux.unit).T
