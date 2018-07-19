@@ -220,6 +220,15 @@ class GAMA(Catalog):
             setattr(kcorr, name.lower(), fitsdata.field(name))
         return kcorr
 
+    def _specAll(self): 
+        ''' Read the GAMA SpecAll object described in
+        http://www.gama-survey.org/dr3/schema/table.php?id=30
+        '''
+        fspecall = fits.open(''.join([UT.dat_dir(), 'gama/dr3/InputCatA.fits']))
+        fspecall.verify('fix') 
+        specall = fspecall[1].data
+        return specall 
+
 
 class GamaLegacy(Catalog): 
     ''' class to build/read in imaging data from the Legacy survey DR 5 for the
