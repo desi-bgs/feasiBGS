@@ -231,8 +231,8 @@ class GAMA(Catalog):
 
 
 class GamaLegacy(Catalog): 
-    ''' class to build/read in imaging data from the Legacy survey DR 5 for the
-    objects in the GAMA DR2 photo+spec data (.GAMA object). The objects in the 
+    ''' class to append imaging data from the Legacy survey DR7 for the objects 
+    in the GAMA DR3 photo+spec data (.GAMA object). The objects in the final 
     catalog has GAMA photometry, GAMA spectroscopy, and Legacy-survey photometry
     '''
     def __init__(self): 
@@ -271,17 +271,17 @@ class GamaLegacy(Catalog):
         absmag_ugriz = mag_ugriz - DM - kcorr
         return absmag_ugriz
     
-    def Read(self, field, dr_gama=3, silent=True):
+    def Read(self, field, dr_gama=3, dr_legacy=7, silent=True):
         ''' Read in objects from legacy survey DR 5 that overlap with the 
         GAMA photo+spectra objects
         '''
-        fgleg = self._File(field, dr_gama=dr_gama)
+        fgleg = self._File(field, dr_gama=dr_gama, dr_legacy=dr_legacy)
         if not os.path.isfile(fgleg): # if file is not constructed
             if not silent: print('Building %s' % fgleg)
-            self._Build(field, dr_gama=dr_gama, silent=silent)
+            self._Build(field, dr_gama=dr_gama, dr_legacy=dr_legacy, silent=silent)
     
         # read in data and compile onto a dictionary
-        f = h5py.File(self._File(field, dr_gama=dr_gama), 'r') 
+        f = h5py.File(fgleg, 'r') 
         grp_gp = f['gama-photo'] 
         grp_gs = f['gama-spec']
         grp_k0 = f['gama-kcorr-z0.0']
@@ -306,21 +306,28 @@ class GamaLegacy(Catalog):
                 data[dk][key] = grp[key].value 
         return data 
 
-    def _File(self, field, dr_gama=3): 
-        return ''.join([UT.dat_dir(), 'GAMA.DR', str(dr_gama), '.', field, '.LEGACY.hdf5'])
+    def _File(self, field, dr_gama=3, dr_legacy=7): 
+        return ''.join([UT.dat_dir(), 'GAMAdr', str(dr_gama), '.', field, '.LEGACYdr', str(dr_legacy), '.hdf5'])
 
-    def _Build(self, field, dr_gama=3, 
-            sweep_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/sweep/5.0/', silent=True): 
+    def _Build(self, field, dr_gama=3, dr_legacy=7, sweep_dir=None, silent=True): 
         ''' Get Legacy Survey photometry for objects in the GAMA DR`dr_gama`
         photo+spec objects from the sweep files. This is meant to run on nersc
         but you can also manually download the sweep files and specify the dir
         where the sweep files are located in. 
         '''
+        if dr_legacy == 5: 
+            if sweep_dir is None: sweep_dir = '/global/project/projectdirs/cosmo/data/legacysurvey/dr5/sweep/5.0/'
+            tractor_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/'
+        elif dr_legacy == 7: 
+            if sweep_dir is None: sweep_dir = '/global/project/projectdirs/cosmo/data/legacysurvey/dr7/sweep/7.1/'
+            tractor_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr7/tractor/'
+
         # read in the names of the sweep files 
         fsweep = ''.join([UT.dat_dir(), 'legacy/', field, '.sweep_list.dat'])
         if not os.path.isfile(fsweep): _ = self._getSweeps(field, silent=silent)
         sweep_files = np.loadtxt(fsweep, unpack=True, usecols=[0], dtype='S') 
         if not silent: print("there are %i sweep files in the %s GAMA region" % (len(sweep_files), field)) 
+
         # read in GAMA objects
         gama = GAMA() 
         gama_data = gama.Read(field, data_release=dr_gama, silent=silent)
@@ -387,8 +394,7 @@ class GamaLegacy(Catalog):
             #np.savetxt(f_nosweep, np.array([gama_data['photo']['ra'], gama_data['photo']['dec']]).T, header='RA, Dec')
 
         # read apfluxes from tractor catalogs 
-        apflux_dict = self._getTractorApflux(sweep_dict['brickname'], sweep_dict['objid'], 
-                tractor_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/') 
+        apflux_dict = self._getTractorApflux(sweep_dict['brickname'], sweep_dict['objid'], tractor_dir=tractor_dir) 
         assert apflux_dict['apflux_g'].shape[0] == len(sweep_dict['brickname']) 
 
         # save data to hdf5 file
@@ -450,7 +456,7 @@ class GamaLegacy(Catalog):
         return ra_mins, dec_mins 
     
     def _getTractorApflux(self, brickname, objids, 
-            tractor_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/', silent=True): 
+            tractor_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr7/tractor/', silent=True): 
         ''' The catalog is constructed from the sweep catalog and the 
         GAMA DR3 photo+spec data. The sweep catalog does not include 
         all the photometric data from the legacy survey. This methods 
