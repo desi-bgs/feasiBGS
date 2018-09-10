@@ -13,9 +13,10 @@ module load python/2.7-anaconda
 source activate myenv0 
 
 field="g15"
-dr=3
+dr_gama=3
+dr_legacy=7
 
-srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy.py $field $dr
+srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy.py $field $dr_gama $dr_legacy
 
 now=$(date +"%T") 
 echo "end time ... $now"

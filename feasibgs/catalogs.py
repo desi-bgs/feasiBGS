@@ -379,11 +379,12 @@ class GamaLegacy(Catalog):
         assert len(sweep_dict['ra']) == len(gama_spec_dict['ra']) 
         assert len(sweep_dict['ra']) == len(gama_kcorr0_dict['mass']) 
         assert len(sweep_dict['ra']) == len(gama_kcorr1_dict['mass']) 
+
+        # writeout all the GAMA objects without sweep objects
         if not silent: 
-            # writeout all the GAMA objects without sweep objects
             nosweep = ~np.in1d(gama_data['photo']['objid'], gama_photo_dict['objid']) 
             f_nosweep = ''.join([UT.dat_dir(), 
-                'GAMA.DR', str(dr_gama), '.', field, '.nosweep_match.fits'])
+                'GAMAdr', str(dr_gama), '.', field, '.LEGACYdr', str(dr_legacy), '.nosweep_match.fits'])
             print('========================')
             print('Writing out RA, Dec of %i GAMA objects without Legacy sweep objects to %s' % 
                     (np.sum(nosweep), f_nosweep))
@@ -398,8 +399,8 @@ class GamaLegacy(Catalog):
         assert apflux_dict['apflux_g'].shape[0] == len(sweep_dict['brickname']) 
 
         # save data to hdf5 file
-        if not silent: print('writing to %s' % self._File(field, dr_gama=dr_gama))
-        f = h5py.File(self._File(field, dr_gama=dr_gama), 'w') 
+        if not silent: print('writing to %s' % self._File(field, dr_gama=dr_gama, dr_legacy=dr_legacy))
+        f = h5py.File(self._File(field, dr_gama=dr_gama, dr_legacy=dr_legacy), 'w') 
         grp_gp = f.create_group('gama-photo') 
         grp_gs = f.create_group('gama-spec') 
         grp_k0 = f.create_group('gama-kcorr-z0.0') 
