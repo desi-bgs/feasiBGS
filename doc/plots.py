@@ -50,18 +50,32 @@ def DESI_GAMA():
     cmap.set_under('w')
     HP.mollview(w_hp, cmap=cmap, title='', min=0, max=1, nest=True, fig=1)
     HP.graticule()
-    for i_f, field in enumerate(['g09', 'g12', 'g15']): 
-        data = gama.Read(field, data_release=3, silent=True)
-        theta_gama = 0.5 * np.pi - np.deg2rad(data['photo']['dec']) 
-        phi_gama = np.deg2rad(data['photo']['ra'])
+    for i_f, field in enumerate(['g02', 'g09', 'g12', 'g15']): 
+        if field == 'g02': 
+            ras = np.concatenate([np.tile(30.2, 100), np.linspace(30.2, 38.8, 100), np.tile(38.8, 100), np.linspace(30.2, 38.8, 100)])
+            decs = np.concatenate([np.linspace(-6., -4., 100), np.tile(-6., 100), np.linspace(-6., -4., 100), np.tile(-4., 100)])
+        elif field == 'g09': 
+            ras = np.concatenate([np.tile(129., 100), np.linspace(129., 141., 100), np.tile(141., 100), np.linspace(129., 141, 100)])
+            decs = np.concatenate([np.linspace(-2., 3., 100), np.tile(-2., 100), np.linspace(-2., 3., 100), np.tile(3., 100)])
+        elif field == 'g12': 
+            ras = np.concatenate([np.tile(174., 100), np.linspace(174., 186, 100), np.tile(186., 100), np.linspace(174., 186., 100)])
+            decs = np.concatenate([np.linspace(-3., 2., 100), np.tile(-3., 100), np.linspace(-3., 2., 100), np.tile(2., 100)])
+        elif field == 'g15': 
+            ras = np.concatenate([np.tile(211.5, 100), np.linspace(211.5, 223.5, 100), np.tile(223.5, 100), np.linspace(211.5, 223.5, 100)])
+            decs = np.concatenate([np.linspace(-2., 3., 100), np.tile(-2., 100), np.linspace(-2., 3., 100), np.tile(3., 100)])
+        theta_gama = 0.5 * np.pi - np.deg2rad(decs) 
+        phi_gama = np.deg2rad(ras) 
+        #data = gama.Read(field, data_release=3, silent=True)
+        #theta_gama = 0.5 * np.pi - np.deg2rad(data['photo']['dec']) 
+        #phi_gama = np.deg2rad(data['photo']['ra'])
         print('GAMA theta: %f - %f' % (theta_gama.min(), theta_gama.max()))
         print('GAMA phi: %f - %f' % (phi_gama.min(), phi_gama.max()))
-        HP.projscatter(theta_gama, phi_gama, color='C'+str(i_f), s=1, linewidth=0) 
+        HP.projscatter(theta_gama, phi_gama, color='C'+str(i_f), s=2, linewidth=0) 
         HP.projtext(250., 10.+10.*i_f, field.upper(), color='C'+str(i_f), 
                 fontsize=20, lonlat=True) 
     HP.projtext(15., 38., 'DESI', color='navy', fontsize=20, lonlat=True) 
     fig.delaxes(fig.axes[1])
-    fig.savefig(UT.doc_dir()+"figs/DESI_GAMA.pdf", bbox_inches='tight')
+    fig.savefig(UT.doc_dir()+"figs/DESI_GAMA.png", bbox_inches='tight')
     return None
 
 
@@ -1951,7 +1965,7 @@ def SDSS_emlineComparison():
 
 
 if __name__=="__main__": 
-    #DESI_GAMA()
+    DESI_GAMA()
     #GAMALegacy_Halpha_color()
     #BGStemplates()
     #GamaLegacy_matchSpectra()
@@ -1967,7 +1981,7 @@ if __name__=="__main__":
     #SDSS_emlineComparison()
     #for et in [300, 480, 1000]: 
     #expSpectra_redrock(exptime=300)
-    expSpectra_blocks_zsuccess('g15', iblocks=30, exptime=300)
+    #expSpectra_blocks_zsuccess('g15', iblocks=30, exptime=300)
     #expSpectra_blocks_faintemline_zsuccess('g15', iblocks=30, exptime=300)
     #expSpectra_blocks_noHalpha_zsuccess('g15', iblocks=30, exptime=300)
     #_expSpectra_blocks_rapflux19_zsuccess('g15', iblocks=30, exptime=300)
