@@ -12,7 +12,7 @@ def constructGamaLegacy(field, gama_dr=3, legacy_dr=7):
     methods in the GamaLegacy class object. 
     '''
     gleg = Cat.GamaLegacy()
-    gleg._Build(field, dr_gama=gama_dr, dr_legacy=legcay_dr, silent=False)
+    gleg._Build(field, dr_gama=gama_dr, dr_legacy=legacy_dr, silent=False)
     return None 
 
 
