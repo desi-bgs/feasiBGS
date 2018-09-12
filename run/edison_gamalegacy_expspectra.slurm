@@ -1,7 +1,7 @@
 #!/bin/bash -l 
 #SBATCH -q regular 
 #SBATCH -N 1 
-#SBATCH -t 01:30:00 
+#SBATCH -t 01:00:00 
 #SBATCH -J synSpec_g15_dark
 #SBATCH -o _synSpec_g15_dark.o 
 #SBATCH -L SCRATCH,project 
@@ -12,7 +12,7 @@ echo "start time ... $now"
 module load python/2.7-anaconda
 source activate myenv0 
 
-sky="dark"
+sky="bright"
 field="g15"
 seed=1
 exptime=300

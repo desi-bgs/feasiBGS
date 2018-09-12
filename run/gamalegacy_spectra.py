@@ -46,11 +46,13 @@ def expSpectra(field, dr_gama=3, dr_legacy=7, skycondition='bright', seed=1, exp
                 (np.arange(ngal) >= i_block * 1000) & 
                 (np.arange(ngal) < (i_block+1) * 1000))
         # output GAMA-Legacy data 
-        fblock = ''.join([dir_spec, 'gleg.', str(i_block+1), 'of', str(n_block), 'blocks.hdf5']) 
+        fblock = ''.join([dir_spec, 'gleg.', field, '.', skycondition, 'sky.seed', str(seed), 
+            '.exptime', str(exptime), '.', str(i_block+1), 'of', str(n_block), 'blocks.hdf5']) 
         cata_block = cata.select(index=in_block)
         cata.write(cata_block, fblock)
         # save indices for future reference 
-        f_indx = ''.join([dir_spec, 'gleg.', str(i_block+1), 'of', str(n_block), 'blocks.index'])
+        f_indx = ''.join([dir_spec, 'gleg.', field, '.', skycondition, 'sky.seed', str(seed), 
+            '.exptime', str(exptime), '.', str(i_block+1), 'of', str(n_block), 'blocks.index']) 
         np.savetxt(f_indx, np.arange(ngal)[in_block], fmt='%i')
         
         # calculate source spectra from templates
@@ -63,7 +65,7 @@ def expSpectra(field, dr_gama=3, dr_legacy=7, skycondition='bright', seed=1, exp
                 emflux=emline_flux, mag_em=r_mag_gama[in_block], silent=False) 
 
         # simulate exposure for DESI-like spectra  
-        f = ''.join([dir_spec, 'synSpectra.', skycondition, 'sky.seed', str(seed), 
+        f = ''.join([dir_spec, field, '.synSpectra.', skycondition, 'sky.seed', str(seed), 
             '.exptime', str(exptime), '.', str(i_block+1), 'of', str(n_block), 'blocks.fits']) 
         fdesi = FM.fakeDESIspec() 
         bgs_spectra = fdesi.simExposure(wave, flux_eml, skycondition=skycondition, 
