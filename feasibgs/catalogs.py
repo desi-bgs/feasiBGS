@@ -23,7 +23,7 @@ class Catalog(object):
     has no functionality
     '''
     def __init__(self): 
-        pass
+        self.catalog = None 
 
 
 class GAMA(Catalog):
@@ -235,9 +235,6 @@ class GamaLegacy(Catalog):
     in the GAMA DR3 photo+spec data (.GAMA object). The objects in the final 
     catalog has GAMA photometry, GAMA spectroscopy, and Legacy-survey photometry
     '''
-    def __init__(self): 
-        pass 
-
     def AbsMag(self, data, kcorr=0.1, H0=70, Om0=0.3, galext=False):  
         ''' Calculate absolute magnitude in SDSS u, g, r, i, z bands with kcorrect 
         at z=`kcorr` given the data dictionary from the `GamaLegacy.Read` method. 
@@ -304,7 +301,27 @@ class GamaLegacy(Catalog):
             data[dk] = {} 
             for key in grp.keys():
                 data[dk][key] = grp[key].value 
+        self.catalog = data.copy() 
         return data 
+
+    def select(self, index=None): 
+        ''' select objects in the catalog by their index
+        '''
+        if index is not None: 
+            if isinstance(index, list): 
+                index = np.array(index)
+            elif isinstance(index, np.ndarray): 
+                pass
+            else: 
+                raise ValueError("index can only be a list of array") 
+            
+            select_data = {} 
+            for grp in self.catalog.keys(): 
+                select_data[grp] = {} 
+                for key in grp.keys(): 
+                    select_data[grp][key] = self.catalog[grp][key][select]
+
+        return seelct_data 
 
     def _File(self, field, dr_gama=3, dr_legacy=7): 
         return ''.join([UT.dat_dir(), 'GAMAdr', str(dr_gama), '.', field, '.LEGACYdr', str(dr_legacy), '.hdf5'])
