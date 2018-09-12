@@ -11,14 +11,14 @@ from feasibgs import forwardmodel as FM
 from redrock.external.desi import rrdesi
 
 
-def expSpectra(field, dr_gama=3, skycondition='bright', seed=1, exptime=480):
+def expSpectra(field, dr_gama=3, dr_legacy=7, skycondition='bright', seed=1, exptime=480):
     ''' spectra with simulated exposure for the galaxies in the 
     `field` region of the Gama-Legacy catalog.
     '''
     if skycondition not in ['bright', 'dark']: raise ValueError
     # read in GAMA-Legacy catalog 
     cata = Cat.GamaLegacy()
-    gleg = cata.Read(field)
+    gleg = cata.Read(field, dr_gama=dr_gama, dr_legacy=dr_legacy)
 
     redshift = gleg['gama-spec']['z'] # redshift 
     absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1 
@@ -31,20 +31,29 @@ def expSpectra(field, dr_gama=3, skycondition='bright', seed=1, exptime=480):
     hasmatch = (match != -999) 
     print('%i galaxies do not have matches' % (len(match) - np.sum(hasmatch)))
     
-    n_block = (ngal // 1000) + 1 
+    n_block = (ngal // 5000) + 1 
     
     # r-band aperture magnitude from Legacy photometry 
     r_mag_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
     # r-band magnitude from GAMA (SDSS) photometry 
     r_mag_gama = gleg['gama-photo']['modelmag_r']
     vdisp = np.repeat(100.0, ngal) # velocity dispersions [km/s]
-    
+   
+    dir_spec = ''.join([UT.dat_dir(), 'spectra/gamadr', str(dr_gama), '_legacydr', str(dr_legacy), '/']) 
     for i_block in range(n_block): 
         print('block %i of %i' % (i_block+1, n_block))
         in_block = (hasmatch & 
                 (np.arange(ngal) >= i_block * 1000) & 
                 (np.arange(ngal) < (i_block+1) * 1000))
-
+        # output GAMA-Legacy data 
+        fblock = ''.join([dir_spec, 'gleg.', str(i_block+1), 'of', str(n_block), 'blocks.h5py']) 
+        cata_block = cata.select(index=in_block)
+        cata.write(cata_block, fblock)
+        # save indices for future reference 
+        f_indx = ''.join([dir_spec, 'gleg.', str(i_block+1), 'of', str(n_block), 'blocks.index'])
+        np.savetxt(f_indx, np.arange(ngal)[in_block], fmt='%i')
+        raise ValueError
+        # calculate synthetic spectra 
         s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=2e4)
         # emission line fluxes
         emline_flux = s_bgs.EmissionLineFlux(gleg, index=np.arange(ngal)[in_block], 
@@ -55,19 +64,11 @@ def expSpectra(field, dr_gama=3, skycondition='bright', seed=1, exptime=480):
                 emflux=emline_flux, mag_em=r_mag_gama[in_block], silent=False) 
 
         # simulate exposure using 
-        f = ''.join([UT.dat_dir(), 'spectra/',
-            'GamaLegacy.', field, '.expSpectra.', skycondition, 'sky.seed', str(seed), 
-            '.exptime', str(exptime), '.', str(i_block+1), 'of', str(n_block), 
-            'blocks.fits']) 
+        f = ''.join([dir_spec, 'synSpectra.', skycondition, 'sky.seed', str(seed), 
+            '.exptime', str(exptime), '.', str(i_block+1), 'of', str(n_block), 'blocks.fits']) 
         fdesi = FM.fakeDESIspec() 
         bgs_spectra = fdesi.simExposure(wave, flux_eml, skycondition=skycondition, 
                 exptime=exptime, filename=f) 
-        # save indices for future reference 
-        f_indx = ''.join([UT.dat_dir(), 'spectra/'
-            'GamaLegacy.', field, '.expSpectra.', skycondition, 'sky.seed', str(seed), 
-            '.exptime', str(exptime), '.', str(i_block+1), 'of', str(n_block), 
-            'blocks.index']) 
-        np.savetxt(f_indx, np.arange(ngal)[in_block], fmt='%i')
     return None 
 
 
@@ -284,7 +285,7 @@ if __name__=='__main__':
     seed = int(sys.argv[4])
     exptime = int(sys.argv[5]) 
     if tt == 'spectra': 
-        expSpectra(field, skycondition=sky, seed=seed, exptime=exptime)
+        expSpectra(field, dr_gama=3, dr_legacy=7, skycondition=sky, seed=seed, exptime=exptime)
     elif tt == 'spectra_faintemline': 
         expSpectra_faintEmLine(field, skycondition=sky, seed=seed, exptime=exptime)
     elif tt == 'spectra_fixedvdispEmline': 

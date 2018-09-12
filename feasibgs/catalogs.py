@@ -318,10 +318,21 @@ class GamaLegacy(Catalog):
             select_data = {} 
             for grp in self.catalog.keys(): 
                 select_data[grp] = {} 
-                for key in grp.keys(): 
-                    select_data[grp][key] = self.catalog[grp][key][select]
+                for key in self.catalog[grp].keys(): 
+                    select_data[grp][key] = self.catalog[grp][key][index]
+        return select_data 
 
-        return seelct_data 
+    def write(self, catalog, fname):  
+        ''' Given dictionary with same structure as self.catalog 
+        write to hdf5 file 
+        '''
+        f = h5py.File(fname, 'w') 
+        for g in catalog.keys(): 
+            grp = f.create_group(g) 
+            for k in catalog[g].keys(): 
+                grp.create_dataset(k, data=catalog[g][k]) 
+        f.close() 
+        return None 
 
     def _File(self, field, dr_gama=3, dr_legacy=7): 
         return ''.join([UT.dat_dir(), 'GAMAdr', str(dr_gama), '.', field, '.LEGACYdr', str(dr_legacy), '.hdf5'])
