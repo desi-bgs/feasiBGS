@@ -43,8 +43,8 @@ def expSpectra(field, dr_gama=3, dr_legacy=7, skycondition='bright', seed=1, exp
     for i_block in range(n_block): 
         print('block %i of %i' % (i_block+1, n_block))
         in_block = (hasmatch & 
-                (np.arange(ngal) >= i_block * 1000) & 
-                (np.arange(ngal) < (i_block+1) * 1000))
+                (np.arange(ngal) >= i_block * 5000) & 
+                (np.arange(ngal) < (i_block+1) * 5000))
         # output GAMA-Legacy data 
         fblock = ''.join([dir_spec, 'gleg.', field, '.', skycondition, 'sky.seed', str(seed), 
             '.exptime', str(exptime), '.', str(i_block+1), 'of', str(n_block), 'blocks.hdf5']) 

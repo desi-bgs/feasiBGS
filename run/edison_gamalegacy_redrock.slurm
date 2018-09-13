@@ -1,9 +1,9 @@
 #!/bin/bash -l 
-#SBATCH -q debug  
+#SBATCH -q regular 
 #SBATCH -N 1 
-#SBATCH -t 00:15:00 
-#SBATCH -J redrock_synSpec_g15_dark
-#SBATCH -o _redrock_synSpec_g15_dark.o 
+#SBATCH -t 02:45:00 
+#SBATCH -J redrock_synSpec_g15_bright
+#SBATCH -o _redrock_synSpec_g15_bright.o 
 #SBATCH -L SCRATCH,project 
 
 now=$(date +"%T") 
@@ -14,7 +14,7 @@ source activate myenv0
 
 source /project/projectdirs/desi/software/desi_environment.sh 18.3
 
-sky="dark"
+sky="bright"
 field="g15"
 seed=1
 exptime=300
@@ -24,7 +24,7 @@ fi
 
 dir_spec=$CSCRATCH"/feasibgs/spectra/gamadr3_legacydr7/"
 # run through redrock
-for iblock in $(seq 1 1); do 
+for iblock in $(seq 1 $nblocks); do 
     f_spectra=$dir_spec$field".synSpectra."$sky"sky.seed"$seed".exptime"$exptime"."$iblock"of"$nblocks"blocks.fits"
     f_redrock=$dir_spec$field".synSpectra."$sky"sky.seed"$seed".exptime"$exptime"."$iblock"of"$nblocks"blocks.redrock.fits"
     f_zoutput=$dir_spec$field".synSpectra."$sky"sky.seed"$seed".exptime"$exptime"."$iblock"of"$nblocks"blocks.redrock.h5"
