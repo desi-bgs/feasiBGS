@@ -305,6 +305,7 @@ class BGSsourceSpectra(GALAXY):
         # Build each spectrum in turn.
         outflux = np.zeros([nmodel, len(self.wave)]) # [erg/s/cm2/A]
 
+        magnorm_flag = np.ones(nmodel).astype(bool) 
         for ii in range(nmodel):
             templaterand = np.random.RandomState(templateseed[ii])
 
@@ -345,6 +346,8 @@ class BGSsourceSpectra(GALAXY):
                     if not silent: 
                         print('--------------------') 
                         print('the %i th galaxy has brighter emission lines than photometry...' % ii)
+                    magnorm_flag[ii] = False
+                    continue 
 
                 norm_restflux = restflux * magnorm0 + emflux[ii] 
                 maggies1 = self.decamwise.get_ab_maggies(norm_restflux, zwave, mask_invalid=True)
@@ -372,7 +375,7 @@ class BGSsourceSpectra(GALAXY):
             input_meta['FLUX_W1'][ii] = synthnano['wise2010-W1']
             input_meta['FLUX_W2'][ii] = synthnano['wise2010-W2']
 
-        return 1e17 * outflux, self.wave, input_meta
+        return 1e17 * outflux, self.wave, input_meta, magnorm_flag
 
     def _blurmatrix(self, vdisp):
         """Pre-compute the blur_matrix as a dictionary keyed by each unique value of
