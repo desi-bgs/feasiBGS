@@ -144,16 +144,16 @@ class BGSsourceSpectra(GALAXY):
             nobj = 1
         # meta data of 'mag', 'redshift', 'vdisp'
         input_meta = empty_metatable(nmodel=nobj, objtype='BGS')
-        input_meta['SEED'] = np.random.randint(2**32, size=nobj) 
+        input_meta['SEED'] = seed #np.random.randint(2**32, size=nobj) 
         input_meta['MAG'] = r_mag # r band apparent magnitude
         input_meta['REDSHIFT'] = zred # redshift
         input_meta['VDISP'] = vdisp 
         input_meta['TEMPLATEID'] = templateid
 
-        flux, self.wave, meta = self._make_galaxy_templates(input_meta, emflux=emflux, mag_em=mag_em, 
+        flux, self.wave, meta, magnorm_flag = self._make_galaxy_templates(input_meta, emflux=emflux, mag_em=mag_em, 
                 nocolorcuts=True, restframe=False, silent=silent) 
 
-        return flux, self.wave, meta
+        return flux, self.wave, meta, magnorm_flag
 
     def EmissionLineFlux(self, gleg, index=None, dr_gama=3, silent=True): 
         ''' Calculate emission line flux for GAMA-Legacy objects. Returns
