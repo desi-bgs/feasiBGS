@@ -50,9 +50,11 @@ def expSpectra(field, dr_gama=3, dr_legacy=7, skycondition='bright', seed=1, exp
         # add emission lines 
         emline_flux = s_bgs.EmissionLineFlux(gleg, index=np.arange(ngal)[in_block], 
                 dr_gama=dr_gama, silent=True)
+        print('---- emission line flux constructed ----') 
         flux_eml, wave, _, magnorm_flag = s_bgs.Spectra(r_mag_apflux[in_block], redshift[in_block], 
                 vdisp[in_block], seed=seed, templateid=match[in_block], 
                 emflux=emline_flux, mag_em=r_mag_gama[in_block], silent=False) 
+        print('---- source spectra constructed ----') 
 
         # simulate exposure for DESI-like spectra  
         f = ''.join([dir_spec, field, '.synSpectra.', skycondition, 'sky.seed', str(seed), 
@@ -60,12 +62,14 @@ def expSpectra(field, dr_gama=3, dr_legacy=7, skycondition='bright', seed=1, exp
         fdesi = FM.fakeDESIspec() 
         bgs_spectra = fdesi.simExposure(wave, flux_eml, skycondition=skycondition, 
                 exptime=exptime, filename=f) 
+        print('---- synthetic spectra constructed ----') 
 
         # output GAMA-Legacy data 
         fblock = ''.join([dir_spec, 'gleg.', field, '.', skycondition, 'sky.seed', str(seed), 
             '.exptime', str(exptime), '.', str(i_block+1), 'of', str(n_block), 'blocks.hdf5']) 
         cata_block = cata.select(index=in_block)
-        cata_block['magnorm_flag'] = magnorm_flag
+        cata_block['forwardmodel'] = {} 
+        cata_block['forwardmodel']['magnorm_flag'] = magnorm_flag
         cata.write(cata_block, fblock)
         # save indices for future reference 
         f_indx = ''.join([dir_spec, 'gleg.', field, '.', skycondition, 'sky.seed', str(seed), 
