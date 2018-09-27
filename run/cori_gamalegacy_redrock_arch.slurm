@@ -1,11 +1,19 @@
 #!/bin/bash -l 
-#SBATCH -q regular 
+#SBATCH -q debug 
 #SBATCH -N 1 
-#SBATCH -t 03:00:00 
+#SBATCH -t 00:30:00 
 #SBATCH -C haswell
 #SBATCH -J RR_uparchuptemp_g15_dark
 #SBATCH -o _RR_uparchuptemp_g15_dark.o 
 #SBATCH -L SCRATCH,project 
+
+### THIS SCRIPT DOES NOT WORK ###
+### THIS SCRIPT DOES NOT WORK ###
+### THIS SCRIPT DOES NOT WORK ###
+### THIS SCRIPT DOES NOT WORK ###
+### THIS SCRIPT DOES NOT WORK ###
+### THIS SCRIPT DOES NOT WORK ###
+# use the edison one 
 
 now=$(date +"%T") 
 echo "start time ... $now"
@@ -13,6 +21,7 @@ echo "start time ... $now"
 source /project/projectdirs/desi/software/desi_environment.sh 18.3
 module unload redrock/0.10.1
 export PATH="/global/homes/c/chahah/.local/edison/2.7-anaconda-4.4/bin:$PATH"
+module load python/2.7-anaconda
 
 sky="dark"
 field="g15"
@@ -53,15 +62,16 @@ dir_spec=$CSCRATCH"/feasibgs/spectra/gamadr3_legacydr7/"
 # https://github.com/desihub/redrock-templates/pull/8
 dir_archetypes=$HOME"/projects/packages/redrock-archetypes/"
 dir_templates=$HOME"/projects/packages/redrock-templates/"
-for iblock in $(seq 1 1); do 
-    f_spectra=$dir_spec$field".synSpectra."$sky"sky.seed"$seed".exptime"$exptime"."$iblock"of"$nblocks"blocks.fits"
-    f_redrock=$dir_spec$field".synSpectra."$sky"sky.seed"$seed".exptime"$exptime"."$iblock"of"$nblocks"blocks.redrock.uparch.uptemp.fits"
-    f_zoutput=$dir_spec$field".synSpectra."$sky"sky.seed"$seed".exptime"$exptime"."$iblock"of"$nblocks"blocks.redrock.uparch.uptemp.h5"
-    echo "------------------------------"
-    echo "block "$iblock" of "$nblocks
-    echo "running "$f_spectra" through redrock"
-    srun -N 1 -n 12 -c 2 rrdesi_mpi --zbest $f_redrock --archetypes $dir_archetypes --templates $dir_templates --output $f_zoutput $f_spectra
-done 
+#for iblock in $(seq 1 1); do 
+iblock=1
+f_spectra=$dir_spec$field".synSpectra."$sky"sky.seed"$seed".exptime"$exptime"."$iblock"of"$nblocks"blocks.fits"
+f_redrock=$dir_spec$field".synSpectra."$sky"sky.seed"$seed".exptime"$exptime"."$iblock"of"$nblocks"blocks.redrock.uparch.uptemp.fits"
+f_zoutput=$dir_spec$field".synSpectra."$sky"sky.seed"$seed".exptime"$exptime"."$iblock"of"$nblocks"blocks.redrock.uparch.uptemp.h5"
+echo "------------------------------"
+echo "block "$iblock" of "$nblocks
+echo "running "$f_spectra" through redrock"
+srun -N 1 -n 12 -c 2 rrdesi_mpi --zbest $f_redrock -t $dir_templates --archetypes $dir_archetypes -n 12 -o $f_zoutput $f_spectra
+#done 
 
 now=$(date +"%T") 
 echo "end time ... $now"
