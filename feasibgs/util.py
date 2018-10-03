@@ -36,6 +36,10 @@ def dat_dir():
     return os.environ.get('FEASIBGS_DIR') 
 
 
+def code_dir(): 
+    return os.environ.get('FEASIBGS_CODEDIR') 
+
+
 def fig_dir(): 
     ''' directory for figures 
     '''
