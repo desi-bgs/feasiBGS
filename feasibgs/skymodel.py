@@ -46,12 +46,26 @@ class skySpec(object):
         self.delm = moon_sep
         self._readCoeffs()
 
-    def Icont(self, wave): 
+    def surface_brightness(self, wave): 
+        ''' return the surface brightness of the sky 
+        '''
+        # read in sky emission from the UVES continuum subtraction
+        w_uves, S_uves = np.loadtxt(''.join([UT.code_dir(), 'dat/sky/UVES_sky_emission.dat']), 
+                unpack=True, usecols=[0,1]) 
+        # interpolate 
+        f_uves = interp1d(w_uves, S_uves, bounds_error=False, fill_value='extrapolate')
+        S_emission = f_uves(wave)
+
+        flux_continuum = self.Icont(wave) 
+        S_continuum = flux_continuum / np.pi  # BOSS has 2 arcsec diameter
+        return S_continuum + S_emission 
+
+    def Icont(self, w): 
         ''' interpolate 
         '''
         wave, Icont = self.get_Icontinuum() 
         f_Icont = interp1d(wave, Icont, bounds_error=False, fill_value='extrapolate')
-        return f_Icont(wave) 
+        return f_Icont(w) 
 
     def get_Icontinuum(self): 
         ''' calculate the continuum of the sky (Fragelius thesis Eq. 4.23)
@@ -81,7 +95,7 @@ class skySpec(object):
     
         wave = np.array(self.coeffs['wl'])
         wave_sort = np.argsort(wave) 
-        return wave[wave_sort], np.array(Icont)[wave_sort]
+        return 10*wave[wave_sort], np.array(Icont)[wave_sort]
 
     def cI_moon_exp(self, altm, illm, deltam, g, airmass): 
         # light from the moon that is scattered into our field of view 
@@ -125,6 +139,7 @@ class skySpec(object):
     def cI_twi_exp(self, alpha, delta, airmass): 
         # When the sun is above −20◦ altitude, some of its light will back-scatter 
         # off the atmosphere into the field of view. (Fragelius thesis Eq. 4.27)
+        # no observations are made when sun is above -14o altitude.
         if alpha > -20.: 
             twi = (
                     self.coeffs['t0'] * np.abs(alpha) + # CT2
@@ -208,6 +223,3 @@ class skySpec(object):
         # keep moon models
         self.coeffs = coeffs[coeffs['model'] == 'moon']
         return None 
-
-
-

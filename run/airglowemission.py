@@ -11,7 +11,8 @@ from feasibgs import util as UT
 
 
 def UVESsky_continuum(emline_mask_width=5., kernel_size=51, sigma=100): 
-    ''' Get the continuum of the UVES sky surface brightness
+    ''' Get the continuum of the UVES sky surface brightness and the
+    emission line sky surface brightness.
     '''
     # read in UVES sky spectrum 
     dir_desi = os.environ.get('DESIMODEL') 

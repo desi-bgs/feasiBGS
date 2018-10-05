@@ -42,6 +42,8 @@ from desitarget.cuts import isBGS_bright, isBGS_faint
 
 # -- local -- 
 from feasibgs import catalogs as Cat 
+from feasibgs import skymodel as Sky
+
 
 LIGHT = 2.99792458E5  #- speed of light in km/s
 
@@ -466,9 +468,33 @@ class fakeDESIspec(object):
     def __init__(self): 
         pass
 
-    def skySurfBright(self, wave, cond='bright'): 
-        ''' given wavelengths return realistic surface brightnesses 
-        of the sky. 
+    def skySurfBright(self, wave, obs_cond): 
+        ''' Given wavelength and observing conditions return sky surface brightness. 
+        The surface brightness is calculated by combining Parker's continuum fit with  
+        the UVES emission lines.
+        '''
+        # airmass, ecliptic latitude, galactic latitude, galactic longitude, tai (obs time), 
+        # sun altitude, sun separation, moon phase, moon illumination, moon separation, moon altitude
+        sky = Sky.skySpec(
+                obs_cond['airmass'], 
+                obs_cond['ecl_lat'], 
+                obs_cond['gal_lat'], 
+                obs_cond['gal_long'], 
+                obs_cond['tai'], 
+                obs_cond['sun_alt'], 
+                obs_cond['sun_sep'], 
+                obs_cond['moon_phase'], 
+                obs_cond['moon_ill'], 
+                obs_cond['moon_sep'], 
+                obs_cond['moon_alt']) 
+        return sky.surface_brightness(wave)
+
+    def _skySurfBright(self, wave, cond='bright'): 
+        ''' Older version of sky surface brightness calculation. This used
+        the UVES dark sky surface brightness as a base and then calculate 
+        bright sky surface brightness by taking the residual. 
+
+        given wavelengths return realistic surface brightnesses of the sky. 
 
         notes
         -----
