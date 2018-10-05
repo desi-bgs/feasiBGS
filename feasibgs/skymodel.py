@@ -116,10 +116,12 @@ class skySpec(object):
         # albedo (i.e. reflectivity of the moon)
         # g is the lunar phase (g = 0◦ for full moon and 180◦ for new moon)
         # (Fragelius thesis Eq. 4.28)
-        albedo_table = pd.read_csv(''.join([UT.code_dir(), 'dat/sky/albedo_constants.csv']), delim_whitespace=True) 
+        albedo_table = pd.read_csv(''.join([UT.code_dir(), 'dat/sky/albedo_constants.csv']), 
+                delim_whitespace=True) 
         albedo_constants = {}
         for col in list(albedo_table):
-            line = interp1d(albedo_table['WAVELENGTH'], albedo_table[col], bounds_error=False, fill_value=0)
+            line = interp1d(albedo_table['WAVELENGTH'], albedo_table[col], 
+                    bounds_error=False, fill_value=0)
             albedo_constants[col] = line 
 
         p1 = 4.06054
