@@ -164,7 +164,12 @@ class BGSsourceSpectra(GALAXY):
         if dr_gama != 3: raise ValueError("Only supported for GAMA DR3") 
         # emission lines
         emline_keys = ['oiib', 'oiir', 'hb',  'oiiib', 'oiiir', 'oib', 'oir', 'niib', 'ha', 'niir', 'siib', 'siir']
-        emline_lambda = [3726., 3729., 4861., 4959., 5007., 6300., 6364., 6548., 6563., 6583., 6717., 6731.]
+        #emline_lambda = [3726., 3729., 4861., 4959., 5007., 6300., 6364., 6548., 6563., 6583., 6717., 6731.]
+        # updated emission line wavelengths from 
+        # https://github.com/desihub/desisim/blob/master/py/desisim/data/forbidden_lines.ecsv
+        # and 
+        # https://github.com/desihub/desisim/blob/master/py/desisim/data/recombination_lines.ecsv
+        emline_lambda = [3727.092, 3729.874, 4862.683, 4960.295, 5008.239, 6302.046, 6365.535, 6549.852, 6564.613, 6585.277, 6718.294, 6732.673]
    
         if index is None: 
             index = np.arange(len(gleg['gama-photo']['ra'])) 
