@@ -5,8 +5,10 @@ import numpy as np
 import pandas as pd 
 from scipy.interpolate import interp1d
 # -- astropy --
+import astropy.units as u
 from astropy.time import Time, TimeDelta
 from astropy.coordinates import SkyCoord, EarthLocation, AltAz, get_sun, get_moon
+from astropy.coordinates import CartesianRepresentation, HeliocentricTrueEcliptic
 # -- feasibgs -- 
 from . import util as UT 
 
@@ -16,34 +18,84 @@ from astroplan import download_IERS_A
 download_IERS_A()
 
 class skySpec(object): 
-    def __init__(self, airmass, ecl_lat, gal_lat, gal_lon, tai, sun_alt, sun_sep, moon_phase, moon_ill, moon_sep, moon_alt):
-        # prase the input parameters 
-        self.X = airmass    # air mass 
-        self.beta = ecl_lat # ecliptic latitude ( used for zodiacal light contribution ) 
-        self.l = gal_lat    # galactic latitude ( used for ISL contribution ) 
-        self.b = gal_lon    # galactic longitude ( used for ISL contribution ) 
-        obs_time = tai/86400.       # used to calculate mjd 
-        _apache = EarthLocation.of_site('Apache Point')
-        start_time = Time(obs_time, scale='tai', format='mjd', location=_apache)
-        self.mjd = start_time.mjd   # mjd ( used for solar flux contribution ) 
+    def __init__(self, ra, dec, obs_time, airmass=None, ecl_lat=None, sun_alt=None, sun_sep=None, moon_phase=None, moon_sep=None, moon_alt=None):
+        ''' Given airmass, ra (deg), dec (deg), and observed time (UTC datetime) 
+        '''
+        # target coordinates 
+        coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg) 
+        # observed time (UTC)          
+        utc_time = Time(obs_time)
+        # kitt peak  
+        kpno = EarthLocation.of_site('kitt peak')
+        kpno_altaz = AltAz(obstime=utc_time, location=kpno) 
+        coord_altaz = coord.transform_to(kpno_altaz)
+        self.objalt = coord_altaz.alt.deg
+        if self.objalt < 0.: 
+            raise ValueError('object is below the horizon') 
+
+        if airmass is None: 
+            self.X = coord_altaz.secz
+        else: 
+            self.X = airmass    # air mass 
+        
+        if ecl_lat is None: # ecliptic latitude ( used for zodiacal light contribution ) 
+            self.beta = coord.barycentrictrueecliptic.lat.deg
+        else: 
+            self.beta = ecl_lat 
+        self.l = coord.galactic.l.deg   # galactic latitude ( used for ISL contribution ) 
+        self.b = coord.galactic.b.deg   # galactic longitude ( used for ISL contribution ) 
+
+        #obs_time = tai/86400.       # used to calculate mjd 
+        self.mjd = utc_time.mjd   # mjd ( used for solar flux contribution ) 
         # fractional months ( used for seasonal contribution) 
-        self.month_frac = start_time.datetime.month + start_time.datetime.day/30. 
+        self.month_frac = utc_time.datetime.month + utc_time.datetime.day/30. 
         
         # fractional hour ( used for hourly contribution) 
-        self.apache = Observer(_apache)
-        sun_rise = self.apache.sun_rise_time(start_time, which='next')
-        sun_set = self.apache.sun_set_time(start_time, which='previous')
-        hour = ((start_time - sun_set).sec)/3600.
+        self.site = Observer(kpno, timezone='UTC')
+        sun_rise = self.site.sun_rise_time(utc_time, which='next')
+        sun_set = self.site.sun_set_time(utc_time, which='previous')
+        hour = ((utc_time - sun_set).sec)/3600.
         self.hour_frac = hour/((Time(sun_rise, format='mjd') - Time(sun_set,format = 'mjd')).sec/3600.)
 
-        self.alpha = sun_alt    # sun altitude
-        self.delta = sun_sep    # sun separation (separation between the target and the sun’s location)
+        # sun altitude (degrees)
+        sun = get_sun(utc_time) 
+        if sun_alt is None:
+            sun_altaz = sun.transform_to(kpno_altaz) 
+            self.alpha = sun_altaz.alt.deg
+        else: 
+            self.alpha = sun_alt
+        if self.alpha > -13.: raise ValueError("sun is higher than BGS limit") 
+
+        # sun separation (separation between the target and the sun’s location)
+        if sun_sep is None: 
+            self.delta = coord.separation(sun).deg
+        else: 
+            self.delta = sun_sep           
         
         # used for scattered moonlight
-        self.g = moon_phase     # moon phase 
-        self.altm = moon_alt
-        self.illm = moon_ill
-        self.delm = moon_sep
+        moon = get_moon(utc_time)  
+        if moon_alt is None: 
+            moon_altaz = moon.transform_to(kpno_altaz) 
+            self.altm = moon_altaz.alt.deg 
+        else: 
+            self.altm = moon_alt 
+
+        if moon_sep is None: 
+            self.delm = coord.separation(moon).deg
+        else: 
+            self.delm = moon_sep
+    
+        if moon_phase is None:  
+            #from https://astroplan.readthedocs.io/en/latest/_modules/astroplan/moon.html
+            elongation = sun.separation(moon)
+            phase = np.arctan2(sun.distance * np.sin(elongation),
+                    moon.distance - sun.distance*np.cos(elongation))
+            self.g = phase.value    # in radians 
+            self.illm = (1. + np.cos(phase))/2.
+        else: 
+            self.g = moon_phase     # moon phase angle 
+            self.illm = (1. + np.cos(moon_phase))/2.
+
         self._readCoeffs()
 
     def surface_brightness(self, wave): 
