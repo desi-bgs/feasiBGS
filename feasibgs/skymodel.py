@@ -277,3 +277,36 @@ class skySpec(object):
         # keep moon models
         self.coeffs = coeffs[coeffs['model'] == 'moon']
         return None 
+
+
+class skySpec_manual(skySpec): 
+    def __init__(self, airmass, ecl_lat, gal_lat, gal_lon, tai, sun_alt, sun_sep, moon_phase, moon_ill, moon_sep, moon_alt):
+        # prase the input parameters 
+        self.X = airmass    # air mass 
+        self.beta = ecl_lat # ecliptic latitude ( used for zodiacal light contribution ) 
+        self.l = gal_lat    # galactic latitude ( used for ISL contribution ) 
+        self.b = gal_lon    # galactic longitude ( used for ISL contribution ) 
+        obs_time = tai/86400.       # used to calculate mjd 
+        _kpno = EarthLocation.of_site('kitt peak')
+        start_time = Time(obs_time, scale='tai', format='mjd', location=_kpno)
+        self.obs_time = start_time
+        self.mjd = start_time.mjd   # mjd ( used for solar flux contribution ) 
+        # fractional months ( used for seasonal contribution) 
+        self.month_frac = start_time.datetime.month + start_time.datetime.day/30. 
+        
+        # fractional hour ( used for hourly contribution) 
+        self.kpno = Observer(_kpno)
+        sun_rise = self.kpno.sun_rise_time(start_time, which='next')
+        sun_set = self.kpno.sun_set_time(start_time, which='previous')
+        hour = ((start_time - sun_set).sec)/3600.
+        self.hour_frac = hour/((Time(sun_rise, format='mjd') - Time(sun_set,format = 'mjd')).sec/3600.)
+
+        self.alpha = sun_alt    # sun altitude
+        self.delta = sun_sep    # sun separation (separation between the target and the sun’s location)
+        
+        # used for scattered moonlight
+        self.g = moon_phase     # moon phase 
+        self.altm = moon_alt
+        self.illm = moon_ill
+        self.delm = moon_sep
+        self._readCoeffs()
