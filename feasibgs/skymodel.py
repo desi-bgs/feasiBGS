@@ -15,7 +15,10 @@ from . import util as UT
 # -- astroplan -- 
 from astroplan import Observer
 from astroplan import download_IERS_A
-download_IERS_A()
+try: 
+    download_IERS_A()
+except: 
+    pass 
 
 class skySpec(object): 
     def __init__(self, ra, dec, obs_time, airmass=None, ecl_lat=None, sun_alt=None, sun_sep=None, moon_phase=None, moon_sep=None, moon_alt=None):
@@ -68,12 +71,12 @@ class skySpec(object):
 
         # sun separation (separation between the target and the sun’s location)
         if sun_sep is None: 
-            self.delta = coord.separation(sun).deg
+            self.delta = sun.separation(coord).deg
         else: 
             self.delta = sun_sep           
         
         # used for scattered moonlight
-        moon = get_moon(utc_time)  
+        moon = get_moon(utc_time)
         if moon_alt is None: 
             moon_altaz = moon.transform_to(kpno_altaz) 
             self.altm = moon_altaz.alt.deg 
@@ -81,7 +84,7 @@ class skySpec(object):
             self.altm = moon_alt 
 
         if moon_sep is None: 
-            self.delm = coord.separation(moon).deg
+            self.delm = moon.separation(coord).deg #coord.separation(self.moon).deg
         else: 
             self.delm = moon_sep
     
@@ -95,7 +98,7 @@ class skySpec(object):
         else: 
             self.g = moon_phase     # moon phase angle 
             self.illm = (1. + np.cos(moon_phase))/2.
-
+        
         self._readCoeffs()
 
     def surface_brightness(self, wave): 
@@ -144,10 +147,7 @@ class skySpec(object):
     
         # I_continuum(lambda)
         Icont = (self._Iairmass + self._Izodiacal + self._Iisl + self._Isolar_flux + self._Iseasonal + self._Ihourly + self._Iadd_continuum) * self._dT + self._Itwilight + self._Imoon
-    
-        wave = np.array(self.coeffs['wl'])
-        wave_sort = np.argsort(wave) 
-        return 10*wave[wave_sort], np.array(Icont)[wave_sort]
+        return 10*self.coeffs['wl'], np.array(Icont)
 
     def cI_moon_exp(self, altm, illm, deltam, g, airmass): 
         # light from the moon that is scattered into our field of view 
@@ -254,6 +254,7 @@ class skySpec(object):
         return solar_flux(mjd) 
 
     def I_isl(self, gal_lat, gal_long): 
+        # returns float 
         isl_data = pickle.load(open(''.join([UT.code_dir(), 'dat/sky/isl_map.p']),'rb'))
         return isl_data(gal_long, gal_lat)[0]
 
@@ -276,6 +277,13 @@ class skySpec(object):
                 ]
         # keep moon models
         self.coeffs = coeffs[coeffs['model'] == 'moon']
+
+        # order based on wavelengths for convenience
+        self.wave_sort = np.argsort(np.array(self.coeffs['wl']))  
+        
+        for k in self.coeffs.keys(): 
+            self.coeffs[k] = np.array(self.coeffs[k])[self.wave_sort]
+
         return None 
 
 
