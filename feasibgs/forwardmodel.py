@@ -695,7 +695,7 @@ class fakeDESIspec(object):
                 dwave_out=dwave_out, specsim_config_file=specsim_config_file)
 
         # get sky surface brightness
-        sky_surface_brightness = self.skySurfBright(wave, cond=skycondition)
+        sky_surface_brightness = self._skySurfBright(wave, cond=skycondition)
         
         #- Create simulator
         desi = SimulatorHacked(config, num_fibers=nspec, camera_output=psfconvolve)
