@@ -5,6 +5,7 @@ make interesting plots
 '''
 import os 
 import h5py 
+import pickle
 import numpy as np 
 import scipy.integrate as integ
 from pylab import cm
@@ -15,6 +16,10 @@ from astropy.io import fits
 from astropy.table import Table
 from astropy.cosmology import FlatLambdaCDM
 from pydl.pydlutils.spheregroup import spherematch
+from datetime import datetime
+from astroplan import Observer
+from astropy.time import Time
+from astropy.coordinates import SkyCoord, EarthLocation, AltAz, ICRS, GCRS, get_sun, get_moon, BaseRADecFrame
 # -- local -- 
 from feasibgs import util as UT
 from feasibgs import catalogs as Cat 
@@ -407,6 +412,207 @@ def skySurfaceBrightness():
     plt.close() 
     return None
 
+
+def skyBrightness(n_az=32, n_alt=18, method='pf', units='flux'): 
+    ''' Sky brightness in (alt and az) of night sky
+
+    method = 'pf' (parker's model), 'ks' Krisciunas & Schaefer
+    '''
+    # get moon at some night when moon altitutde ~0.3 and illumination ~ 0.7
+    utc_time = Time(datetime(2019, 3, 25, 9, 0, 0)) 
+    moon = get_moon(utc_time)
+
+    # kpno
+    kpno = EarthLocation.of_site('kitt peak')
+    kpno_altaz = AltAz(obstime=utc_time, location=kpno)
+
+    # moon at KPNO 
+    moon_altaz = moon.transform_to(kpno_altaz)
+    moon_az = moon_altaz.az.deg 
+    moon_alt = moon_altaz.alt.deg
+    
+    if units == 'ratio': 
+        import desimodel.io
+        import desisim.simexp
+        params = desimodel.io.load_desiparams()
+        wavemin = params['ccd']['b']['wavemin']
+        wavemax = params['ccd']['z']['wavemax']
+        waves = np.arange(wavemin, wavemax, 0.2) * u.angstrom
+        config = desisim.simexp._specsim_config_for_wave((waves).to('Angstrom').value, specsim_config_file='desi')
+        surface_brightness_dict = config.load_table(config.atmosphere.sky, 'surface_brightness', as_dict=True)
+        norm_dark = np.average(surface_brightness_dict['dark'][(waves.value > 4000.) & (waves.value < 4500.)])
+    else:
+        norm_dark = 1.
+    
+    if method == 'pf': # parker's sky
+        phi_grid, r_grid, totsky = _Isky_AltAz(n_az=n_az, n_alt=n_alt, key='I_cont', obstime=utc_time, location=kpno)
+        totsky /= np.pi
+    elif method == 'ks': 
+        az_bins = np.linspace(0., 360., n_az+1)
+        alt_bins = np.linspace(0., 90., n_alt+1)
+        phi_grid, r_grid = np.meshgrid(az_bins/180.*np.pi, 90.-alt_bins)
+        totsky = _Kris_AltAz(n_az=n_az, n_alt=n_alt, band='blue', moon=moon, obstime=utc_time, location=kpno)
+
+    skymask = _sky_mask(n_az=n_az, n_alt=n_alt, moon=moon, obstime=utc_time, location=kpno)
+    totsky[~skymask] = np.NaN
+
+    # plot the separations 
+    fig = plt.figure(figsize=(10,10))
+    sub = fig.add_subplot(111, polar=True)
+    sub.set_theta_zero_location('N')
+    sub.set_theta_direction(-1)
+    if units == 'flux': 
+        c = sub.pcolormesh(phi_grid, r_grid, totsky / norm_dark, cmap='viridis', vmin=0., vmax=20.)
+    elif units == 'ratio': 
+        c = sub.pcolormesh(phi_grid, r_grid, totsky / norm_dark, cmap='viridis', vmin=1., vmax=10.)
+    sub.scatter([moon_altaz.az.deg/180.*np.pi], [90.-moon_altaz.alt.deg], c='C1', s=250, label='Moon')
+    sub.annotate(r'moon',
+            xy=(moon_altaz.az.deg/180.*np.pi, 90.-moon_altaz.alt.deg),  # theta, radius
+            xytext=(moon_altaz.az.deg/180.*np.pi, 90.-moon_altaz.alt.deg),  # theta, radius
+            fontsize=20, horizontalalignment='center', verticalalignment='bottom')
+    sub.text(0., -0.05, 'moon illumination: 0.7', 
+            ha='left', va='center', transform=sub.transAxes, fontsize=20)
+    sub.text(0., -0.1, 'moon altitude: '+str(round(moon_alt,1)),
+            ha='left', va='center', transform=sub.transAxes, fontsize=20)
+    cbar = plt.colorbar(c)
+    if units == 'flux': 
+        cbar.set_label('sky brightness [$10^{-17} erg/cm^{2}/s/\AA/arcsec^2$]', rotation=270, labelpad=30, fontsize=20)
+    elif units == 'ratio': 
+        cbar.set_label('(sky brightness) / (UVES dark sky)', rotation=270, labelpad=30, fontsize=20)
+    sub.set_yticks(range(0, 90+10, 10))
+    sub.set_ylim([0., 70.])
+    _ = sub.set_yticklabels([90, '', '', 60, '', '', 30, ''])#, '', 0])
+    sub.grid(True, which='major')
+    if method == 'pf': 
+        sub.set_title(r"Sky Model at $4000 \AA$ (from BOSS sky fibers)", fontsize=25) 
+    elif method == 'ks': 
+        sub.set_title(r"Sky Model at $4000 \AA$ (Krisciunas $\&$ Schaefer 1991)", fontsize=25) 
+    fig.savefig(UT.doc_dir()+"figs/skyBrightness."+method+"."+units+".pdf", bbox_inches='tight')
+    return None
+
+def _Kris_AltAz(n_az=8, n_alt=3, band='blue', moon=None, obstime=None, location=None): 
+    import desimodel.io
+    import desisim.simexp
+    params = desimodel.io.load_desiparams() 
+    wavemin = params['ccd']['b']['wavemin']
+    wavemax = params['ccd']['z']['wavemax']
+    if band == 'blue': 
+        wmin, wmax = 4000., 4500. 
+    waves = np.arange(wavemin, wavemax, 0.2) * u.angstrom
+    wlim = ((waves > wmin*u.angstrom) & (waves < wmax*u.angstrom)) 
+    config = desisim.simexp._specsim_config_for_wave((waves).to('Angstrom').value, specsim_config_file='desi')
+    desi = FM.SimulatorHacked(config, num_fibers=1, camera_output=True)
+
+    extinction_coefficient = config.load_table(config.atmosphere.extinction, 'extinction_coefficient')
+    #surface_brightness_dict = config.load_table(config.atmosphere.sky, 'surface_brightness', as_dict=True)
+    # kpno
+    kpno_altaz = AltAz(obstime=obstime, location=location)
+    # moon at KPNO 
+    moon_altaz = moon.transform_to(kpno_altaz)
+    moon_az = moon_altaz.az.deg 
+    moon_alt = moon_altaz.alt.deg
+    
+    sun = get_sun(obstime) 
+            
+    elongation = sun.separation(moon)
+    phase = np.arctan2(sun.distance * np.sin(elongation),
+            moon.distance - sun.distance*np.cos(elongation))
+    desi.atmosphere.moon.moon_phase = phase.value/np.pi #moon_phase/np.pi #np.arccos(2*moonfrac-1)/np.pi
+    desi.atmosphere.moon.moon_zenith = (90. - moon_alt) * u.deg
+    
+    #altitude and azimuth bins 
+    az_bins = np.linspace(0., 360., n_az+1)
+    alt_bins = np.linspace(0., 90., n_alt+1)
+    az_grid, alt_grid = np.meshgrid(0.5*(az_bins[1:]+az_bins[:-1]), 0.5*(alt_bins[1:]+alt_bins[:-1])) 
+   
+    Bmoons = np.zeros(az_grid.shape)
+    for i in range(az_grid.shape[0]): 
+        for j in range(az_grid.shape[1]): 
+            sky_aa = AltAz(az=az_grid[i,j]*u.deg, alt=alt_grid[i,j]*u.deg, obstime=obstime, location=location)
+            sky = SkyCoord(sky_aa)
+            sep = moon.separation(sky).deg 
+            
+            desi.atmosphere.airmass = sky_aa.secz 
+            desi.atmosphere.moon.separation_angle = sep * u.deg
+            Bmoon = desi.atmosphere.moon.surface_brightness.value * 1e17
+            Bmoons[i,j] = np.average(Bmoon[wlim]) 
+    return Bmoons 
+
+
+def _Isky_AltAz(n_az=8, n_alt=3, key='Icont', obstime=None, location=None, overwrite=False):
+    # altitude and azimuth bins 
+    az_bins = np.linspace(0., 360., n_az+1)
+    alt_bins = np.linspace(0., 90., n_alt+1)
+    az_grid, alt_grid = np.meshgrid(0.5*(az_bins[1:]+az_bins[:-1]), 0.5*(alt_bins[1:]+alt_bins[:-1])) 
+    
+    f = ''.join([UT.dat_dir(), 'Isky.altazgrid.az', str(n_az), '.alt', str(n_alt), '.p']) 
+    if os.path.isfile(f) and not overwrite: 
+        phi_grid, r_grid, totsky = pickle.load(open(f, 'rb'))
+    else: 
+        # binning for the plot  
+        phi_grid, r_grid = np.meshgrid(az_bins/180.*np.pi, 90.-alt_bins)
+
+        # calculate sky brightness
+        keys = ['I_cont', 'I_airmass', 'I_zodiacal', 'I_isl', 'I_solar_flux', 'I_seashour', 'dT', 'I_twilight', 
+                'I_moon', 'I_moon_noexp', 'I_add']
+        totsky = {} 
+        for k in keys: 
+            totsky[k] = np.zeros(az_grid.shape)
+        for i in range(az_grid.shape[0]): 
+            for j in range(az_grid.shape[1]): 
+                Isky = skyflux_onthesky(alt_grid[i,j], az_grid[i,j], band='blue', obstime=obstime, location=location)
+                for k in keys: 
+                    totsky[k][i,j] = Isky[k]
+        pickle.dump([phi_grid, r_grid, totsky], open(f, 'wb'))
+    return phi_grid, r_grid, totsky[key] 
+
+
+def _skyflux(alt, az, band='blue', obstime=None, location=None): 
+    ''' return the sky flux on a given point (alt, az) on the sky  
+    '''
+    if band == 'blue': 
+        wmin, wmax = 4000., 4500. 
+
+    sky_aa = AltAz(az=az*u.deg, alt=alt*u.deg, obstime=obstime, location=location) #utc_time, location=kpno)
+    sky = SkyCoord(sky_aa)
+    pt = Sky.skySpec(sky.icrs.ra.deg, sky.icrs.dec.deg, obstime)
+
+    w, Icont = pt.get_Icontinuum()
+    wlim = ((w > wmin) & (w < wmax))
+    out = {} 
+    out['I_cont'] = np.average(Icont[wlim]) 
+    out['I_airmass'] = np.average(pt._Iairmass[wlim]) 
+    out['I_zodiacal'] = np.average(pt._Izodiacal[wlim]) 
+    out['I_isl'] = np.average(pt._Iisl[wlim]) 
+    out['I_solar_flux'] = np.average(pt._Isolar_flux[wlim]) 
+    out['I_seashour'] = np.average(pt._Iseasonal[wlim] + pt._Ihourly[wlim]) 
+    out['dT'] = np.average(pt._dT[wlim]) 
+    out['I_twilight'] = np.average(pt._Itwilight[wlim]) 
+    out['I_moon'] = np.average(pt._Imoon[wlim]) 
+    out['I_moon_noexp'] = np.average((pt._Imoon * np.exp(pt.coeffs['m6'] * pt.X))[wlim]) 
+    out['I_add'] = np.average(pt._Iadd_continuum[wlim]) 
+    return out  
+
+
+def _sky_mask(n_az=8, n_alt=3, moon=None, obstime=None, location=None): 
+    # a mask in alt az grid for sky conditions where Parker's model is not well calibrated.
+    # < 30 deg separation; > 30 deg altitude (airmass < 2)  
+
+    # altitude and azimuth bins 
+    az_bins = np.linspace(0., 360., n_az+1)
+    alt_bins = np.linspace(0., 90., n_alt+1)
+    az_grid, alt_grid = np.meshgrid(0.5*(az_bins[1:]+az_bins[:-1]), 0.5*(alt_bins[1:]+alt_bins[:-1])) 
+    
+    # apply some mask 
+    totsky = np.ones(az_grid.shape).astype(bool) 
+    for i in range(az_grid.shape[0]): 
+        for j in range(az_grid.shape[1]): 
+            sky_aa = AltAz(az=az_grid[i,j]*u.deg, alt=alt_grid[i,j]*u.deg, obstime=obstime, location=location)
+            sky = SkyCoord(sky_aa)
+            sep = moon.separation(sky).deg 
+            if sep < 30. or alt_grid[i,j] < 30.: 
+                totsky[i,j] = False 
+    return totsky
 
 def rMag_normalize(): 
     ''' Compare the normalization of the template spectra using model r-magnitude 
@@ -1965,7 +2171,7 @@ def SDSS_emlineComparison():
 
 
 if __name__=="__main__": 
-    DESI_GAMA()
+    #DESI_GAMA()
     #GAMALegacy_Halpha_color()
     #BGStemplates()
     #GamaLegacy_matchSpectra()
@@ -1985,3 +2191,7 @@ if __name__=="__main__":
     #expSpectra_blocks_faintemline_zsuccess('g15', iblocks=30, exptime=300)
     #expSpectra_blocks_noHalpha_zsuccess('g15', iblocks=30, exptime=300)
     #_expSpectra_blocks_rapflux19_zsuccess('g15', iblocks=30, exptime=300)
+    skyBrightness(n_az=32, n_alt=18, method='ks', units='flux')
+    skyBrightness(n_az=32, n_alt=18, method='ks', units='ratio')
+    #skyBrightness(n_az=32, n_alt=18, method='pf', units='flux')
+    #skyBrightness(n_az=32, n_alt=18, method='pf', units='ratio')
