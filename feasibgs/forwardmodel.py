@@ -478,6 +478,17 @@ class fakeDESIspec(object):
         The surface brightness is calculated by combining Parker's continuum fit with  
         the UVES emission lines.
         '''
+        sky = Sky.skySpec(obs_cond['ra'], obs_cond['dec'], obs_cond['obs_time']) 
+        
+        # Generate specsim config object for a given wavelength grid
+        config = desisim.simexp._specsim_config_for_wave(wave.to('Angstrom').value,
+                specsim_config_file='desi')
+            
+        sbright_unit = 1e-17 * u.erg / (u.arcsec**2 * u.Angstrom * u.s * u.cm ** 2 )
+        sbright = sky.surface_brightness(config.wavelength.value)
+        return np.clip(sbright, 0, None) * sbright_unit 
+
+    def skySurfBright_manual(self, wave, obs_cond): 
         # airmass, ecliptic latitude, galactic latitude, galactic longitude, tai (obs time), 
         # sun altitude, sun separation, moon phase, moon illumination, moon separation, moon altitude
         sky = Sky.skySpec(
@@ -585,9 +596,8 @@ class fakeDESIspec(object):
         flux_unit = 1e-17 * u.erg / (u.Angstrom * u.s * u.cm ** 2 )
         flux = flux[:,wlim]*flux_unit
 
-        sim = self._simulate_spectra(wave, flux, fibermap=frame_fibermap, 
-                skycondition=skycondition, obsconditions=obvs_dict, 
-                redshift=None, seed=seed, psfconvolve=True)
+        sim = self._simulate_spectra(wave, flux, fibermap=frame_fibermap, skycondition=skycondition, 
+                obsconditions=obvs_dict, redshift=None, seed=seed, psfconvolve=True)
 
         for table in sim.camera_output :
             tbl = table['num_source_electrons']
@@ -643,7 +653,7 @@ class fakeDESIspec(object):
             desispec.io.write_spectra(filename, specdata)
             return specdata  
 
-    def _simulate_spectra(self, wave, flux, fibermap=None, skycondition='bright', obsconditions=None, 
+    def _simulate_spectra(self, wave, flux, fibermap=None, skycondition=None, obsconditions=None, 
             redshift=None, dwave_out=None, seed=None, psfconvolve=True, specsim_config_file = "desi"):
         '''
         A more streamlined BGS version of the method `desisim.simexp.simulate_spectra`, which 
@@ -694,8 +704,11 @@ class fakeDESIspec(object):
         config = desisim.simexp._specsim_config_for_wave(wave.to('Angstrom').value, 
                 dwave_out=dwave_out, specsim_config_file=specsim_config_file)
 
-        # get sky surface brightness
-        sky_surface_brightness = self._skySurfBright(wave, cond=skycondition)
+        if isinstance(skycondition, str): 
+            # if not provided get sky surface brightness
+            sky_surface_brightness = self._skySurfBright(wave, cond=skycondition)
+        else: 
+            sky_surface_brightness = self.skySurfBright(wave, skycondition)
         
         #- Create simulator
         desi = SimulatorHacked(config, num_fibers=nspec, camera_output=psfconvolve)
@@ -911,7 +924,11 @@ class SimulatorHacked(Simulator):
 
         # check that input sky_surface_brightness is the same size 
         # as the source_flux 
-        assert source_flux.shape[0] == sky_surface_brightness.shape[0] 
+        if source_flux.shape[0] != sky_surface_brightness.shape[0]: 
+            print source_flux.shape
+            print sky_surface_brightness.shape
+            raise ValueError
+        #assert source_flux.shape[0] == sky_surface_brightness.shape[0] 
 
         # Calculate the sky flux entering a fiber from input 
         # sky surface_brightness  
