@@ -505,6 +505,45 @@ class fakeDESIspec(object):
                 obs_cond['moon_alt']) 
         return sky.surface_brightness(wave)
 
+    def skySurfBright_KS(self, wave, obs_cond): 
+        config = desisim.simexp._specsim_config_for_wave((wave).to('Angstrom').value, specsim_config_file='desi')
+        desi = SimulatorHacked(config, num_fibers=1, camera_output=True)
+
+        extinction_coefficient = config.load_table(config.atmosphere.extinction, 'extinction_coefficient')
+        # kpno
+        kpno = EarthLocation.of_site('kitt peak')
+        kpno_altaz = AltAz(obstime=obs_cond['obs_time'], location=kpno)
+        # moon at KPNO 
+        moon = get_moon(obs_cond['obs_time'])
+        moon_altaz = moon.transform_to(kpno_altaz)
+        moon_az = moon_altaz.az.deg 
+        moon_alt = moon_altaz.alt.deg
+
+        # coordinate 
+        coord = SkyCoord(ra=obs_cond['ra'] * u.deg, dec=obs_cond['dec'] * u.deg) 
+        coord_altaz = coord.transform_to(kpno_altaz)
+        
+        sun = get_sun(obs_cond['obs_time'])
+                
+        elongation = sun.separation(moon)
+        phase = np.arctan2(sun.distance * np.sin(elongation),
+                moon.distance - sun.distance*np.cos(elongation))
+        desi.atmosphere.moon.moon_phase = phase.value/np.pi #moon_phase/np.pi #np.arccos(2*moonfrac-1)/np.pi
+        desi.atmosphere.moon.moon_zenith = (90. - moon_alt) * u.deg
+        
+        #altitude and azimuth bins 
+        az_bins = np.linspace(0., 360., n_az+1)
+        alt_bins = np.linspace(0., 90., n_alt+1)
+        az_grid, alt_grid = np.meshgrid(0.5*(az_bins[1:]+az_bins[:-1]), 0.5*(alt_bins[1:]+alt_bins[:-1])) 
+       
+        sep = moon.separation(coord).deg 
+        desi.atmosphere.airmass = coord_altaz.secz 
+        desi.atmosphere.moon.separation_angle = sep * u.deg
+        
+        sbright_unit = 1e-17 * u.erg / (u.arcsec**2 * u.Angstrom * u.s * u.cm ** 2 )
+        Bmoon = desi.atmosphere.moon.surface_brightness.value * sbright_unit # 1e17
+        return Bmoon 
+
     def _skySurfBright(self, wave, cond='bright'): 
         ''' Older version of sky surface brightness calculation. This used
         the UVES dark sky surface brightness as a base and then calculate 
@@ -707,8 +746,11 @@ class fakeDESIspec(object):
         if isinstance(skycondition, str): 
             # if not provided get sky surface brightness
             sky_surface_brightness = self._skySurfBright(wave, cond=skycondition)
-        else: 
-            sky_surface_brightness = self.skySurfBright(wave, skycondition)
+        elif isinstance(skycondition, dict): 
+            if skycondition['name'] == 'parker':  
+                sky_surface_brightness = self.skySurfBright(wave, skycondition)
+            elif skycondition['name'] == 'ks': 
+                sky_surface_brightness = self.skySurfBright_KS(wave, skycondition)
         
         #- Create simulator
         desi = SimulatorHacked(config, num_fibers=nspec, camera_output=psfconvolve)
