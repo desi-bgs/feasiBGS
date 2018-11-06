@@ -506,6 +506,8 @@ class fakeDESIspec(object):
         return sky.surface_brightness(wave)
 
     def skySurfBright_KS(self, wave, obs_cond): 
+        from astropy.coordinates import SkyCoord, AltAz
+        from astropy.coordinates import EarthLocation, ICRS, GCRS, get_sun, get_moon, BaseRADecFrame
         config = desisim.simexp._specsim_config_for_wave((wave).to('Angstrom').value, specsim_config_file='desi')
         desi = SimulatorHacked(config, num_fibers=1, camera_output=True)
 
@@ -531,17 +533,13 @@ class fakeDESIspec(object):
         desi.atmosphere.moon.moon_phase = phase.value/np.pi #moon_phase/np.pi #np.arccos(2*moonfrac-1)/np.pi
         desi.atmosphere.moon.moon_zenith = (90. - moon_alt) * u.deg
         
-        #altitude and azimuth bins 
-        az_bins = np.linspace(0., 360., n_az+1)
-        alt_bins = np.linspace(0., 90., n_alt+1)
-        az_grid, alt_grid = np.meshgrid(0.5*(az_bins[1:]+az_bins[:-1]), 0.5*(alt_bins[1:]+alt_bins[:-1])) 
-       
         sep = moon.separation(coord).deg 
         desi.atmosphere.airmass = coord_altaz.secz 
         desi.atmosphere.moon.separation_angle = sep * u.deg
         
-        sbright_unit = 1e-17 * u.erg / (u.arcsec**2 * u.Angstrom * u.s * u.cm ** 2 )
+        sbright_unit = u.erg / (u.arcsec**2 * u.Angstrom * u.s * u.cm ** 2 )
         Bmoon = desi.atmosphere.moon.surface_brightness.value * sbright_unit # 1e17
+        print Bmoon
         return Bmoon 
 
     def _skySurfBright(self, wave, cond='bright'): 
@@ -751,6 +749,10 @@ class fakeDESIspec(object):
                 sky_surface_brightness = self.skySurfBright(wave, skycondition)
             elif skycondition['name'] == 'ks': 
                 sky_surface_brightness = self.skySurfBright_KS(wave, skycondition)
+            elif skycondition['name'] == 'input': 
+                sbright = skycondition['sky']  
+                wave_sky = skycondition['wave'] 
+                sky_surface_brightness = np.interp(wave, wave_sky, sbright) * sbright.unit
         
         #- Create simulator
         desi = SimulatorHacked(config, num_fibers=nspec, camera_output=psfconvolve)

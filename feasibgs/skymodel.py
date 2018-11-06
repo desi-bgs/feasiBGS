@@ -21,7 +21,7 @@ except:
     pass 
 
 class skySpec(object): 
-    def __init__(self, ra, dec, obs_time, airmass=None, ecl_lat=None, sun_alt=None, sun_sep=None, moon_phase=None, moon_sep=None, moon_alt=None):
+    def __init__(self, ra, dec, obs_time, location=None, airmass=None, ecl_lat=None, sun_alt=None, sun_sep=None, moon_phase=None, moon_sep=None, moon_alt=None):
         ''' Given airmass, ra (deg), dec (deg), and observed time (UTC datetime) 
         '''
         # target coordinates 
@@ -29,7 +29,10 @@ class skySpec(object):
         # observed time (UTC)          
         utc_time = Time(obs_time)
         # kitt peak  
-        kpno = EarthLocation.of_site('kitt peak')
+        if location is None: 
+            kpno = EarthLocation.of_site('kitt peak')
+        else: 
+            kpno = location 
         kpno_altaz = AltAz(obstime=utc_time, location=kpno) 
         coord_altaz = coord.transform_to(kpno_altaz)
         self.objalt = coord_altaz.alt.deg
