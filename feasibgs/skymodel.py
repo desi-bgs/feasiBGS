@@ -9,21 +9,28 @@ import astropy.units as u
 from astropy.time import Time, TimeDelta
 from astropy.coordinates import SkyCoord, EarthLocation, AltAz, get_sun, get_moon
 from astropy.coordinates import CartesianRepresentation, HeliocentricTrueEcliptic
+# -- speclite -- 
+import speclite 
+# -- specsim -- 
+import specsim
+from specsim.atmosphere import Moon 
 # -- feasibgs -- 
 from . import util as UT 
 
 # -- astroplan -- 
 from astroplan import Observer
 from astroplan import download_IERS_A
-try: 
-    download_IERS_A()
-except: 
-    pass 
+#try: 
+#    download_IERS_A()
+#except: 
+#    pass 
+
 
 class skySpec(object): 
     def __init__(self, ra, dec, obs_time, location=None, airmass=None, ecl_lat=None, sun_alt=None, sun_sep=None, moon_phase=None, moon_sep=None, moon_alt=None):
         ''' Given airmass, ra (deg), dec (deg), and observed time (UTC datetime) 
         '''
+        download_IERS_A()
         # target coordinates 
         coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg) 
         # observed time (UTC)          
@@ -321,3 +328,214 @@ class skySpec_manual(skySpec):
         self.illm = moon_ill
         self.delm = moon_sep
         self._readCoeffs()
+
+
+def specsim_initialize(config): 
+    if specsim.config.is_string(config):
+        config = specsim.config.load_config(config)
+
+    atm_config = config.atmosphere
+
+    # Load tabulated data.
+    surface_brightness_dict = config.load_table(
+        atm_config.sky, 'surface_brightness', as_dict=True)
+    extinction_coefficient = config.load_table(
+        atm_config.extinction, 'extinction_coefficient')
+
+    # Initialize an optional atmospheric seeing PSF.
+    psf_config = getattr(atm_config, 'seeing', None)
+    if psf_config:
+        seeing = dict(
+            fwhm_ref=specsim.config.parse_quantity(psf_config.fwhm_ref),
+            wlen_ref=specsim.config.parse_quantity(psf_config.wlen_ref),
+            moffat_beta=float(psf_config.moffat_beta))
+    else:
+        seeing = None
+
+    # Initialize an optional lunar scattering model.
+    moon_config = getattr(atm_config, 'moon', None)
+    if moon_config:
+        moon_spectrum = config.load_table(moon_config, 'flux')
+        c = config.get_constants(moon_config,
+            ['moon_zenith', 'separation_angle', 'moon_phase'])
+        moon = specsimMoon(
+            config.wavelength, moon_spectrum, extinction_coefficient,
+            atm_config.airmass, c['moon_zenith'], c['separation_angle'],
+            c['moon_phase'])
+    else:
+        moon = None
+
+    atmosphere = specsim.atmosphere.Atmosphere(
+        config.wavelength, surface_brightness_dict, extinction_coefficient,
+        atm_config.extinct_emission, atm_config.sky.condition,
+        atm_config.airmass, seeing, moon)
+
+    if config.verbose:
+        print(
+            "Atmosphere initialized with condition '{0}' from {1}."
+            .format(atmosphere.condition, atmosphere.condition_names))
+        if seeing:
+            print('Seeing is {0} at {1} with Moffat beta {2}.'
+                  .format(seeing['fwhm_ref'], seeing['wlen_ref'],
+                          seeing['moffat_beta']))
+        if moon:
+            print(
+                'Lunar V-band extinction coefficient is {0:.5f}.'
+                .format(moon.vband_extinction))
+
+    return atmosphere
+
+
+class specsimMoon(Moon): 
+    ''' specimsim.atmosphere.Moon object hacked to work with a Krisciunas & Schaefer (1991)
+    model with extra free parameters
+    '''
+    def __init__(self, wavelength, moon_spectrum, extinction_coefficient,
+            airmass, moon_zenith, separation_angle, moon_phase):
+        self._wavelength = wavelength
+        self._moon_spectrum = moon_spectrum
+        self._extinction_coefficient = extinction_coefficient
+
+        # Calculate the V-band extinction of the moon spectrum.
+        self._vband = speclite.filters.load_filter('bessell-V')
+        V = self._vband.get_ab_magnitude(moon_spectrum, wavelength)
+        extinction = 10 ** (-extinction_coefficient / 2.5)
+        Vstar = self._vband.get_ab_magnitude(
+            moon_spectrum * extinction, wavelength)
+        self._vband_extinction = Vstar - V
+
+        # Initialize the model parameters.
+        self.airmass = airmass
+        self.moon_zenith = moon_zenith
+        self.separation_angle = separation_angle
+        self.moon_phase = moon_phase
+        self.KS_CR = 10**5.36 # proportionality constant in the Rayleigh scattering function 
+        # constants for the Mie scattering function term 
+        self.KS_CM0 = 6.15 
+        self.KS_CM1 = 40.
+
+    def _update(self):
+        """Update the model based on the current parameter values.
+        """
+        self._update_required = False
+
+        # Calculate the V-band surface brightness of scattered moonlight.
+        self._scattered_V = krisciunas_schaefer_free(
+            self.obs_zenith, self.moon_zenith, self.separation_angle,
+            self.moon_phase, self.vband_extinction, self.KS_CR, self.KS_CM0, self.KS_CM1)
+
+        # Calculate the wavelength-dependent extinction of moonlight
+        # scattered once into the observed field of view.
+        scattering_airmass = (
+            1 - 0.96 * np.sin(self.moon_zenith) ** 2) ** (-0.5)
+        extinction = (
+            10 ** (-self._extinction_coefficient * scattering_airmass / 2.5) *
+            (1 - 10 ** (-self._extinction_coefficient * self.airmass / 2.5)))
+        self._surface_brightness = self._moon_spectrum * extinction
+
+        # Renormalized the extincted spectrum to the correct V-band magnitude.
+        raw_V = self._vband.get_ab_magnitude(
+            self._surface_brightness, self._wavelength) * u.mag
+        area = 1 * u.arcsec ** 2
+        self._surface_brightness *= 10 ** (
+            -(self._scattered_V * area - raw_V) / (2.5 * u.mag)) / area
+    @property
+    def KS_CR(self):
+        return self._KS_CR
+
+    @KS_CR.setter
+    def KS_CR(self, ks_cr):
+        self._KS_CR = ks_cr 
+        self._update_required = True
+
+    @property
+    def KS_CM0(self):
+        return self._KS_CM0
+
+    @KS_CM0.setter
+    def KS_CM0(self, ks_cm0):
+        self._KS_CM0 = ks_cm0 
+        self._update_required = True
+    
+    @property
+    def KS_CM1(self):
+        return self._KS_CM1
+
+    @KS_CM1.setter
+    def KS_CM1(self, ks_cm1):
+        self._KS_CM1 = ks_cm1 
+        self._update_required = True
+
+
+def krisciunas_schaefer_free(obs_zenith, moon_zenith, separation_angle, moon_phase,
+                        vband_extinction, C_R, C_M0, C_M1):
+    """Calculate the scattered moonlight surface brightness in V band.
+
+    Based on Krisciunas and Schaefer, "A model of the brightness of moonlight",
+    PASP, vol. 103, Sept. 1991, p. 1033-1039 (http://dx.doi.org/10.1086/132921).
+    Equation numbers in the code comments refer to this paper.
+
+    The function :func:`plot_lunar_brightness` provides a convenient way to
+    plot this model's predictions as a function of observation pointing.
+
+    Units are required for the angular inputs and the result has units of
+    surface brightness, for example:
+
+    >>> sb = krisciunas_schaefer(20*u.deg, 70*u.deg, 50*u.deg, 0.25, 0.15)
+    >>> print(np.round(sb, 3))
+    19.855 mag / arcsec2
+
+    The output is automatically broadcast over input arrays following the usual
+    numpy rules.
+
+    This method has several caveats but the authors find agreement with data at
+    the 8% - 23% level.  See the paper for details.
+
+    Parameters
+    ----------
+    obs_zenith : astropy.units.Quantity
+        Zenith angle of the observation in angular units.
+    moon_zenith : astropy.units.Quantity
+        Zenith angle of the moon in angular units.
+    separation_angle : astropy.units.Quantity
+        Opening angle between the observation and moon in angular units.
+    moon_phase : float
+        Phase of the moon from 0.0 (full) to 1.0 (new), which can be calculated
+        as abs((d / D) - 1) where d is the time since the last new moon
+        and D = 29.5 days is the period between new moons.  The corresponding
+        illumination fraction is ``0.5*(1 + cos(pi * moon_phase))``.
+    vband_extinction : float
+        V-band extinction coefficient to use.
+
+    Returns
+    -------
+    astropy.units.Quantity
+        Observed V-band surface brightness of scattered moonlight.
+    """
+    moon_phase = np.asarray(moon_phase)
+    if np.any((moon_phase < 0) | (moon_phase > 1)):
+        raise ValueError(
+            'Invalid moon phase {0}. Expected 0-1.'.format(moon_phase))
+    # Calculate the V-band magnitude of the moon (eqn. 9).
+    abs_alpha = 180. * moon_phase
+    m = -12.73 + 0.026 * abs_alpha + 4e-9 * abs_alpha ** 4
+    # Calculate the illuminance of the moon outside the atmosphere in
+    # foot-candles (eqn. 8).
+    Istar = 10 ** (-0.4 * (m + 16.57))
+    # Calculate the scattering function (eqn.21).
+    rho = separation_angle.to(u.deg).value
+    f_scatter = (C_R * (1.06 + np.cos(separation_angle) ** 2) +
+                 10 ** (C_M0 - rho / C_M1))
+    # Calculate the scattering airmass along the lines of sight to the
+    # observation and moon (eqn. 3).
+    X_obs = (1 - 0.96 * np.sin(obs_zenith) ** 2) ** (-0.5)
+    X_moon = (1 - 0.96 * np.sin(moon_zenith) ** 2) ** (-0.5)
+    # Calculate the V-band moon surface brightness in nanoLamberts.
+    B_moon = (f_scatter * Istar *
+        10 ** (-0.4 * vband_extinction * X_moon) *
+        (1 - 10 ** (-0.4 * (vband_extinction * X_obs))))
+    # Convert from nanoLamberts to to mag / arcsec**2 using eqn.19 of
+    # Garstang, "Model for Artificial Night-Sky Illumination",
+    # PASP, vol. 98, Mar. 1986, p. 364 (http://dx.doi.org/10.1086/131768)
+    return ((20.7233 - np.log(B_moon / 34.08)) / 0.92104 *
+            u.mag / (u.arcsec ** 2))
