@@ -1077,6 +1077,13 @@ class SimulatorHacked(Simulator):
                 output['num_sky_electrons'] +
                 output['num_dark_electrons'] +
                 output['read_noise_electrons'] ** 2)
+            mean_electrons = (output['num_source_electrons'] +
+                    output['num_sky_electrons'] +
+                    output['num_dark_electrons'])
+            if mean_electrons.min() < 0.: 
+                print output['num_source_electrons']
+                print output['num_sky_electrons']
+                print output['num_dark_electrons']
 
             # Calculate the effective calibration from detected electrons to
             # source flux above the atmosphere, downsampled to output pixels.
