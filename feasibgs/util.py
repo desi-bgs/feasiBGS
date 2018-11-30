@@ -5,6 +5,7 @@ utility functions
 '''
 import os
 import sys
+import subprocess
 import numpy as np
 
 
@@ -59,6 +60,14 @@ def paper_dir():
     ''' directory for paper related stuff 
     '''
     return fig_dir().split('fig')[0]+'paper/'
+
+
+def nersc_submit_job(fjob): 
+    ''' submit slurm job to nersc 
+    '''
+    if not os.path.isfile(fjob): raise ValueError("%s not found" % fjob) 
+    subprocess.check_output(['sbatch', fjob])
+    return None 
 
 
 def zeff_hist(prop, ztrue, zest, range=None, threshold=0.003, nbins=20, bin_min=2): 

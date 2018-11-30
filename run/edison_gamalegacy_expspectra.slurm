@@ -1,9 +1,9 @@
 #!/bin/bash -l 
 #SBATCH -q regular 
 #SBATCH -N 1 
-#SBATCH -t 08:00:00 
-#SBATCH -J synSpec_g15_dark
-#SBATCH -o _synSpec_g15_dark.o 
+#SBATCH -t 00:45:00 
+#SBATCH -J synSpec_g15_dark_1block
+#SBATCH -o _synSpec_g15_dark_1block.o 
 #SBATCH -L SCRATCH,project 
 
 now=$(date +"%T") 
@@ -17,7 +17,9 @@ field="g15"
 seed=1
 exptime=300
 # exposed spectra (each block of 5000 takes ~45 mins) 
-srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra $field $sky $seed $exptime
+#srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra $field $sky $seed $exptime
+# one block exposed spectra (each block of 5000 takes ~45 mins) 
+srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra_block $field $sky $seed $exptime 0
 # exposed spectra (takes ~5 mins) 
 #srun -n 1 -c 1 python /global/homes/c/chahah/projects/feasiBGS/run/gamalegacy_spectra.py spectra_faintemline $field $sky $seed $exptime
 # exposed spectra (takes ~5 mins) 

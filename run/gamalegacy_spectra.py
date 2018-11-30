@@ -11,7 +11,7 @@ from feasibgs import forwardmodel as FM
 from redrock.external.desi import rrdesi
 
 
-def expSpectra(field, dr_gama=3, dr_legacy=7, skycondition='bright', seed=1, exptime=480):
+def expSpectra(field, dr_gama=3, dr_legacy=7, skycondition='bright', seed=1, exptime=480, i_blocks=None):
     ''' spectra with simulated exposure for the galaxies in the 
     `field` region of the Gama-Legacy catalog.
     '''
@@ -32,6 +32,8 @@ def expSpectra(field, dr_gama=3, dr_legacy=7, skycondition='bright', seed=1, exp
     print('%i galaxies do not have matches' % (len(match) - np.sum(hasmatch)))
     
     n_block = (ngal // 5000) + 1 
+    if i_blocks is None: 
+        i_blocks = range(n_block) 
     
     # r-band aperture magnitude from Legacy photometry 
     r_mag_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
@@ -40,7 +42,7 @@ def expSpectra(field, dr_gama=3, dr_legacy=7, skycondition='bright', seed=1, exp
     vdisp = np.repeat(100.0, ngal) # velocity dispersions [km/s]
    
     dir_spec = ''.join([UT.dat_dir(), 'spectra/gamadr', str(dr_gama), '_legacydr', str(dr_legacy), '/']) 
-    for i_block in range(n_block): 
+    for i_block in i_blocks: 
         print('block %i of %i' % (i_block+1, n_block))
         in_block = (hasmatch & 
                 (np.arange(ngal) >= i_block * 5000) & 
@@ -292,6 +294,9 @@ if __name__=='__main__':
     exptime = int(sys.argv[5]) 
     if tt == 'spectra': 
         expSpectra(field, dr_gama=3, dr_legacy=7, skycondition=sky, seed=seed, exptime=exptime)
+    elif tt == 'spectra_block': 
+        iblock = [int(sys.argv[6])]
+        expSpectra(field, dr_gama=3, dr_legacy=7, skycondition=sky, seed=seed, exptime=exptime, i_blocks=iblock)
     elif tt == 'spectra_faintemline': 
         expSpectra_faintEmLine(field, skycondition=sky, seed=seed, exptime=exptime)
     elif tt == 'spectra_fixedvdispEmline': 
