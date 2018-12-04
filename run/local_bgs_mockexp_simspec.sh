@@ -3,17 +3,20 @@
 dir_spec=$FEASIBGS_DIR"spectra/gamadr3_legacydr7/"
 
 # read in the exposure numbers from file 
-f_exp=$FEASIBGS_DIR"bgs_survey_exposures.withsun.iexp_metabin.dat"
+#f_exp=$FEASIBGS_DIR"bgs_survey_exposures.withsun.iexp_metabin.dat"
+f_exp=$FEASIBGS_DIR"bgs_survey_exposures.withsun.obscond_random.dat"
 
 nblock=64
 #export OMP_NUM_THREADS=1 
+
 while read -r line; do
     iexp="$line"
-    for iblock in 2; do 
+    for iblock in 1; do 
         echo "-- mock exposure #$iexp; block $iblock --"
         # create mock spectra with old KS sky model and new sky model  
         echo "-- generating simulated spectra --" 
-        python /Users/ChangHoon/projects/feasiBGS/run/bgs_mockexp_spectra.py $iblock $iexp 480
+        python /users/changhoon/projects/feasibgs/run/bgs_mockexp_spectra.py $iblock $iexp default 
+        #python /Users/ChangHoon/projects/feasiBGS/run/bgs_mockexp_spectra.py $iblock $iexp 480
         
         # run the simulated spectra through redrock
         #echo "-- running redrock --" 

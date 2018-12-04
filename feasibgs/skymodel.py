@@ -78,8 +78,7 @@ class skySpec(object):
         else: 
             self.alpha = sun_alt
         if self.alpha > -13.: raise ValueError("sun is higher than BGS limit") 
-
-        # sun separation (separation between the target and the sun’s location)
+        # sun separation
         if sun_sep is None: 
             self.delta = sun.separation(coord).deg
         else: 
@@ -176,7 +175,7 @@ class skySpec(object):
 
     def _albedo(self, g): 
         # albedo (i.e. reflectivity of the moon)
-        # g is the lunar phase (g = 0◦ for full moon and 180◦ for new moon)
+        # g is the lunar phase (g = 0 for full moon and 180 for new moon)
         # (Fragelius thesis Eq. 4.28)
         albedo_table = pd.read_csv(''.join([UT.code_dir(), 'dat/sky/albedo_constants.csv']), 
                 delim_whitespace=True) 
@@ -201,9 +200,9 @@ class skySpec(object):
         return Al
 
     def cI_twi_exp(self, alpha, delta, airmass): 
-        # When the sun is above −20◦ altitude, some of its light will back-scatter 
+        # When the sun is above -20 altitude, some of its light will back-scatter 
         # off the atmosphere into the field of view. (Fragelius thesis Eq. 4.27)
-        # no observations are made when sun is above -14o altitude.
+        # no observations are made when sun is above -14 altitude.
         if alpha > -20.: 
             twi = (
                     self.coeffs['t0'] * np.abs(alpha) + # CT2
@@ -320,7 +319,7 @@ class skySpec_manual(skySpec):
         self.hour_frac = hour/((Time(sun_rise, format='mjd') - Time(sun_set,format = 'mjd')).sec/3600.)
 
         self.alpha = sun_alt    # sun altitude
-        self.delta = sun_sep    # sun separation (separation between the target and the sun’s location)
+        self.delta = sun_sep    # sun separation (separation between the target and the sun's location)
         
         # used for scattered moonlight
         self.g = moon_phase     # moon phase 
