@@ -268,9 +268,8 @@ def mockexp_gleg_simSpec_lowHA(iexp):
     # with old sky model
     f_simspec_old = ''.join([UT.dat_dir(), 'spectra/gamadr3_legacydr7/',
         'g15.sim_spectra.mockexp_block.lowHalpha.texp_default.iexp', str(iexp), '.KSsky.fits'])
-    if os.path.isfile(f_simspec_old): 
-        bgs_spectra = read_spectra(f_simspec_old)
-    else: 
+    if not os.path.isfile(f_simspec_old): 
+        #bgs_spectra = read_spectra(f_simspec_old)
         bgs_spectra = fdesi.simExposure(wave, flux_eml, 
                 exptime=exps['EXPTIME'][iexp], 
                 airmass=exps['AIRMASS'][iexp],
@@ -282,9 +281,8 @@ def mockexp_gleg_simSpec_lowHA(iexp):
     # with new sky model 
     f_simspec_new = ''.join([UT.dat_dir(), 'spectra/gamadr3_legacydr7/',
         'g15.sim_spectra.mockexp_block.lowHalpha.texp_default.iexp', str(iexp), '.newKSsky.fits'])
-    if os.path.isfile(f_simspec_new):
-        bgs_spectra = read_spectra(f_simspec_new)
-    else:
+    if not os.path.isfile(f_simspec_new):
+        # bgs_spectra = read_spectra(f_simspec_new)
         bgs_spectra = fdesi.simExposure(wave, flux_eml, 
                 exptime=exps['EXPTIME'][iexp], 
                 airmass=exps['AIRMASS'][iexp],
