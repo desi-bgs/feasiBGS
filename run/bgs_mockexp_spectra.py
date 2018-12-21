@@ -408,8 +408,7 @@ def mockexp_skyBright(skymodel):
 
 
 if __name__=="__main__": 
-    mockexp_gleg_simSpec_pick(562)
-    '''
+    #mockexp_gleg_simSpec_pick(562)
     iblock = sys.argv[1]
     iexp = int(sys.argv[2])
     if iblock == 'lowHA': 
@@ -426,4 +425,3 @@ if __name__=="__main__":
             texp = float(texp) 
             mockexp_gleg_simSpec_texp(iblock, iexp, texp=texp)
         print('--- took %f mins ---' % ((time.time() - t0)/60.))
-    '''

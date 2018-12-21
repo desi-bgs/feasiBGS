@@ -39,6 +39,16 @@ nblock=64
 #    done 
 #done < "$f_exp"
 
+for iexp in 1009 1179 1180 1194 1366; do 
+    for iblock in 2; do 
+        echo "-- mock exposure #$iexp; block $iblock --"
+        # create mock spectra with old KS sky model and new sky model  
+        echo "-- generating simulated spectra --" 
+        python /users/changhoon/projects/feasibgs/run/bgs_mockexp_spectra.py $iblock $iexp default 
+    done 
+done 
+
+
 #for iblock in {3..5}; do  
 #    echo "-- "$iblock" --"
 #    python /Users/ChangHoon/projects/feasiBGS/run/bgs_mockexp_spectra.py $iblock 0 480
@@ -46,4 +56,4 @@ nblock=64
 #done 
 
 # low Halpha block 
-python /users/changhoon/projects/feasibgs/run/bgs_mockexp_spectra.py lowHA 2910 
+#python /users/changhoon/projects/feasibgs/run/bgs_mockexp_spectra.py lowHA 2910 
