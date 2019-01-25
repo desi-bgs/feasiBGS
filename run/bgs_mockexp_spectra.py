@@ -164,7 +164,7 @@ def mockexp_gleg_simSpec(iblock, iexp):
 
     skybright_old = skybright_old[iexp,:] 
     skybright_new = skybright_new[iexp,:]
-    u_surface_brightness = 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
+    u_sb = 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
 
     # simulate the exposures 
     fdesi = FM.fakeDESIspec()
@@ -173,14 +173,12 @@ def mockexp_gleg_simSpec(iblock, iexp):
     f_simspec_old = ''.join([UT.dat_dir(), 'spectra/gamadr3_legacydr7/',
         'g15.sim_spectra.mockexp_block.', str(iblock), 'of', str(nblock), 
         '.texp_default.iexp', str(iexp), '.KSsky.fits'])
-    if os.path.isfile(f_simspec_old): 
-        bgs_spectra = read_spectra(f_simspec_old)
-    else: 
+    if not os.path.isfile(f_simspec_old): 
         bgs_spectra = fdesi.simExposure(wave, flux_eml, 
                 exptime=exps['EXPTIME'][iexp], 
                 airmass=exps['AIRMASS'][iexp],
                 skycondition={'name': 'input', 
-                    'sky': np.clip(skybright_old, 0, None) * u_surface_brightness, 
+                    'sky': np.clip(skybright_old, 0, None) * u_sb, 
                     'wave': w_sky}, 
                 filename=f_simspec_old)
 
@@ -188,14 +186,12 @@ def mockexp_gleg_simSpec(iblock, iexp):
     f_simspec_new = ''.join([UT.dat_dir(), 'spectra/gamadr3_legacydr7/',
         'g15.sim_spectra.mockexp_block.', str(iblock), 'of', str(nblock), 
         '.texp_default.iexp', str(iexp), '.newKSsky.fits'])
-    if os.path.isfile(f_simspec_new):
-        bgs_spectra = read_spectra(f_simspec_new)
-    else:
+    if not os.path.isfile(f_simspec_new):
         bgs_spectra = fdesi.simExposure(wave, flux_eml, 
                 exptime=exps['EXPTIME'][iexp], 
                 airmass=exps['AIRMASS'][iexp],
                 skycondition={'name': 'input',
-                    'sky': np.clip(skybright_new, 0, None) * u_surface_brightness,
+                    'sky': np.clip(skybright_new, 0, None) * u_sb,
                     'wave': w_sky},
                 filename=f_simspec_new)
     return None 
