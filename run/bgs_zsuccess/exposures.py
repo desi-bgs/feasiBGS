@@ -89,7 +89,7 @@ def pickExposures(nsub, method='random', validate=False, silent=True):
     fpick = h5py.File(''.join([UT.dat_dir(), 'bgs_zsuccess/', 
         'bgs_survey_exposures.subset.', str(nsub), method, '.hdf5']), 'w')
     fpick.create_dataset('iexp', data=iexp_sub) 
-    for k in ['AIRMASS', 'MOONFRAC', 'MOONALT', 'MOONSEP', 'SUNALT', 'SUNSEP']: # write observing conditions  
+    for k in ['AIRMASS', 'MOONFRAC', 'MOONALT', 'MOONSEP', 'SUNALT', 'SUNSEP', 'EXPTIME']: # write observing conditions  
         fpick.create_dataset(k.lower(), data=bgs_exps[k][iexp_sub]) 
     # save sky brightnesses
     fpick.create_dataset('wave_old', data=wave_old) 
