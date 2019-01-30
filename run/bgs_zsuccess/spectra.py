@@ -168,7 +168,7 @@ def gleg_simSpec_lowHa(nsub, validate=False):
     return None 
 
 
-def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', validate=False): 
+def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', silent=True, validate=False): 
     ''' Given noiseless spectra, simulate DESI BGS noise based on observing
     conditions provided by iexp of nexp sampled observing conditions 
 
@@ -188,6 +188,8 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
         string that specifies what type of spectra options are
         '',  '.lowHalpha', '.noEmline'
 
+    :param silent: (default: True)
+
     :param validate: (default: False) 
         if True generate some plots 
     '''
@@ -204,14 +206,14 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
     airmass = fexps['airmass'].value 
     wave_old = fexps['wave_old'].value
     wave_new = fexps['wave_new'].value
+    u_sb = 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
     sky_old = fexps['sky_old'].value
     sky_new = fexps['sky_new'].value
-
-    u_sb = 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
+    if not silent: print('t_exp=%f, airmass=%f' % (texp[iexp], airmass[iexp]))
 
     # simulate the exposures 
     fdesi = FM.fakeDESIspec()
-    # with old sky model
+    if not silent: print('simulate exposures with old sky model') 
     f_bgs_old = ''.join([UT.dat_dir(), 'bgs_zsuccess/',
         'g15.simSpectra.', str(nsub), spec_flag, '.texp_default.iexp', str(iexp), 'of', str(nexp), 
         '.old_sky.fits'])
@@ -221,7 +223,7 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
             skycondition={'name': 'input', 'sky': np.clip(sky_old[iexp,:], 0, None) * u_sb, 'wave': wave_old}, 
             filename=f_bgs_old)
 
-    # with new sky model 
+    if not silent: print('simulate exposures with new sky model') 
     f_bgs_new = ''.join([UT.dat_dir(), 'bgs_zsuccess/',
         'g15.simSpectra.', str(nsub), spec_flag, '.texp_default.iexp', str(iexp), 'of', str(nexp), 
         '.new_sky.fits'])
@@ -234,12 +236,16 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
     if validate: 
         fig = plt.figure(figsize=(10,15))
         for i in range(3): 
-            sub = fig.add_subplot(1,3,i+1)
+            sub = fig.add_subplot(3,1,i+1)
             for band in ['b', 'r', 'z']: 
-                sub.plot(bgs_new.wave[b], bgs_new.flux[b][i], c='C1', label='new sky') 
+                lbl = None  
+                if band == 'b': lbl = 'new sky'
+                sub.plot(bgs_new.wave[band], bgs_new.flux[band][i], c='C1', label=lbl) 
             for band in ['b', 'r', 'z']: 
-                sub.plot(bgs_old.wave[b], bgs_old.flux[b][i], c='C0', label='old sky') 
-            sub.plot(wave, flux[i], c='k', label='no noise')
+                lbl = None  
+                if band == 'b': lbl = 'old sky'
+                sub.plot(bgs_old.wave[band], bgs_old.flux[band][i], c='C0', label=lbl) 
+            sub.plot(wave, flux[i], c='k', ls=':', lw=1, label='no noise')
             if i == 0: sub.legend(loc='upper right', fontsize=20)
             sub.set_xlim([3e3, 1e4]) 
             sub.set_ylim([0., 20.]) 
