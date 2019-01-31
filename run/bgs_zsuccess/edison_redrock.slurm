@@ -19,7 +19,7 @@ iexp=0
 for skymodel in "old" "new"; do 
     now=$(date +"%T") 
     echo "-- $iexp exposure; block $iblock; $skymodel sky model -- $now" 
-    f_str="g15.simSpectra.3000.texp_default.iexp"$iexp"of15."$skymodel"_sky"
+    f_str="g15.simSpectra.3000.texp_default.iexp"$iexp"of15spacefill."$skymodel"_sky"
     f_spec=$dir_spec$f_str".fits"
     f_redr=$dir_spec$f_str".rr.fits"
     f_zout=$dir_spec$f_str".rr.h5"
