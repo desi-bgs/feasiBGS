@@ -85,8 +85,8 @@ def zsuccess_iexp(iexp, nexp=15, method='spacefill', nsub=3000, spec_flag=''):
     sub.set_ylabel(r'redrock redshift success', fontsize=20)
     sub.set_ylim([0.5, 1.2])
     sub.legend(loc='lower left', handletextpad=0., prop={'size': 20})
-    sub.set_title(("$t_{exp}=%.0f$sec, Moon Ill=%.2f, Alt=%.0f, Sep=%.0f \n Sun Alt=%.0f, Sep=%.f" % 
-        (fexps['exptime'][iexp], fexps['moonfrac'][iexp], fexps['moonalt'][iexp], fexps['moonsep'][iexp], 
+    sub.set_title(("$t_\mathrm{exp}=%.0f$sec, airmass=%.1f\nMoon Ill=%.2f, Alt=%.0f, Sep=%.0f \nSun Alt=%.0f, Sep=%.f" % 
+        (fexps['exptime'][iexp], fexps['airmass'][iexp], fexps['moonfrac'][iexp], fexps['moonalt'][iexp], fexps['moonsep'][iexp], 
             fexps['sunalt'][iexp], fexps['sunsep'][iexp])), fontsize=20)
     fig.savefig(''.join([UT.dat_dir(), 'bgs_zsuccess/',
         'g15.simSpectra.', str(nsub), spec_flag, '.texp_default.iexp', str(iexp), 'of', str(nexp), method, 
