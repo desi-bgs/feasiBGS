@@ -104,6 +104,13 @@ def gleg_simSpec(nsub, spec_flag='', validate=False):
         for i in range(10): #np.random.choice(isubsamp, 10, replace=False): 
             wave_rest = wave / (1.+redshift[subsamp][i])
             sub.plot(wave_rest, flux[isubsamp[i],:]) 
+        emline_keys = ['oiib', 'oiir', 'hb',  'oiiib', 'oiiir', 'ha', 'siib', 'siir']
+        emline_lambda = [3727.092, 3729.874, 4862.683, 4960.295, 5008.239, 6564.613, 6718.294, 6732.673]
+        for k, l in zip(emline_keys, emline_lambda): 
+            if k == 'ha': 
+                sub.vlines(l, 0., 20, color='k', linestyle='--', linewidth=1)
+            else: 
+                sub.vlines(l, 0., 20, color='k', linestyle=':', linewidth=0.5)
         sub.set_xlabel('rest-frame wavelength [Angstrom]', fontsize=25) 
         sub.set_xlim([3e3, 1e4]) 
         sub.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', fontsize=25) 
@@ -179,9 +186,19 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
             filename=f_bgs_new)
 
     if validate: 
-        fig = plt.figure(figsize=(10,15))
+        fig = plt.figure(figsize=(10,20))
+        sub = fig.add_subplot(411) 
+        sub.plot(wave_new, sky_new[iexp], c='C1', label='new sky brightness') 
+        sub.plot(wave_old, sky_old[iexp], c='C0', label='old sky brightness') 
+        sub.text(0.05, 0.95, 'texp=%.0f, airmass=%.2f\nmoon ill=%.2f, alt=%.0f, sep=%.0f\nsun alt=%.0f, sep=%.f' % 
+                (texp[iexp], airmass[iexp], fexps['moonfrac'][iexp], fexps['moonalt'][iexp], fexps['moonsep'][iexp], 
+                    fexps['sunalt'][iexp], fexps['sunsep'][iexp]), 
+                ha='left', va='top', transform=sub.transAxes, fontsize=15)
+        sub.legend(loc='upper right', frameon=True, fontsize=20) 
+        sub.set_xlim([3e3, 1e4]) 
+        sub.set_ylim([0., 20.]) 
         for i in range(3): 
-            sub = fig.add_subplot(3,1,i+1)
+            sub = fig.add_subplot(4,1,i+2)
             for band in ['b', 'r', 'z']: 
                 lbl = None  
                 if band == 'b': lbl = 'new sky'
@@ -193,11 +210,11 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
             sub.plot(wave, flux[i], c='k', ls=':', lw=1, label='no noise')
             if i == 0: sub.legend(loc='upper right', fontsize=20)
             sub.set_xlim([3e3, 1e4]) 
-            sub.set_ylim([0., 20.]) 
+            sub.set_ylim([0., 15.]) 
         bkgd = fig.add_subplot(111, frameon=False) 
         bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
-        bkgd.set_xlabel('rest-frame wavelength [Angstrom]', fontsize=25) 
-        bkgd.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', fontsize=25) 
+        bkgd.set_xlabel('rest-frame wavelength [Angstrom]', labelpad=10, fontsize=25) 
+        bkgd.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', labelpad=10, fontsize=25) 
         fig.savefig(''.join([UT.dat_dir(), 'bgs_zsuccess/',
             'g15.simSpectra.', str(nsub), spec_flag, '.texp_default.iexp', str(iexp), 'of', str(nexp), method, '.png']),
             bbox_inches='tight') 
@@ -206,6 +223,7 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
 
 if __name__=="__main__": 
     #gleg_simSpec(3000, validate=True)
-    #gleg_simSpec_mockexp(3000, 0, nexp=15, method='spacefill', validate=True)
-    gleg_simSpec(3000, spec_flag='.lowHalpha', validate=True)
-    gleg_simSpec_mockexp(3000, 0, spec_flag='.lowHalpha', nexp=15, method='spacefill', validate=True)
+    for iexp in range(1,15): 
+        gleg_simSpec_mockexp(3000, iexp, nexp=15, method='spacefill', validate=True)
+    #gleg_simSpec(3000, spec_flag='.lowHalpha', validate=True)
+    #gleg_simSpec_mockexp(3000, 0, spec_flag='.lowHalpha', nexp=15, method='spacefill', validate=True)
