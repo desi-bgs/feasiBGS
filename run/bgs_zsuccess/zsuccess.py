@@ -160,4 +160,5 @@ def zsuccess(zrr, ztrue, zwarn):
 
 
 if __name__=="__main__": 
-    zsuccess_iexp(0, nexp=15, method='spacefill', nsub=3000, spec_flag='')
+    for i in range(1, 11): 
+        zsuccess_iexp(i, nexp=15, method='spacefill', nsub=3000, spec_flag='')
