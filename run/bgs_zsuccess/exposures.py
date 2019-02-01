@@ -150,6 +150,79 @@ def pickExposures(nsub, method='random', validate=False, silent=True):
     return None 
 
 
+def plotExposures(nsub, method='random'): 
+    ''' Plot shwoing the subset of exposures picked from `surveysim` exposure 
+    list from Jeremy: `bgs_survey_exposures.withsun.hdf5', which  
+    supplemented the observing conditions with sun observing conditions.
+    Outputs a file that contains the exposure indices, observing conditions, 
+    and old and new sky brightness of the chosen subset. 
+
+    :param nsub: 
+        number of exposures to pick. 
+
+    :param method: (default: 'random') 
+        method for picking the exposures. either spacefill or random 
+    '''
+    # read surveysim BGS exposures 
+    fexps = h5py.File(''.join([UT.dat_dir(), 'bgs_survey_exposures.withsun.hdf5']), 'r')
+    bgs_exps = {}
+    for k in fexps.keys():
+        bgs_exps[k] = fexps[k].value
+
+    # read exposure subsets out to file 
+    fpick = h5py.File(''.join([UT.dat_dir(), 'bgs_zsuccess/', 
+        'bgs_survey_exposures.subset.', str(nsub), method, '.hdf5']), 'r')
+    iexp_sub = fpick['iexp'].value
+
+    fig = plt.figure(figsize=(21,5))
+    sub = fig.add_subplot(141)
+    sub.scatter(bgs_exps['MOONALT'], bgs_exps['MOONFRAC'], c='k', s=1)
+    scat = sub.scatter(bgs_exps['MOONALT'][iexp_sub], bgs_exps['MOONFRAC'][iexp_sub], c='C1', s=10)
+    for i in range(len(iexp_sub)): 
+        sub.text(1.02*bgs_exps['MOONALT'][iexp_sub][i], 1.02*bgs_exps['MOONFRAC'][iexp_sub][i], 
+                str(i), ha='left', va='bottom', fontsize=15, color='k', bbox=dict(facecolor='w', alpha=0.7))
+    sub.set_xlabel('Moon Altitude', fontsize=20)
+    sub.set_xlim([-90., 90.])
+    sub.set_ylabel('Moon Illumination', fontsize=20)
+    sub.set_ylim([0.5, 1.])
+
+    sub = fig.add_subplot(142)
+    sub.scatter(bgs_exps['MOONSEP'], bgs_exps['MOONFRAC'], c='k', s=1)
+    scat = sub.scatter(bgs_exps['MOONSEP'][iexp_sub], bgs_exps['MOONFRAC'][iexp_sub], c='C1', s=10) 
+    for i in range(len(iexp_sub)): 
+        sub.text(1.02*bgs_exps['MOONSEP'][iexp_sub][i], 1.02*bgs_exps['MOONFRAC'][iexp_sub][i], 
+                str(i), ha='left', va='bottom', fontsize=15, color='k', bbox=dict(facecolor='w', alpha=0.7))
+    sub.set_xlabel('Moon Separation', fontsize=20)
+    sub.set_xlim([40., 180.])
+    sub.set_ylim([0.5, 1.])
+
+    sub = fig.add_subplot(143)
+    sub.scatter(bgs_exps['AIRMASS'], bgs_exps['MOONFRAC'], c='k', s=1)
+    scat = sub.scatter(bgs_exps['AIRMASS'][iexp_sub], bgs_exps['MOONFRAC'][iexp_sub], c='C1', s=10)  
+    for i in range(len(iexp_sub)): 
+        sub.text(1.02*bgs_exps['AIRMASS'][iexp_sub][i], 1.02*bgs_exps['MOONFRAC'][iexp_sub][i], 
+                str(i), ha='left', va='bottom', fontsize=15, color='k', bbox=dict(facecolor='w', alpha=0.7))
+    sub.set_xlabel('Airmass', fontsize=20)
+    sub.set_xlim([1., 2.])
+    sub.set_ylim([0.5, 1.])
+
+    sub = fig.add_subplot(144)
+    sub.scatter(bgs_exps['SUNSEP'], bgs_exps['SUNALT'], c='k', s=1)
+    scat = sub.scatter(bgs_exps['SUNSEP'][iexp_sub], bgs_exps['SUNALT'][iexp_sub], c='C1', s=10)
+    for i in range(len(iexp_sub)): 
+        sub.text(1.02*bgs_exps['SUNSEP'][iexp_sub][i], 1.02*bgs_exps['SUNALT'][iexp_sub][i], 
+                str(i), ha='left', va='bottom', fontsize=15, color='k', bbox=dict(facecolor='w', alpha=0.7))
+    sub.set_xlabel('Sun Separation', fontsize=20)
+    sub.set_xlim([40., 180.])
+    sub.set_ylabel('Sun Altitude', fontsize=20)
+    sub.set_ylim([-90., 0.])
+    fig.subplots_adjust(wspace=0.36) 
+    fig.savefig(''.join([UT.dat_dir(), 'bgs_zsuccess/', 'bgs_survey_exposures.subset.', str(nsub), method, '.order.png']), 
+            bbox_inches='tight')
+    return None 
+
+
 if __name__=="__main__": 
     #pickExposures(10, method='random', silent=False, validate=True)
-    pickExposures(10, method='spacefill', silent=False, validate=True)
+    #pickExposures(10, method='spacefill', silent=False, validate=True)
+    plotExposures(15, method='spacefill') 
