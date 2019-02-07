@@ -4,6 +4,7 @@ scripts for generating a small sample of exposures that
 reasonably span the observing conditions of BGS
 
 '''
+import os 
 import h5py
 import pickle 
 import numpy as np 
@@ -222,7 +223,55 @@ def plotExposures(nsub, method='random'):
     return None 
 
 
+def tableExposures(nsub, method='spacefill'): 
+    ''' write out exposure information to latex table 
+
+    :param nsub: 
+        number of exposures to pick. 
+
+    :param method: (default: 'random') 
+        method for picking the exposures. either spacefill or random 
+    '''
+    # read exposure subsets out to file 
+    fpick = h5py.File(''.join([UT.dat_dir(), 'bgs_zsuccess/', 
+        'bgs_survey_exposures.subset.', str(nsub), method, '.hdf5']), 'r')
+    fexps = {} 
+    for k in fpick.keys(): 
+        fexps[k] = fpick[k].value 
+    
+    ftex = open(os.path.join(UT.dat_dir(), 'bgs_zsuccess', 'bgs_survey_exposures.subset.%i%s.tex' % (nsub, method)), 'w') 
+    hdr = '\n'.join([ 
+        r'\documentclass{article}', 
+        r'\begin{document}', 
+        r'\begin{table}', 
+        r'\begin{center}', 
+        (r'\caption{%i exposures sampled from surveysim exposures}' % nsub), 
+        r'\begin{tabular}{|cccccccc|}', 
+        r'\hline', 
+        ' & '.join(['', '$t_\mathrm{exp}$', 'airmass', 'moon frac.', 'moon alt.', 'moon sep.', 'sun alt.', r'sun sep.\\[0.5ex]'])])
+    ftex.write(hdr) 
+    ftex.write(r'\hline') 
+     
+    for iexp in range(nsub): 
+        str_iexp = (r'%i. & %.f & %.2f & %.2f & %.2f & %.2f & %.f & %.f \\' % 
+                (iexp, fexps['exptime'][iexp], fexps['airmass'][iexp], 
+                    fexps['moonfrac'][iexp], fexps['moonalt'][iexp], fexps['moonsep'][iexp], 
+                    fexps['sunalt'][iexp], fexps['sunsep'][iexp]))
+        ftex.write(str_iexp+'\n')  
+    ftex.write(r'\hline') 
+    end = '\n'.join([
+        r'\end{tabular}', 
+        r'\end{center}', 
+        r'\end{table}', 
+        r'\end{document}']) 
+    ftex.write(end)
+    ftex.close() 
+    return None 
+
+
+
 if __name__=="__main__": 
     #pickExposures(10, method='random', silent=False, validate=True)
     #pickExposures(10, method='spacefill', silent=False, validate=True)
-    plotExposures(15, method='spacefill') 
+    #plotExposures(15, method='spacefill') 
+    tableExposures(15, method='spacefill')

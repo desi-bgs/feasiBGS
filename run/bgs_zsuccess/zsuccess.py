@@ -28,6 +28,80 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
+def zsuccess_iexps(nexp, method='spacefill', nsub=3000, spec_flag=''):
+    ''' plot the compiled redshift success rate for the redrock output 
+    of BGS-like spectra for the nexp observing conditions
+
+    :param nexp: 
+        nubmer of total observing condition sampled from `surveysim`
+        exposures
+
+    :param nsub: (default: 3000)  
+        number of spectra in the G15 subsample. 
+    
+    :param spec_flag: (default: '') 
+        string specifying different spectra runs 
+    '''
+    nrow = 3 
+    ncol = (nexp + nrow - 1) // nrow
+    fig = plt.figure(figsize=(18,9))#6*ncol, 6*nrow))
+
+    for iexp in range(nexp): 
+        # read in noiseless spectra (for true redshift and r-band magnitude) 
+        fspec = h5py.File(''.join([UT.dat_dir(), 
+            'bgs_zsuccess/', 'g15.simSpectra.', str(nsub), spec_flag, '.hdf5']), 'r') 
+        ztrue = fspec['gama-spec']['z'].value 
+        r_mag_legacy = UT.flux2mag(fspec['legacy-photo']['flux_r'].value)
+
+        # read in sampled exposures
+        fexps = h5py.File(''.join([UT.dat_dir(), 'bgs_zsuccess/', 
+            'bgs_survey_exposures.subset.', str(nexp), method, '.hdf5']), 'r')
+        
+        # read in redrock outputs
+        f_bgs_old = ''.join([UT.dat_dir(), 'bgs_zsuccess/',
+            'g15.simSpectra.', str(nsub), spec_flag, '.texp_default.iexp', str(iexp), 'of', str(nexp), method, 
+            '.old_sky.rr.fits'])
+        f_bgs_new = ''.join([UT.dat_dir(), 'bgs_zsuccess/',
+            'g15.simSpectra.', str(nsub), spec_flag, '.texp_default.iexp', str(iexp), 'of', str(nexp), method, 
+            '.new_sky.rr.fits'])
+        rr_old = fits.open(f_bgs_old)[1].data
+        rr_new = fits.open(f_bgs_new)[1].data
+        zrr_old = rr_old['Z']
+        zrr_new = rr_new['Z']
+        zwarn_old = rr_old['ZWARN']
+        zwarn_new = rr_new['ZWARN']
+        
+        # redshift success 
+        zsuccess_old = zsuccess(zrr_old, ztrue, zwarn_old) 
+        zsuccess_new = zsuccess(zrr_new, ztrue, zwarn_new) 
+        
+        sub = fig.add_subplot(nrow, ncol, iexp+1)
+        sub.plot([15., 22.], [1., 1.], c='k', ls='--', lw=2)
+        for i, zs, col, lbl in zip(range(2), [zsuccess_old, zsuccess_new], ['k', 'C1'], ['old sky', 'new sky']): 
+            wmean, rate, err_rate = zsuccess_rate(r_mag_legacy, zs, range=[15,22], nbins=28, bin_min=10) 
+            sub.errorbar(wmean, rate, err_rate, fmt='.'+col, elinewidth=(2-i), markersize=5*(2-i), label=lbl)
+        sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
+        sub.set_xlim([16., 21.]) 
+        sub.set_ylim([0.5, 1.1])
+        if iexp == ncol-1: 
+            sub.legend(loc='lower right', markerscale=0.5, handletextpad=-0.7, prop={'size': 20})
+        if (iexp % ncol) != 0:  
+            sub.set_yticklabels([]) 
+        if (iexp // ncol) != nrow-1: 
+            sub.set_xticklabels([]) 
+        sub.text(0.05, 0.05, ('%i.' % iexp), ha='left', va='bottom', transform=sub.transAxes, fontsize=20)
+        
+    bkgd = fig.add_subplot(111, frameon=False)
+    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    bkgd.set_xlabel("$k$ [$h$/Mpc]", labelpad=10, fontsize=25) 
+    bkgd.set_xlabel(r'Legacy DR7 $r$ magnitude', labelpad=10, fontsize=30)
+    bkgd.set_ylabel(r'redrock redshift success', labelpad=10, fontsize=30)
+    fig.subplots_adjust(wspace=0.05, hspace=0.05)
+    ffig = ''.join([UT.dat_dir(), 'bgs_zsuccess/', 'g15.simSpectra.', str(nsub), spec_flag, '.texp_default.', str(nexp), method, '.zsuccess.png'])
+    fig.savefig(ffig, bbox_inches='tight') 
+    return None 
+
+
 def zsuccess_iexp(iexp, nexp=15, method='spacefill', nsub=3000, spec_flag=''):
     ''' plot the redshift success rate for the redrock output of 
     BGS-like spectra for the iexp (of nexp) observing condition 
@@ -160,5 +234,6 @@ def zsuccess(zrr, ztrue, zwarn):
 
 
 if __name__=="__main__": 
-    for i in range(1, 11): 
-        zsuccess_iexp(i, nexp=15, method='spacefill', nsub=3000, spec_flag='')
+    zsuccess_iexps(15, method='spacefill', nsub=3000, spec_flag='')
+    #for i in range(1, 15): 
+    #    zsuccess_iexp(i, nexp=15, method='spacefill', nsub=3000, spec_flag='')
