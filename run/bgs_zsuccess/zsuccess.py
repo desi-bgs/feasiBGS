@@ -82,7 +82,8 @@ def zsuccess_iexps(nexp, method='spacefill', nsub=3000, spec_flag=''):
             sub.errorbar(wmean, rate, err_rate, fmt='.'+col, elinewidth=(2-i), markersize=5*(2-i), label=lbl)
         sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
         sub.set_xlim([16., 21.]) 
-        sub.set_ylim([0.5, 1.1])
+        sub.set_ylim([0.6, 1.1])
+        sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
         if iexp == ncol-1: 
             sub.legend(loc='lower right', markerscale=0.5, handletextpad=-0.7, prop={'size': 20})
         if (iexp % ncol) != 0:  
