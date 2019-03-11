@@ -31,6 +31,23 @@ def flux2mag(flux, band='g', method='asinh'):
         return 22.5 - 2.5 * np.log10(flux) 
 
 
+def mag2flux(mag, band='g', method='asinh'): 
+    ''' given flux calculate SDSS asinh magnitude  
+    '''
+    if method == 'asinh': 
+        #mag = -2.5/np.log(10) * (np.arcsinh(1.e-9*flux/(2.*b)) + np.log(b))
+        if band == 'u': b = 1.4e-10
+        elif band == 'g': b = 0.9e-10
+        elif band == 'r': b = 1.2e-10
+        elif band == 'i': b = 1.8e-10
+        elif band == 'z': b = 7.4e-10
+        else: raise ValueError
+        return np.sinh(mag/-2.5*np.log(10) - np.log(b)) * 2.* b * 1e9 
+
+    elif method == 'log': 
+        return 10**((22.5 - mag)/2.5) 
+
+
 def dat_dir(): 
     ''' 
     '''
