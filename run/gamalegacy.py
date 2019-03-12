@@ -6,6 +6,7 @@ import numpy as np
 from feasibgs import util as UT
 from feasibgs import catalogs as Cat
 
+
 def constructGAMA(gama_dr=3): 
     gama = Cat.GAMA() 
     gama._Build(data_release=gama_dr, silent=False) # build the catalog

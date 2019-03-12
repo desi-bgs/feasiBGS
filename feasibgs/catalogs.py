@@ -380,9 +380,9 @@ class GamaLegacy(Catalog):
             # save sweep photometry to `sweep_dict`
             for key in sweep.names: 
                 if i_f == 0: 
-                    sweep_dict[key] = sweep[key][match[0]] 
+                    sweep_dict[key.lower()] = sweep[key][match[0]] 
                 else: 
-                    sweep_dict[key] = np.concatenate([sweep_dict[key], sweep[key][match[0]]]) 
+                    sweep_dict[key.lower()] = np.concatenate([sweep_dict[key.lower()], sweep[key][match[0]]]) 
 
             # save matching GAMA data ('photo', 'spec', and kcorrects) 
             for gkey, gdict in zip(['photo', 'spec', 'kcorr_z0.0', 'kcorr_z0.1'],
