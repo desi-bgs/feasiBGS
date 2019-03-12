@@ -5,6 +5,7 @@ success rate
 
 
 '''
+import os 
 import h5py 
 import numpy as np 
 # -- astropy -- 
@@ -28,7 +29,7 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
-def zsuccess_iexps(nexp, method='spacefill', nsub=3000, spec_flag=''):
+def zsuccess_iexps(nexp, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=9.):
     ''' plot the compiled redshift success rate for the redrock output 
     of BGS-like spectra for the nexp observing conditions
 
@@ -68,12 +69,14 @@ def zsuccess_iexps(nexp, method='spacefill', nsub=3000, spec_flag=''):
         rr_new = fits.open(f_bgs_new)[1].data
         zrr_old = rr_old['Z']
         zrr_new = rr_new['Z']
+        dchi2_old = rr_old['DELTACHI2']
+        dchi2_new = rr_new['DELTACHI2']
         zwarn_old = rr_old['ZWARN']
         zwarn_new = rr_new['ZWARN']
-        
+
         # redshift success 
-        zsuccess_old = zsuccess(zrr_old, ztrue, zwarn_old) 
-        zsuccess_new = zsuccess(zrr_new, ztrue, zwarn_new) 
+        zsuccess_old = zsuccess(zrr_old, ztrue, zwarn_old, deltachi2=dchi2_old, min_deltachi2=min_deltachi2) 
+        zsuccess_new = zsuccess(zrr_new, ztrue, zwarn_new, deltachi2=dchi2_new, min_deltachi2=min_deltachi2) 
         
         sub = fig.add_subplot(nrow, ncol, iexp+1)
         sub.plot([15., 22.], [1., 1.], c='k', ls='--', lw=2)
@@ -98,7 +101,8 @@ def zsuccess_iexps(nexp, method='spacefill', nsub=3000, spec_flag=''):
     bkgd.set_xlabel(r'Legacy DR7 $r$ magnitude', labelpad=10, fontsize=30)
     bkgd.set_ylabel(r'redrock redshift success', labelpad=10, fontsize=30)
     fig.subplots_adjust(wspace=0.05, hspace=0.05)
-    ffig = ''.join([UT.dat_dir(), 'bgs_zsuccess/', 'g15.simSpectra.', str(nsub), spec_flag, '.texp_default.', str(nexp), method, '.zsuccess.png'])
+    ffig = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 
+            'g15.simSpectra.%i%s.texp_default.%i%s.zsuccess.min_deltachi2_%.f.png' % (nsub, spec_flag, nexp, method, min_deltachi2))
     fig.savefig(ffig, bbox_inches='tight') 
     return None 
 
@@ -211,7 +215,7 @@ def zsuccess_rate(prop, zsuccess_cond, range=None, nbins=20, bin_min=2):
     return wmean, rate, e_rate
 
 
-def zsuccess(zrr, ztrue, zwarn):
+def zsuccess(zrr, ztrue, zwarn, deltachi2=None, min_deltachi2=9.):
     ''' apply redshift success crition
 
     |z_redrock - z_true|/(1+z_true) < 0.003 and ZWARN flag = 0 
@@ -230,11 +234,15 @@ def zsuccess(zrr, ztrue, zwarn):
         measured by redrock 
     '''
     dz_1pz = np.abs(ztrue - zrr)/(1.+ztrue)
-    crit = (dz_1pz < 0.003) & (zwarn == 0)
+    if deltachi2 is None: 
+        crit = (dz_1pz < 0.003) & (zwarn == 0)
+    else: 
+        crit = (dz_1pz < 0.003) & (zwarn == 0) & (deltachi2 > min_deltachi2) 
     return crit
 
 
 if __name__=="__main__": 
-    zsuccess_iexps(15, method='spacefill', nsub=3000, spec_flag='')
+    zsuccess_iexps(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=9.)
+    zsuccess_iexps(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=25.)
     #for i in range(1, 15): 
     #    zsuccess_iexp(i, nexp=15, method='spacefill', nsub=3000, spec_flag='')
