@@ -77,15 +77,20 @@ class GAMA(Catalog):
     def _File(self, field, data_release=3): 
         ''' hdf5 file name of spherematched photometric and spectroscopic 
         data from GAMA DR3. 
+
+        notes
+        -----
+        * v2 flag was added when photometry catalog was changed from InputCatA.fits
+        to TilingCat.fits 
         '''
         if field == 'all': 
-            return ''.join([UT.dat_dir(), 'GAMA_photo_spec.DR', str(data_release), '.hdf5']) # output file 
+            return ''.join([UT.dat_dir(), 'GAMA_photo_spec.DR', str(data_release), '.v2.hdf5']) # output file 
         elif field == 'g09': 
-            return ''.join([UT.dat_dir(), 'GAMA_photo_spec.DR', str(data_release), '.G09.hdf5']) # output file 
+            return ''.join([UT.dat_dir(), 'GAMA_photo_spec.DR', str(data_release), '.G09.v2.hdf5']) # output file 
         elif field == 'g12': 
-            return ''.join([UT.dat_dir(), 'GAMA_photo_spec.DR', str(data_release), '.G12.hdf5']) # output file 
+            return ''.join([UT.dat_dir(), 'GAMA_photo_spec.DR', str(data_release), '.G12.v2.hdf5']) # output file 
         elif field == 'g15': 
-            return ''.join([UT.dat_dir(), 'GAMA_photo_spec.DR', str(data_release), '.G15.hdf5']) # output file 
+            return ''.join([UT.dat_dir(), 'GAMA_photo_spec.DR', str(data_release), '.G15.v2.hdf5']) # output file 
 
     def _Build(self, data_release=3, silent=True): 
         ''' Read in the photometric data and the spectroscopic data,
@@ -93,8 +98,8 @@ class GAMA(Catalog):
         '''
         if data_release == 3: 
             # this includes *three* of the four gama fields G02 field has its own data
-            # read in photometry (GAMA`s master input catalogue; http://www.gama-survey.org/dr3/schema/table.php?id=2) 
-            gama_p = fits.open(UT.dat_dir()+'gama/dr3/InputCatA.fits')[1].data
+            # read in photometry (GAMA`s tiling catalog; http://www.gama-survey.org/dr3/schema/table.php?id=3) 
+            gama_p = fits.open(UT.dat_dir()+'gama/dr3/TilingCat.fits')[1].data
             # read in emission line measurements (http://www.gama-survey.org/dr3/schema/table.php?id=40) 
             gama_s = fits.open(UT.dat_dir()+'gama/dr3/GaussFitSimple.fits')[1].data
             # read in kcorrect z = 0.0 (http://www.gama-survey.org/dr2/schema/table.php?id=177)
@@ -126,19 +131,26 @@ class GAMA(Catalog):
             print('========================')
          
         # impose some common sense cuts to make sure there's SDSS photometry 
+        # these magnitudes are extinction corrected!
         has_sdss_photo = (
-                (gama_p['modelmag_u'] > -9999.) & 
-                (gama_p['modelmag_g'] > -9999.) & 
-                (gama_p['modelmag_r'] > -9999.) & 
-                (gama_p['modelmag_i'] > -9999.) & 
-                (gama_p['modelmag_z'] > -9999.)) 
+                (gama_p['u_model'] > -9999.) & 
+                (gama_p['g_model'] > -9999.) & 
+                (gama_p['r_model'] > -9999.) & 
+                (gama_p['i_model'] > -9999.) & 
+                (gama_p['z_model'] > -9999.)) 
+        # impose science catalog cuts 
+        # sc >= 3: *** MS *** union of GAMA II main survey and GAMA I main survey
+        # sc >= 4: r < 19.8, GAMA II main survey
+        # sc >= 5: r < 19.8 and satisfies r-band star-galaxy separation
+        # sc = 6:  r < 19.4 and satisfies r-band star-galaxy separation
+        sciencecut = (gama_p['survey_class'] >= 3) 
         # match cataid with spectroscopic data 
         has_spec = np.in1d(gama_p['cataid'], gama_s['cataid']) 
         # match cataid with k-correct data 
         assert np.array_equal(gama_k0['cataid'], gama_k1['cataid']) 
         has_kcorr = np.in1d(gama_p['cataid'], gama_k0['cataid'])
         # combined sample cut 
-        sample_cut = (has_spec & has_kcorr & has_sdss_photo)
+        sample_cut = (has_spec & sciencecut & has_kcorr & has_sdss_photo)
 
         if not silent: 
             print('of %i GAMA photometry objects' % len(gama_p['cataid']))
@@ -163,21 +175,21 @@ class GAMA(Catalog):
         # store photometry data in photometry group 
         grp_p = f.create_group('photo') 
         for key in gama_p.names:
-            grp_p.create_dataset(key, data=gama_p[key][sample_cut]) 
+            grp_p.create_dataset(key.lower(), data=gama_p[key][sample_cut]) 
 
         # store spectroscopic data in spectroscopic group 
         grp_s = f.create_group('spec') 
         for key in gama_s.names:
-            grp_s.create_dataset(key, data=gama_s[key][s_match]) 
+            grp_s.create_dataset(key.lower(), data=gama_s[key][s_match]) 
 
         # store kcorrect data in kcorrect groups
         grp_k0 = f.create_group('kcorr_z0.0') 
         for key in gama_k0.names: 
-            grp_k0.create_dataset(key, data=gama_k0[key][k_match]) 
+            grp_k0.create_dataset(key.lower(), data=gama_k0[key][k_match]) 
 
         grp_k1 = f.create_group('kcorr_z0.1') 
         for key in gama_k1.names:
-            grp_k1.create_dataset(key, data=gama_k1[key][k_match]) 
+            grp_k1.create_dataset(key.lower(), data=gama_k1[key][k_match]) 
         f.close() 
         return None 
 
@@ -213,15 +225,6 @@ class GAMA(Catalog):
         f = fits.open(fitsfile)
         f.verify('fix') 
         return f[1].data
-
-    def _specAll(self): 
-        ''' Read the GAMA SpecAll object described in
-        http://www.gama-survey.org/dr3/schema/table.php?id=30
-        '''
-        fspecall = fits.open(''.join([UT.dat_dir(), 'gama/dr3/InputCatA.fits']))
-        fspecall.verify('fix') 
-        specall = fspecall[1].data
-        return specall 
 
 
 class GamaLegacy(Catalog): 
@@ -329,7 +332,7 @@ class GamaLegacy(Catalog):
         return None 
 
     def _File(self, field, dr_gama=3, dr_legacy=7): 
-        return ''.join([UT.dat_dir(), 'GAMAdr', str(dr_gama), '.', field, '.LEGACYdr', str(dr_legacy), '.hdf5'])
+        return ''.join([UT.dat_dir(), 'GAMAdr', str(dr_gama), '.', field, '.LEGACYdr', str(dr_legacy), '.v2.hdf5'])
 
     def _Build(self, field, dr_gama=3, dr_legacy=7, sweep_dir=None, silent=True): 
         ''' Get Legacy Survey photometry for objects in the GAMA DR`dr_gama`

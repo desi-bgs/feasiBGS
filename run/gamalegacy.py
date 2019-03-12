@@ -6,6 +6,12 @@ import numpy as np
 from feasibgs import util as UT
 from feasibgs import catalogs as Cat
 
+def constructGAMA(gama_dr=3): 
+    gama = Cat.GAMA() 
+    gama._Build(data_release=gama_dr, silent=False) # build the catalog
+    gama._fieldSplit(data_release=gama_dr, silent=False) # split into the different GAMA fields
+    return None 
+
 
 def constructGamaLegacy(field, gama_dr=3, legacy_dr=7): 
     ''' Construct the GAMA-Legacy catalogs using
@@ -17,7 +23,9 @@ def constructGamaLegacy(field, gama_dr=3, legacy_dr=7):
 
 
 if __name__=='__main__':
-    field = sys.argv[1]
-    gama_dr = int(sys.argv[2])
-    legacy_dr = int(sys.argv[3])
-    constructGamaLegacy(field, gama_dr=gama_dr, legacy_dr=legacy_dr)
+    catalog = sys.argv[1] 
+    if catalog == 'gama': 
+        constructGAMA(gama_dr=3)
+    elif catalog == 'gleg': 
+        field = sys.argv[2]
+        constructGamaLegacy(field, gama_dr=3, legacy_dr=7)
