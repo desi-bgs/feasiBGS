@@ -224,7 +224,7 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
 
 if __name__=="__main__": 
     #gleg_simSpec(3000, validate=True)
-    for iexp in range(1,15): 
+    for iexp in [0]: #range(10,16): 
         gleg_simSpec_mockexp(3000, iexp, nexp=15, method='spacefill', validate=True)
     #gleg_simSpec(3000, spec_flag='.lowHalpha', validate=True)
     #gleg_simSpec_mockexp(3000, 0, spec_flag='.lowHalpha', nexp=15, method='spacefill', validate=True)
