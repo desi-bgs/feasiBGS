@@ -247,7 +247,7 @@ class GamaLegacy(Catalog):
         bands_sdss = ['u','g','r','i','z']
         # apparent magnitude from GAMA photometry
         if not galext: 
-            mag_ugriz = np.array([data['gama-photo']['modelmag_'+b] for b in bands_sdss]) 
+            mag_ugriz = np.array([data['gama-photo'][b+'_model'] for b in bands_sdss]) 
         else: 
             mag_ugriz =np.array([data['gama-kcorr-z0.1'][b+'_model'] for b in bands_sdss]) 
 

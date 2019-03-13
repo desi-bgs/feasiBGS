@@ -1,5 +1,6 @@
 '''
 '''
+import os 
 import h5py 
 import numpy as np 
 # -- astropy -- 
@@ -44,12 +45,12 @@ def gleg_simSpec(nsub, spec_flag='', validate=False):
     '''
     # read in GAMA-Legacy catalog
     cata = Cat.GamaLegacy()
-    gleg = cata.Read('g15', dr_gama=3, dr_legacy=7) # these values shouldn't change 
+    gleg = cata.Read('g15', dr_gama=3, dr_legacy=7, silent=False) # these values shouldn't change 
 
     redshift = gleg['gama-spec']['z']
     absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1
     r_mag_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
-    r_mag_gama = gleg['gama-photo']['modelmag_r'] # r-band magnitude from GAMA (SDSS) photometry
+    r_mag_gama = gleg['gama-photo']['r_model'] # r-band magnitude from GAMA (SDSS) photometry
 
     ha_gama = gleg['gama-spec']['ha_flux'] # halpha line flux
 
@@ -85,7 +86,8 @@ def gleg_simSpec(nsub, spec_flag='', validate=False):
     isubsamp = np.random.choice(np.arange(len(subsamp))[magnorm_flag], nsub, replace=False) 
     subsamp = subsamp[isubsamp]
     
-    fsub = h5py.File(''.join([UT.dat_dir(), 'bgs_zsuccess/', 'g15.simSpectra.', str(nsub), spec_flag, '.hdf5']), 'w') 
+    fspec = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 'g15.simSpectra.%i%s.v2.hdf5' % (nsub, spec_flag))
+    fsub = h5py.File(fspec, 'w') 
     fsub.create_dataset('zred', data=redshift[subsamp])
     fsub.create_dataset('absmag_ugriz', data=absmag_ugriz[:,subsamp]) 
     fsub.create_dataset('r_mag_apflux', data=r_mag_apflux[subsamp]) 
@@ -115,8 +117,7 @@ def gleg_simSpec(nsub, spec_flag='', validate=False):
         sub.set_xlim([3e3, 1e4]) 
         sub.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', fontsize=25) 
         sub.set_ylim([0., 20.]) 
-        fig.savefig(''.join([UT.dat_dir(), 'bgs_zsuccess/', 'g15.simSpectra.', str(nsub), spec_flag, '.png']), 
-                bbox_inches='tight') 
+        fig.savefig(fspec.replace('.hdf5', '.png'), bbox_inches='tight') 
     return None 
 
 
@@ -146,14 +147,14 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
         if True generate some plots 
     '''
     # read in no noise spectra
-    fspec = h5py.File(''.join([UT.dat_dir(), 
-        'bgs_zsuccess/', 'g15.simSpectra.', str(nsub), spec_flag, '.hdf5']), 'r') 
+    _fspec = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 'g15.simSpectra.%i%s.v2.hdf5' % (nsub, spec_flag))
+    fspec = h5py.File(_fspec, 'r') 
     wave = fspec['wave'].value 
     flux = fspec['flux'].value 
 
     # read in sampled exposures
-    fexps = h5py.File(''.join([UT.dat_dir(), 'bgs_zsuccess/', 
-        'bgs_survey_exposures.subset.', str(nexp), method, '.hdf5']), 'r')
+    fexps = h5py.File(os.path.join(UT.dat_dir(), 'bgs_zsuccess', 
+        'bgs_survey_exposures.subset.%i%s.hdf5' % (nexp, method)), 'r')
     texp = fexps['exptime'].value
     airmass = fexps['airmass'].value 
     wave_old = fexps['wave_old'].value
@@ -168,7 +169,7 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
     if not silent: print('simulate exposures with old sky model') 
     f_bgs_old = ''.join([UT.dat_dir(), 'bgs_zsuccess/',
         'g15.simSpectra.', str(nsub), spec_flag, '.texp_default.iexp', str(iexp), 'of', str(nexp), method,  
-        '.old_sky.fits'])
+        '.old_sky.v2.fits'])
     bgs_old = fdesi.simExposure(wave, flux, 
             exptime=texp[iexp], 
             airmass=airmass[iexp],
@@ -178,7 +179,7 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
     if not silent: print('simulate exposures with new sky model') 
     f_bgs_new = ''.join([UT.dat_dir(), 'bgs_zsuccess/',
         'g15.simSpectra.', str(nsub), spec_flag, '.texp_default.iexp', str(iexp), 'of', str(nexp), method, 
-        '.new_sky.fits'])
+        '.new_sky.v2.fits'])
     bgs_new = fdesi.simExposure(wave, flux, 
             exptime=texp[iexp], 
             airmass=airmass[iexp],
@@ -215,8 +216,8 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
         bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
         bkgd.set_xlabel('rest-frame wavelength [Angstrom]', labelpad=10, fontsize=25) 
         bkgd.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', labelpad=10, fontsize=25) 
-        fig.savefig(''.join([UT.dat_dir(), 'bgs_zsuccess/',
-            'g15.simSpectra.', str(nsub), spec_flag, '.texp_default.iexp', str(iexp), 'of', str(nexp), method, '.png']),
+        fig.savefig(os.path.join(UT.dat_dir(), 'bgs_zsuccess',
+            'g15.simSpectra.%i%s.texp_default.iexp%iof%i%s.v2.png' % (nsub, spec_flag, iexp, nexp, method)),
             bbox_inches='tight') 
     return None 
 
