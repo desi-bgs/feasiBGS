@@ -98,7 +98,7 @@ def mockexp_gleg_simSpec_fiducial(r_ap, iexp=562, seed=1):
     skybright = exps_skybright[iexp,:]
     u_surface_brightness = 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
     # output sky surface brightness
-    f_sky = os.path.join(dir_spec, 'sky_brightness.iexp%i.fits')
+    f_sky = os.path.join(dir_spec, 'sky_brightness.iexp%i.fits' % iexp)
     if not os.path.isfile(f_sky): 
         t = Table([w_sky, skybright], names=('wave', 'surface_brightness')) 
         t.write(f_sky, format='fits') 
@@ -308,7 +308,7 @@ def Redrock_mockexp_gleg_simSpec_fiducial(r_ap, iexp=562, ncpu=4, flux='noisy'):
 
 
 if __name__=='__main__': 
-    #mockexp_gleg_simSpec_fiducial(20.55, iexp=562, seed=1)
+    mockexp_gleg_simSpec_fiducial(20.55, iexp=562, seed=1)
     Redrock_mockexp_gleg_simSpec_fiducial(20.55, iexp=562, ncpu=4, flux='noisy')
     Redrock_mockexp_gleg_simSpec_fiducial(20.55, iexp=562, ncpu=4, flux='source')
     #Redrock_gleg_simSpec_fiducial(20.55, ncpu=4)
