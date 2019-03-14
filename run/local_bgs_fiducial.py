@@ -236,9 +236,8 @@ def Redrock_mockexp_gleg_simSpec_fiducial(r_ap, iexp=562, ncpu=4, flux='noisy'):
     f_rrbest = ''.join([f_simspec.rsplit('.fits', 1)[0], '.rr.fits']) 
     f_rrout = ''.join([f_simspec.rsplit('.fits', 1)[0], '.rr.h5']) 
     
-    if not os.path.isfile(f_rrout): 
-        cmd = ''.join(['rrdesi --mp ', str(ncpu), ' --zbest ', f_rrbest, ' --output ', f_rrout, ' ', f_simspec])  
-        subprocess.check_output(cmd.split(' ') )
+    cmd = ''.join(['rrdesi --mp ', str(ncpu), ' --zbest ', f_rrbest, ' --output ', f_rrout, ' ', f_simspec])  
+    subprocess.check_output(cmd.split(' ') )
 
     # output best-fit redrock template
     targetids = None
@@ -308,7 +307,7 @@ def Redrock_mockexp_gleg_simSpec_fiducial(r_ap, iexp=562, ncpu=4, flux='noisy'):
 
 
 if __name__=='__main__': 
-    mockexp_gleg_simSpec_fiducial(20.55, iexp=562, seed=1)
+    #mockexp_gleg_simSpec_fiducial(20.55, iexp=562, seed=1)
     Redrock_mockexp_gleg_simSpec_fiducial(20.55, iexp=562, ncpu=4, flux='noisy')
     Redrock_mockexp_gleg_simSpec_fiducial(20.55, iexp=562, ncpu=4, flux='source')
     #Redrock_gleg_simSpec_fiducial(20.55, ncpu=4)

@@ -50,7 +50,7 @@ def zsuccess_iexps(nexp, method='spacefill', nsub=3000, spec_flag='', min_deltac
     for iexp in range(nexp): 
         # read in noiseless spectra (for true redshift and r-band magnitude) 
         fspec = h5py.File(''.join([UT.dat_dir(), 
-            'bgs_zsuccess/', 'g15.simSpectra.', str(nsub), spec_flag, '.hdf5']), 'r') 
+            'bgs_zsuccess/', 'g15.simSpectra.', str(nsub), spec_flag, '.v2.hdf5']), 'r') 
         ztrue = fspec['gama-spec']['z'].value 
         r_mag_legacy = UT.flux2mag(fspec['legacy-photo']['flux_r'].value)
 
@@ -61,10 +61,10 @@ def zsuccess_iexps(nexp, method='spacefill', nsub=3000, spec_flag='', min_deltac
         # read in redrock outputs
         f_bgs_old = ''.join([UT.dat_dir(), 'bgs_zsuccess/',
             'g15.simSpectra.', str(nsub), spec_flag, '.texp_default.iexp', str(iexp), 'of', str(nexp), method, 
-            '.old_sky.rr.fits'])
+            '.old_sky.v2.rr.fits'])
         f_bgs_new = ''.join([UT.dat_dir(), 'bgs_zsuccess/',
             'g15.simSpectra.', str(nsub), spec_flag, '.texp_default.iexp', str(iexp), 'of', str(nexp), method, 
-            '.new_sky.rr.fits'])
+            '.new_sky.v2.rr.fits'])
         rr_old = fits.open(f_bgs_old)[1].data
         rr_new = fits.open(f_bgs_new)[1].data
         zrr_old = rr_old['Z']
@@ -102,7 +102,7 @@ def zsuccess_iexps(nexp, method='spacefill', nsub=3000, spec_flag='', min_deltac
     bkgd.set_ylabel(r'redrock redshift success', labelpad=10, fontsize=30)
     fig.subplots_adjust(wspace=0.05, hspace=0.05)
     ffig = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 
-            'g15.simSpectra.%i%s.texp_default.%i%s.zsuccess.min_deltachi2_%.f.png' % (nsub, spec_flag, nexp, method, min_deltachi2))
+            'g15.simSpectra.%i%s.texp_default.%i%s.zsuccess.min_deltachi2_%.f.v2.png' % (nsub, spec_flag, nexp, method, min_deltachi2))
     fig.savefig(ffig, bbox_inches='tight') 
     return None 
 
