@@ -139,11 +139,11 @@ class GAMA(Catalog):
                 (gama_p['i_model'] > -9999.) & 
                 (gama_p['z_model'] > -9999.)) 
         # impose science catalog cuts 
-        # sc >= 3: *** MS *** union of GAMA II main survey and GAMA I main survey
         # sc >= 4: r < 19.8, GAMA II main survey
         # sc >= 5: r < 19.8 and satisfies r-band star-galaxy separation
         # sc = 6:  r < 19.4 and satisfies r-band star-galaxy separation
-        sciencecut = (gama_p['survey_class'] >= 3) 
+        # r = r_petro
+        sciencecut = (gama_p['survey_class'] > 3) 
         # match cataid with spectroscopic data 
         has_spec = np.in1d(gama_p['cataid'], gama_s['cataid']) 
         # match cataid with k-correct data 
