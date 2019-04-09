@@ -7,7 +7,7 @@ import os
 import pickle
 import numpy as np 
 from scipy.interpolate import interp1d
-import speclite
+from speclite import filters
 # -- astropy --
 import astropy.time
 import astropy.coordinates
@@ -55,7 +55,7 @@ def BOSS_sky_validate():
     ''' validate sky models again BOSS sky data 
     '''
     boss = boss_sky() # read in BOSS sky data 
-    n_sky = 50 # len(boss) 
+    n_sky = 5 # len(boss) 
     print('%i sky fibers' % n_sky)
 
     # calcuate the different sky models
@@ -98,56 +98,56 @@ def BOSS_sky_validate():
             bbox_inches='tight') 
 
     # --- plot sky at 4100A as a function of varioius parameters---
-    ks_4100lim      = (w_ks > 4050.) & (w_ks > 4150.)
-    nks_4100lim     = (w_nks > 4050.) & (w_nks > 4150.)
-    eso_4100lim     = (w_eso > 4050.) & (w_eso > 4150.) 
-    
-    boss_4100, ks_4100, nks_4100, eso_4100 = np.zeros(n_sky), np.zeros(n_sky), np.zeros(n_sky), np.zeros(n_sky)
-    for i in range(n_sky): 
-        boss_4100lim= (boss['WAVE'][i] > 405.) & (boss['WAVE'][i] < 415.) 
-        boss_4100[i]= np.median(boss['SKY'][i][boss_4100lim])/np.pi
-        ks_4100[i]  = np.median(Isky_ks[i,:][ks_4100lim])
-        nks_4100[i] = np.median(Isky_newks[i,:][nks_4100lim])
-        eso_4100[i] = np.median(Isky_eso[i,:][eso_4100lim])
+    for ww in [4100., 4600]: 
+        ks_wlim     = (w_ks > ww-50.) & (w_ks > ww+50.)
+        nks_wlim    = (w_nks > ww-50.) & (w_nks > ww+50.)
+        eso_wlim    = (w_eso > ww-50.) & (w_eso > ww+50.) 
+        
+        boss_ww, ks_ww, nks_ww, eso_ww = np.zeros(n_sky), np.zeros(n_sky), np.zeros(n_sky), np.zeros(n_sky)
+        for i in range(n_sky): 
+            boss_wlim= (boss['WAVE'][i] > ww/10.-5.) & (boss['WAVE'][i] < ww/10.+5.) 
+            boss_ww[i]= np.median(boss['SKY'][i][boss_wlim])/np.pi
+            ks_ww[i]  = np.median(Isky_ks[i,:][ks_wlim])
+            nks_ww[i] = np.median(Isky_newks[i,:][nks_wlim])
+            eso_ww[i] = np.median(Isky_eso[i,:][eso_wlim])
 
-    fig = plt.figure(figsize=(10, 25))
-    for i, k in enumerate(['MOON_ILL', 'MOON_ALT', 'MOON_SEP', 'AIRMASS', 'SUN_ALT']): 
-        sub = fig.add_subplot(5,1,i+1)
-        sub.scatter(boss[k][:n_sky], boss_4100/ks_4100, c='C0', s=3, label='original KS')
-        sub.scatter(boss[k][:n_sky], boss_4100/nks_4100, c='C1', s=3, label='rescaled KS + twi')
-        sub.scatter(boss[k][:n_sky], boss_4100/eso_4100, c='C2', s=3, label='ESO') 
-        sub.set_xlabel(' '.join(k.split('_')).lower(), fontsize=25)
-        if i == 0:
-            sub.legend(loc='upper right', handletextpad=0, markerscale=10, fontsize=20)
-            sub.set_xlim([0.,1.])
-        elif i == 1:
-            sub.set_xlim([0., 90.])
-        elif i == 2:
-            sub.set_xlim([0., 180.])
-        elif i == 3:
-            sub.set_xlim([1., 2.])
-        elif i == 4:
-            sub.set_xlim([-90., 0.])
-        sub.set_ylim(0, 15) 
-        sub.plot(sub.get_xlim(), [1., 1.], color='k', linestyle='--')
+        fig = plt.figure(figsize=(10, 25))
+        for i, k in enumerate(['MOON_ILL', 'MOON_ALT', 'MOON_SEP', 'AIRMASS', 'SUN_ALT']): 
+            sub = fig.add_subplot(5,1,i+1)
+            sub.scatter(boss[k][:n_sky], boss_ww/ks_ww, c='C0', s=3, label='original KS')
+            sub.scatter(boss[k][:n_sky], boss_ww/nks_ww, c='C1', s=3, label='rescaled KS + twi')
+            sub.scatter(boss[k][:n_sky], boss_ww/eso_ww, c='C2', s=3, label='ESO') 
+            sub.set_xlabel(' '.join(k.split('_')).lower(), fontsize=25)
+            if i == 0:
+                sub.legend(loc='upper right', handletextpad=0, markerscale=10, fontsize=20)
+                sub.set_xlim([0.,1.])
+            elif i == 1:
+                sub.set_xlim([0., 90.])
+            elif i == 2:
+                sub.set_xlim([0., 180.])
+            elif i == 3:
+                sub.set_xlim([1., 2.])
+            elif i == 4:
+                sub.set_xlim([-90., 0.])
+            sub.set_ylim(0, 15) 
+            sub.plot(sub.get_xlim(), [1., 1.], color='k', linestyle='--')
 
-    bkgd = fig.add_subplot(111, frameon=False) # x,y labels
-    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
-    bkgd.set_ylabel('(BOSS Sky)/(sky model) at 4100A', fontsize=25)
-    fig.savefig(os.path.join(UT.code_dir(), 'figs', 'BOSS_sky_validate.sky4100.png'), 
-            bbox_inches='tight') 
+        bkgd = fig.add_subplot(111, frameon=False) # x,y labels
+        bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+        bkgd.set_ylabel('(BOSS Sky)/(sky model) at %.fA' % ww, fontsize=25)
+        fig.savefig(os.path.join(UT.code_dir(), 'figs', 'BOSS_sky_validate.sky%.f.png' % ww), 
+                bbox_inches='tight') 
     return None
-
 
 #########################################################
 # DECam 
 #########################################################
 
-def decam_sky(): 
+def decam_sky(overwrite=False): 
     ''' read in decam sky data 
     '''
     fpickle = os.path.join(UT.dat_dir(), 'decam_sky.p')
-    if not os.path.isfile(fpickle): 
+    if not os.path.isfile(fpickle) or overwrite: 
         fdecam = fits.open(os.path.join(UT.dat_dir(), 'decalsobs-zpt-dr3-allv2.fits'))
         _decam = fdecam[1].data
         
@@ -167,11 +167,12 @@ def decam_sky():
         moon_position = astropy.coordinates.get_moon(time, location)
         moon_ra = moon_position.ra.value
         moon_dec = moon_position.dec.value
-
+        
         moon_position_altaz = moon_position.transform_to(astropy.coordinates.AltAz(obstime=time, location=location))
         decam['moon_alt']   = moon_position_altaz.alt.value
-        decam['moon_az']    = moon_position_altaz.az.value
-        decam['moon_sep']   = RADec_separation(decam['ra'], decam['dec'], ra2=moon_ra, dec2=moon_dec)
+
+        sun_position = astropy.coordinates.get_sun(time) 
+        decam['moon_sun_sep'] = sun_position.separation(moon_position).deg
         pickle.dump(decam, open(fpickle, 'wb'))
     else: 
         decam = pickle.load(open(fpickle, 'rb'))
@@ -186,31 +187,31 @@ def DECam_sky_validate():
 
     for i in range(n_sky): 
         print('%i of %i' % (i, n_sky))
-        w_ks, ks_i      = sky_KS(decam['airmass'][i], decam['moonphase'][i], decam['moon_alt'][i], decam['moon_sep'][i])
-        w_nks, newks_i  = sky_KSrescaled_twi(decam['airmass'][i], decam['moonphase'][i], decam['moon_alt'][i], decam['moon_sep'][i], 
-                decam['sun_alt'][i], decam['sun_sep'][i])
-        w_eso, eso_i    = sky_ESO(decam['airmass'][i], decam['sun_moon_sep'][i], decam['moon_alt'][i], decam['moon_sep'][i])
+        w_ks, ks_i      = sky_KS(decam['airmass'][i], decam['moonphase'][i], decam['moon_alt'][i], decam['moonsep'][i])
+        #w_nks, newks_i  = sky_KSrescaled_twi(decam['airmass'][i], decam['moonphase'][i], decam['moon_alt'][i], decam['moonsep'][i],
+        #        decam['sun_alt'][i], decam['sun_sep'][i])
+        w_eso, eso_i    = sky_ESO(decam['airmass'][i], decam['moon_sun_sep'][i], decam['moon_alt'][i], decam['moonsep'][i])
     
         if i == 0: 
-            grz_ks  = np.zeros(len(w_ks))
-            grz_nks = np.zeros(len(w_nks))
-            grz_eso = np.zeros(len(w_eso))
+            grz_ks  = np.zeros(n_sky)
+            #grz_nks = np.zeros(n_sky)
+            grz_eso = np.zeros(n_sky)
             
         grz_ks[i]   = get_mag(w_ks, ks_i, decam['filter']) 
-        grz_nks[i]  = get_mag(w_nks, newks_i, decam['filter']) 
+        #grz_nks[i]  = get_mag(w_nks, newks_i, decam['filter']) 
         grz_eso[i]  = get_mag(w_eso, eso_i, decam['filter']) 
     
-    hasg = (decam['filter'] == 'g')
-    hasr = (decam['filter'] == 'r')
-    hasz = (decam['filter'] == 'z')
+    hasg = (decam['filter'][:n_sky] == 'g')
+    hasr = (decam['filter'][:n_sky] == 'r')
+    hasz = (decam['filter'][:n_sky] == 'z')
     
     # --- sky photometry comparison --- 
     fig = plt.figure(figsize=(17,5))
     
     sub = fig.add_subplot(131)
-    sub.scatter(decam['skybr'][hasg], grz_ks[hasg], s=10, lw=1)
-    sub.scatter(decam['skybr'][hasg], grz_nks[hasg], s=10, lw=1)
-    sub.scatter(decam['skybr'][hasg], grz_eso[hasg], s=10, lw=1)
+    sub.scatter(decam['skybr'][:n_sky][hasg], grz_ks[hasg], s=10, lw=1)
+    #sub.scatter(decam['skybr'][:n_sky][hasg], grz_nks[hasg], s=10, lw=1)
+    sub.scatter(decam['skybr'][:n_sky][hasg], grz_eso[hasg], s=10, lw=1)
     sub.plot([16, 22], [16, 22], c='k', ls='--')
     sub.set_xlabel('DECam $g$ band', fontsize=20)
     sub.set_xlim([20., 22])
@@ -218,18 +219,18 @@ def DECam_sky_validate():
     sub.set_ylim([20., 22])
 
     sub = fig.add_subplot(132)
-    sub.scatter(decam['skybr'][hasr], grz_ks[hasr], s=10, lw=1)
-    sub.scatter(decam['skybr'][hasr], grz_nks[hasr], s=10, lw=1)
-    sub.scatter(decam['skybr'][hasr], grz_eso[hasr], s=10, lw=1)
+    sub.scatter(decam['skybr'][:n_sky][hasr], grz_ks[hasr], s=10, lw=1)
+    #sub.scatter(decam['skybr'][:n_sky][hasr], grz_nks[hasr], s=10, lw=1)
+    sub.scatter(decam['skybr'][:n_sky][hasr], grz_eso[hasr], s=10, lw=1)
     sub.plot([16, 22], [16, 22], c='k', ls='--')
     sub.set_xlabel('DECam $r$ band', fontsize=20)
     sub.set_xlim([19, 22])
     sub.set_ylim([19, 22])
 
     sub = fig.add_subplot(133)
-    sub.scatter(decam['skybr'][hasz], grz_ks[hasz], s=10, lw=1)
-    sub.scatter(decam['skybr'][hasz], grz_nks[hasz], s=10, lw=1)
-    sub.scatter(decam['skybr'][hasz], grz_eso[hasz], s=10, lw=1)
+    sub.scatter(decam['skybr'][:n_sky][hasz], grz_ks[hasz], s=10, lw=1)
+    #sub.scatter(decam['skybr'][:n_sky][hasz], grz_nks[hasz], s=10, lw=1)
+    sub.scatter(decam['skybr'][:n_sky][hasz], grz_eso[hasz], s=10, lw=1)
     sub.plot([16, 22], [16, 22], c='k', ls='--')
     sub.legend(loc='upper left', markerscale=10, handletextpad=0, fontsize=20)
     sub.set_xlabel('DECam $z$ band', fontsize=20)
@@ -240,20 +241,12 @@ def DECam_sky_validate():
     return None
 
 
-def RADec_separation(ra1, dec1, ra2, dec2):
-    pi2 = np.radians(90)
-    alpha = np.cos(np.radians(ra1)-np.radians(ra2))
-    first = np.cos(pi2-np.radians(dec1))*np.cos(pi2-np.radians(dec2))
-    second = np.sin(pi2-np.radians(dec1))*np.sin(pi2-np.radians(dec2))*alpha
-    return np.arccos(first+second)*180/np.pi
-
-
 def get_mag(wsky, Isky, band): 
     ''' get magnitude of sky surface brightness
     '''
     Isky *= 1e-17 # erg/s/cm^2/A
 
-    filter_response = speclite.filters.load_filter('decam2014-{}'.format(band))
+    filter_response = filters.load_filter('decam2014-{}'.format(band[0]))
     moon_flux, sky_wlen = filter_response.pad_spectrum(Isky, wsky)
     sky_brightness = filter_response.get_ab_maggies(moon_flux, sky_wlen)
     return flux_to_mag(sky_brightness) 
@@ -306,8 +299,20 @@ def sky_KSrescaled_twi(airmass, moonill, moonalt, moonsep, sun_alt, sun_sep):
     return specsim_wave.value, Isky
 
 
-def sky_ESO(airmass, moon_sun_sep, moonalt, moonsep): 
+def sky_ESO(airmass, moon_sun_sep, moonalt, moonsep, observatory='2400'): 
     ''' calculate sky brightness using ESO sky calc 
+
+    :param airmass: 
+        airmass ranging from [1., 3.]
+
+    :param moon_sun_sep:
+        Separation in deg of Sun and Moon as seen from Earth
+
+    :param moonalt: 
+        Moon Altitude over Horizon in deg
+
+    :param moonsep: 
+        Moon-Target Separation in deg
 
     :references: 
     - https://www.eso.org/observing/etc/bin/gen/form?INS.MODE=swspectr+INS.NAME=SKYCALC
@@ -318,7 +323,9 @@ def sky_ESO(airmass, moon_sun_sep, moonalt, moonsep):
             'moon_sun_sep': moon_sun_sep, 
             'moon_target_sep': moonsep, 
             'moon_alt': moonalt, 
-            'observatory': '2400'}
+            'wmin': 355.,
+            'wmax': 985., 
+            'observatory': observatory}
     skyModel = skycalc.SkyModel()
     skyModel.callwith(dic)
     ftmp = os.path.join(UT.dat_dir(), 'sky', '_tmp.fits')
@@ -330,7 +337,7 @@ def sky_ESO(airmass, moon_sun_sep, moonalt, moonsep):
     radiance = fdata['flux']        # photons/s/m^2/microm/arcsec^2 (radiance -- fuck)
     radiance *= 1e-8                # photons/s/cm^2/Ang/arcsec^2 
     # photons/s/cm^2/Ang/arcsec^2 * h * c / lambda 
-    Isky = 3. * 6.6 * 1e-9 * radiance / wave * 1e17 # 10^-17 erg/s/cm^2/Ang/arcsec^2
+    Isky = 1.99 * 1e-8 * radiance / wave * 1e17 # 10^-17 erg/s/cm^2/Ang/arcsec^2
     return wave, Isky
 
 
@@ -387,7 +394,48 @@ def _twilight_coeffs():
     return None 
 
 
+def _test_sky_ESO(): 
+    boss = boss_sky() # read in BOSS sky data 
+
+    fig = plt.figure(figsize=(10,10)) 
+    sub = fig.add_subplot(311) 
+    for obs in ['2400', '2640', '3060']: 
+        w_eso, eso_i = sky_ESO(boss['AIRMASS'][0], boss['SUN_MOON_SEP'][0], boss['MOON_ALT'][0], boss['MOON_SEP'][0], 
+                observatory=obs)
+        sub.plot(w_eso, eso_i, lw=1, label='%s Observatory' % obs) 
+    sub.legend(loc='upper left', fontsize=15) 
+    sub.set_xlim(3550, 9850) 
+    sub.set_ylim(0., 10)
+
+    sub = fig.add_subplot(312) 
+    for am in [1.2, 1.5, 1.7]: 
+        print('airmass = %f' % am) 
+        w_eso, eso_i = sky_ESO(am, boss['SUN_MOON_SEP'][0], boss['MOON_ALT'][0], boss['MOON_SEP'][0])
+        sub.plot(w_eso, eso_i, lw=1, label='airmass = %.1f' % am) 
+    sub.legend(loc='upper left', fontsize=15) 
+    sub.set_xlim(3550, 9850) 
+    sub.set_ylim(0., 10)
+
+    sub = fig.add_subplot(313) 
+    for ms in [20, 40, 60, 80]: 
+        print('moon sep = %f' % ms) 
+        w_eso, eso_i = sky_ESO(boss['AIRMASS'][0], boss['SUN_MOON_SEP'][0], boss['MOON_ALT'][0], ms)
+        sub.plot(w_eso, eso_i, lw=1, label='moon sep. = %.f' % ms) 
+    sub.legend(loc='upper left', fontsize=15) 
+    sub.set_xlim(3550, 9850) 
+    sub.set_ylim(0., 10)
+
+    bkgd = fig.add_subplot(111, frameon=False) # x,y labels
+    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    bkgd.set_xlabel('Wavelength [Angstrom]', fontsize=20) 
+    bkgd.set_ylabel('Sky Brightness [$10^{-17} erg/s/cm^2/\AA/arcsec^2$]', fontsize=20) 
+    fig.savefig(os.path.join(UT.code_dir(), 'figs', '_test_sky_ESO.png'), bbox_inches='tight') 
+    return None 
+
+
 if __name__=="__main__": 
     #twilight_coeffs()
-    BOSS_sky_validate()
-    #DECam_sky_validate()
+    #BOSS_sky_validate()
+    #decam_sky(overwrite=True)
+    DECam_sky_validate()
+    #_test_sky_ESO()
