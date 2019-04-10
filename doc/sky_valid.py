@@ -183,35 +183,36 @@ def DECam_sky_validate():
     '''
     '''
     decam = decam_sky() 
-    n_sky = 10# len(decam['airmass'])
+    n_sky = 100 # len(decam['airmass'])
 
-    for i in range(n_sky): 
+    picksky = np.arange(n_sky) #np.random.choice(np.arange(len(decam['airmass'])), n_sky, replace=False) 
+    for ii, i in enumerate(picksky): #range(n_sky): 
         print('%i of %i' % (i, n_sky))
         w_ks, ks_i      = sky_KS(decam['airmass'][i], decam['moonphase'][i], decam['moon_alt'][i], decam['moonsep'][i])
         #w_nks, newks_i  = sky_KSrescaled_twi(decam['airmass'][i], decam['moonphase'][i], decam['moon_alt'][i], decam['moonsep'][i],
         #        decam['sun_alt'][i], decam['sun_sep'][i])
         w_eso, eso_i    = sky_ESO(decam['airmass'][i], decam['moon_sun_sep'][i], decam['moon_alt'][i], decam['moonsep'][i])
     
-        if i == 0: 
+        if ii == 0: 
             grz_ks  = np.zeros(n_sky)
             #grz_nks = np.zeros(n_sky)
             grz_eso = np.zeros(n_sky)
             
-        grz_ks[i]   = get_mag(w_ks, ks_i, decam['filter']) 
-        #grz_nks[i]  = get_mag(w_nks, newks_i, decam['filter']) 
-        grz_eso[i]  = get_mag(w_eso, eso_i, decam['filter']) 
+        grz_ks[ii]   = get_mag(w_ks, ks_i, decam['filter']) 
+        #grz_nks[ii]  = get_mag(w_nks, newks_i, decam['filter']) 
+        grz_eso[ii]  = get_mag(w_eso, eso_i, decam['filter']) 
     
-    hasg = (decam['filter'][:n_sky] == 'g')
-    hasr = (decam['filter'][:n_sky] == 'r')
-    hasz = (decam['filter'][:n_sky] == 'z')
+    hasg = (decam['filter'][picksky] == 'g')
+    hasr = (decam['filter'][picksky] == 'r')
+    hasz = (decam['filter'][picksky] == 'z')
     
     # --- sky photometry comparison --- 
     fig = plt.figure(figsize=(17,5))
     
     sub = fig.add_subplot(131)
-    sub.scatter(decam['skybr'][:n_sky][hasg], grz_ks[hasg], s=10, lw=1)
+    sub.scatter(decam['skybr'][picksky][hasg], grz_ks[hasg], s=10, lw=1)
     #sub.scatter(decam['skybr'][:n_sky][hasg], grz_nks[hasg], s=10, lw=1)
-    sub.scatter(decam['skybr'][:n_sky][hasg], grz_eso[hasg], s=10, lw=1)
+    sub.scatter(decam['skybr'][picksky][hasg], grz_eso[hasg], s=10, lw=1)
     sub.plot([16, 22], [16, 22], c='k', ls='--')
     sub.set_xlabel('DECam $g$ band', fontsize=20)
     sub.set_xlim([20., 22])
@@ -219,18 +220,18 @@ def DECam_sky_validate():
     sub.set_ylim([20., 22])
 
     sub = fig.add_subplot(132)
-    sub.scatter(decam['skybr'][:n_sky][hasr], grz_ks[hasr], s=10, lw=1)
+    sub.scatter(decam['skybr'][picksky][hasr], grz_ks[hasr], s=10, lw=1)
     #sub.scatter(decam['skybr'][:n_sky][hasr], grz_nks[hasr], s=10, lw=1)
-    sub.scatter(decam['skybr'][:n_sky][hasr], grz_eso[hasr], s=10, lw=1)
+    sub.scatter(decam['skybr'][picksky][hasr], grz_eso[hasr], s=10, lw=1)
     sub.plot([16, 22], [16, 22], c='k', ls='--')
     sub.set_xlabel('DECam $r$ band', fontsize=20)
     sub.set_xlim([19, 22])
     sub.set_ylim([19, 22])
 
     sub = fig.add_subplot(133)
-    sub.scatter(decam['skybr'][:n_sky][hasz], grz_ks[hasz], s=10, lw=1)
+    sub.scatter(decam['skybr'][picksky][hasz], grz_ks[hasz], s=10, lw=1)
     #sub.scatter(decam['skybr'][:n_sky][hasz], grz_nks[hasz], s=10, lw=1)
-    sub.scatter(decam['skybr'][:n_sky][hasz], grz_eso[hasz], s=10, lw=1)
+    sub.scatter(decam['skybr'][picksky][hasz], grz_eso[hasz], s=10, lw=1)
     sub.plot([16, 22], [16, 22], c='k', ls='--')
     sub.legend(loc='upper left', markerscale=10, handletextpad=0, fontsize=20)
     sub.set_xlabel('DECam $z$ band', fontsize=20)
@@ -394,6 +395,66 @@ def _twilight_coeffs():
     return None 
 
 
+def _Noll_sky_ESO(): 
+    ''' try to reproduce plots in Noll et al. (2012) using the ESO sky model 
+    '''
+    # Noll+(2012) Figure 1 generated from parameters in Table 1 
+    dic = {
+            'airmass': 1.00366676717,   # skysim.zodiacal.airmass_zodi(90 - 85.1) (based on alitutde) 
+            'moon_sun_sep': 77.9,       # separation of sun and moon 
+            'moon_target_sep': 51.3,    # separation of moon and target 
+            'moon_alt': 41.3,           # altitude of the moon above the horizon
+            'moon_earth_dist': 1.,      # relative distance to the moon  
+            'ecl_lon': -124.5,          # heliocentric eclipitic longitude
+            'ecl_lat': -31.6,           # heliocentric eclipitic latitude
+            'msolflux': 205.5,          # monthly-averaged solar radio flux at 10.7 cm
+            'pwv_mode': 'season',       # pwv or season
+            'season': 4, 
+            'time': 3, 
+            'vacair': 'air', 
+            'wmin': 300.,
+            'wmax': 4200., 
+            'wdelta': 5.,
+            'observatory': '2640'}
+    skyModel = skycalc.SkyModel()
+    skyModel.callwith(dic)
+    ftmp = os.path.join(UT.dat_dir(), 'sky', '_tmp.fits')
+    skyModel.write(ftmp) # the clunkiest way to deal with this ever. 
+
+    f = fits.open(ftmp) 
+    fdata = f[1].data 
+    wave = fdata['lam']             # wavelength in Ang 
+    radiance = fdata['flux']        # photons/s/m^2/microm/arcsec^2 (radiance -- fuck)
+    print fdata.names 
+
+    fig = plt.figure()
+    sub = fig.add_subplot(111)
+    sub.plot(wave, np.log10(radiance), c='k', lw=0.5, label='composite') 
+    for k, lbl, clr in zip(['flux_sml', 'flux_ssl', 'flux_zl', 'flux_tie', 'flux_tme', 'flux_ael', 'flux_arc'], 
+            ['moon', 'stars', 'zodiacal', 'telescope', 'lower atmos.', 'airglow lines', 'resid. cont.'], ['b', 'C0', 'g', 'r', 'y', 'm', 'cyan']): 
+        sub.plot(wave, np.log10(fdata[k]), lw=0.5, c=clr, label=lbl) 
+    sub.legend(loc='lower right', frameon=True, fontsize=15) 
+    sub.set_xlabel(r'Wavelength [$\mu m$]', fontsize=20) 
+    sub.set_xlim(0.2, 4.2) 
+    sub.set_ylabel(r'Radiance [dex]', fontsize=20) 
+    sub.set_ylim(-1.5, 7.5) 
+    fig.savefig(os.path.join(UT.code_dir(), 'figs', '_Nollfig1_sky_ESO.png'), bbox_inches='tight') 
+
+    fig = plt.figure()
+    sub = fig.add_subplot(111)
+    w0p5 = np.abs(wave - 0.5).argmin() 
+    sub.plot(wave, (fdata['flux_sml']/fdata['flux_sml'][w0p5]), lw=0.5, c='b', label='Moon') 
+    sub.plot(wave, (fdata['flux_ssl']/fdata['flux_ssl'][w0p5]), lw=0.5, c='g', ls='--', label='stars')  
+    sub.plot(wave, (fdata['flux_zl']/fdata['flux_zl'][w0p5]), lw=0.5, c='r', ls='-.', label='zodiacal light') 
+    sub.legend(loc='lower right', fontsize=15) 
+    sub.set_xlabel(r'Wavelength [$\mu m$]', fontsize=20) 
+    sub.set_xlim(0.36, 0.885) 
+    sub.set_ylabel(r'rel.radiance', fontsize=20) 
+    sub.set_ylim(0.,1.8) 
+    fig.savefig(os.path.join(UT.code_dir(), 'figs', '_Nollfig6_sky_ESO.png'), bbox_inches='tight') 
+    return None 
+
+
 def _test_sky_ESO(): 
     boss = boss_sky() # read in BOSS sky data 
 
@@ -437,5 +498,6 @@ if __name__=="__main__":
     #twilight_coeffs()
     #BOSS_sky_validate()
     #decam_sky(overwrite=True)
-    DECam_sky_validate()
+    #DECam_sky_validate()
+    _Noll_sky_ESO()
     #_test_sky_ESO()
