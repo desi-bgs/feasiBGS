@@ -55,7 +55,7 @@ def BOSS_sky_validate():
     ''' validate sky models again BOSS sky data 
     '''
     boss = boss_sky() # read in BOSS sky data 
-    n_sky = 200 # len(boss) 
+    n_sky = len(boss) 
     print('%i sky fibers' % n_sky)
 
     # calcuate the different sky models
@@ -198,23 +198,25 @@ def DECam_sky_validate():
     '''
     '''
     decam = decam_sky() 
-    n_sky = 100 # len(decam['airmass'])
+    n_sky = len(decam['airmass'])
 
     picksky = np.arange(n_sky) #np.random.choice(np.arange(len(decam['airmass'])), n_sky, replace=False) 
     for ii, i in enumerate(picksky): #range(n_sky): 
         print('%i of %i' % (i, n_sky))
         w_ks, ks_i      = sky_KS(decam['airmass'][i], decam['moonphase'][i], decam['moon_alt'][i], decam['moonsep'][i])
-        #w_nks, newks_i  = sky_KSrescaled_twi(decam['airmass'][i], decam['moonphase'][i], decam['moon_alt'][i], decam['moonsep'][i],
-        #        decam['sun_alt'][i], decam['sun_sep'][i])
-        w_eso, eso_i    = sky_ESO(decam['airmass'][i], decam['moon_sun_sep'][i], decam['moon_alt'][i], decam['moonsep'][i])
+        w_nks, newks_i  = sky_KSrescaled_twi(decam['airmass'][i], decam['moonphase'][i], decam['moon_alt'][i], decam['moonsep'][i],
+                decam['sunalt'][i], decam['sunsep'][i])
+        w_eso, eso_i  = sky_pseudoESO(decam['airmass'][i], decam['moonphase'][i], decam['moon_alt'][i], decam['moonsep'][i],
+                decam['sunalt'][i], decam['sunsep'][i])
+        #w_eso, eso_i    = sky_ESO(decam['airmass'][i], decam['moon_sun_sep'][i], decam['moon_alt'][i], decam['moonsep'][i])
     
         if ii == 0: 
             grz_ks  = np.zeros(n_sky)
-            #grz_nks = np.zeros(n_sky)
+            grz_nks = np.zeros(n_sky)
             grz_eso = np.zeros(n_sky)
             
         grz_ks[ii]   = get_mag(w_ks, ks_i, decam['filter']) 
-        #grz_nks[ii]  = get_mag(w_nks, newks_i, decam['filter']) 
+        grz_nks[ii]  = get_mag(w_nks, newks_i, decam['filter']) 
         grz_eso[ii]  = get_mag(w_eso, eso_i, decam['filter']) 
     
     hasg = (decam['filter'][picksky] == 'g')
@@ -225,9 +227,9 @@ def DECam_sky_validate():
     fig = plt.figure(figsize=(17,5))
     
     sub = fig.add_subplot(131)
-    sub.scatter(decam['skybr'][picksky][hasg], grz_ks[hasg], s=10, lw=1)
-    #sub.scatter(decam['skybr'][:n_sky][hasg], grz_nks[hasg], s=10, lw=1)
-    sub.scatter(decam['skybr'][picksky][hasg], grz_eso[hasg], s=10, lw=1)
+    sub.scatter(decam['skybr'][picksky][hasg], grz_ks[hasg],  c='C0', s=10)
+    sub.scatter(decam['skybr'][picksky][hasg], grz_nks[hasg], c='C1', s=10)
+    sub.scatter(decam['skybr'][picksky][hasg], grz_eso[hasg], c='C2', s=10)
     sub.plot([16, 22], [16, 22], c='k', ls='--')
     sub.set_xlabel('DECam $g$ band', fontsize=20)
     sub.set_xlim([20., 22])
@@ -235,24 +237,50 @@ def DECam_sky_validate():
     sub.set_ylim([20., 22])
 
     sub = fig.add_subplot(132)
-    sub.scatter(decam['skybr'][picksky][hasr], grz_ks[hasr], s=10, lw=1)
-    #sub.scatter(decam['skybr'][:n_sky][hasr], grz_nks[hasr], s=10, lw=1)
-    sub.scatter(decam['skybr'][picksky][hasr], grz_eso[hasr], s=10, lw=1)
+    sub.scatter(decam['skybr'][picksky][hasr], grz_ks[hasr],  c='C0', s=10)
+    sub.scatter(decam['skybr'][picksky][hasr], grz_nks[hasr], c='C1', s=10)
+    sub.scatter(decam['skybr'][picksky][hasr], grz_eso[hasr], c='C2', s=10)
     sub.plot([16, 22], [16, 22], c='k', ls='--')
     sub.set_xlabel('DECam $r$ band', fontsize=20)
     sub.set_xlim([19, 22])
     sub.set_ylim([19, 22])
 
     sub = fig.add_subplot(133)
-    sub.scatter(decam['skybr'][picksky][hasz], grz_ks[hasz], s=10, lw=1)
-    #sub.scatter(decam['skybr'][:n_sky][hasz], grz_nks[hasz], s=10, lw=1)
-    sub.scatter(decam['skybr'][picksky][hasz], grz_eso[hasz], s=10, lw=1)
+    sub.scatter(decam['skybr'][picksky][hasz], grz_ks[hasz],  c='C0', s=10, label='original KS')
+    sub.scatter(decam['skybr'][picksky][hasz], grz_nks[hasz], c='C1', s=10, label='rescaled KS+twi')
+    sub.scatter(decam['skybr'][picksky][hasz], grz_eso[hasz], c='C2', s=10, label='pseudo ESO')
     sub.plot([16, 22], [16, 22], c='k', ls='--')
-    sub.legend(loc='upper left', markerscale=10, handletextpad=0, fontsize=20)
+    sub.legend(loc='upper left', markerscale=2, handletextpad=0, fontsize=20)
     sub.set_xlabel('DECam $z$ band', fontsize=20)
     sub.set_xlim([16, 22])
     sub.set_ylim([16, 22])
     fig.savefig(os.path.join(UT.code_dir(), 'figs', 'DECAM_sky_validate.sky_photo.png'), 
+            bbox_inches='tight') 
+
+    # --- sky photometry comparison --- 
+    fig = plt.figure(figsize=(17,5))
+    sub = fig.add_subplot(131)
+    sub.hist(decam['skybr'][picksky][hasg] - grz_ks[hasg],  range=(-3., 3.), bins=20, color='C0')
+    sub.hist(decam['skybr'][picksky][hasg] - grz_nks[hasg], range=(-3., 3.), bins=20, color='C1', alpha=0.75)
+    sub.hist(decam['skybr'][picksky][hasg] - grz_eso[hasg], range=(-3., 3.), bins=20, color='C2', alpha=0.5)
+    sub.set_xlabel('DECam mag - (sky mag) $g$', fontsize=20)
+    sub.set_xlim(-5., 5.)
+
+    sub = fig.add_subplot(132)
+    sub.hist(decam['skybr'][picksky][hasr] - grz_ks[hasr],  range=(-3., 3.), bins=20, color='C0')
+    sub.hist(decam['skybr'][picksky][hasr] - grz_nks[hasr], range=(-3., 3.), bins=20, color='C1', alpha=0.75)
+    sub.hist(decam['skybr'][picksky][hasr] - grz_eso[hasr], range=(-3., 3.), bins=20, color='C2', alpha=0.5)
+    sub.set_xlabel('DECam mag - (sky mag) $r$', fontsize=20)
+    sub.set_xlim(-5., 5.)
+
+    sub = fig.add_subplot(133)
+    sub.hist(decam['skybr'][picksky][hasz] - grz_ks[hasz],  range=(-3., 3.), bins=20, color='C0', label='original KS')
+    sub.hist(decam['skybr'][picksky][hasz] - grz_nks[hasz], range=(-3., 3.), bins=20, color='C1', label='rescaled KS+twi')
+    sub.hist(decam['skybr'][picksky][hasz] - grz_eso[hasz], range=(-3., 3.), bins=20, color='C2', label='pseudo ESO')
+    sub.legend(loc='upper left', markerscale=2, handletextpad=0, fontsize=20)
+    sub.set_xlabel('DECam mag - (sky mag) $z$', fontsize=20)
+    sub.set_xlim(-5., 5.)
+    fig.savefig(os.path.join(UT.code_dir(), 'figs', 'DECAM_sky_validate.sky_photo.hist.png'), 
             bbox_inches='tight') 
     return None
 
@@ -636,7 +664,7 @@ if __name__=="__main__":
     #twilight_coeffs()
     #BOSS_sky_validate()
     #decam_sky(overwrite=True)
-    #DECam_sky_validate()
+    DECam_sky_validate()
     #_Noll_sky_ESO()
-    _sky_ESOvsKSvband()
+    #_sky_ESOvsKSvband()
     #_test_sky_ESO()
