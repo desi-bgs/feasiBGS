@@ -55,7 +55,7 @@ def BOSS_sky_validate():
     ''' validate sky models again BOSS sky data 
     '''
     boss = boss_sky() # read in BOSS sky data 
-    n_sky = 5 # len(boss) 
+    n_sky = 200 # len(boss) 
     print('%i sky fibers' % n_sky)
 
     # calcuate the different sky models
@@ -64,7 +64,9 @@ def BOSS_sky_validate():
         w_ks, ks_i      = sky_KS(boss['AIRMASS'][i], boss['MOON_ILL'][i], boss['MOON_ALT'][i], boss['MOON_SEP'][i])
         w_nks, newks_i  = sky_KSrescaled_twi(boss['AIRMASS'][i], boss['MOON_ILL'][i], boss['MOON_ALT'][i], boss['MOON_SEP'][i], 
                 boss['SUN_ALT'][i], boss['SUN_SEP'][i])
-        w_eso, eso_i    = sky_ESO(boss['AIRMASS'][i], boss['SUN_MOON_SEP'][i], boss['MOON_ALT'][i], boss['MOON_SEP'][i])
+        w_eso, eso_i  = sky_pseudoESO(boss['AIRMASS'][i], boss['MOON_ILL'][i], boss['MOON_ALT'][i], boss['MOON_SEP'][i], 
+                boss['SUN_ALT'][i], boss['SUN_SEP'][i])
+        #w_eso, eso_i    = sky_ESO(boss['AIRMASS'][i], boss['SUN_MOON_SEP'][i], boss['MOON_ALT'][i], boss['MOON_SEP'][i])
 
         if i == 0: 
             Isky_ks     = np.zeros((n_sky, len(w_ks)))
@@ -80,7 +82,7 @@ def BOSS_sky_validate():
         sub = fig.add_subplot(3,1,i+1) 
         sub.plot(w_ks, Isky_ks[i,:], label='original KS') 
         sub.plot(w_nks, Isky_newks[i,:], label='rescaled KS + twi') 
-        sub.plot(w_eso, Isky_eso[i,:], label='ESO') 
+        sub.plot(w_eso, Isky_eso[i,:], label='pseudo ESO') 
         sub.plot(boss['WAVE'][i] * 10., boss['SKY'][i]/np.pi, c='k', ls='--', label='BOSS sky') 
         if i == 0: sub.legend(loc='upper left', ncol=2, fontsize=15) 
         if i < 2: sub.set_xticklabels([])
@@ -136,6 +138,19 @@ def BOSS_sky_validate():
         bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
         bkgd.set_ylabel('(BOSS Sky)/(sky model) at %.fA' % ww, fontsize=25)
         fig.savefig(os.path.join(UT.code_dir(), 'figs', 'BOSS_sky_validate.sky%.f.png' % ww), 
+                bbox_inches='tight') 
+
+        # histogram of the devations 
+        fig = plt.figure(figsize=(6,6)) 
+        sub = fig.add_subplot(111)
+        sub.hist(boss_ww/ks_ww, range=(0., 5.), bins=50, color='C0', label='original KS') 
+        sub.hist(boss_ww/nks_ww, range=(0., 5.), bins=50, color='C1', label='rescaled KS + twi') 
+        sub.hist(boss_ww/eso_ww, range=(0., 5.), bins=50, color='C2', label='pesudo ESO') 
+        _, ymax = sub.get_ylim()
+        sub.vlines(1., 0, ymax, color='k', linestyle='--')
+        sub.set_xlim(0., 5.) 
+        sub.set_ylabel('(BOSS Sky)/(sky model) at %.fA' % ww, fontsize=20)
+        fig.savefig(os.path.join(UT.code_dir(), 'figs', 'BOSS_sky_validate.sky%.f.hist.png' % ww), 
                 bbox_inches='tight') 
     return None
 
@@ -300,6 +315,26 @@ def sky_KSrescaled_twi(airmass, moonill, moonalt, moonsep, sun_alt, sun_sep):
     return specsim_wave.value, Isky
 
 
+def sky_pseudoESO(airmass, moonill, moonalt, moonsep, sun_alt, sun_sep):
+    ''' sky brightness using the KS parameterization with coefficients of the 
+    ESO sky model. 
+    '''
+    specsim_sky = Sky.specsim_initialize('desi')
+    specsim_wave = specsim_sky._wavelength # Ang
+    specsim_sky.airmass = airmass
+    specsim_sky.moon.moon_phase = np.arccos(2.*moonill - 1)/np.pi
+    specsim_sky.moon.moon_zenith = (90. - moonalt) * u.deg
+    specsim_sky.moon.separation_angle = moonsep * u.deg
+    
+    # updated KS coefficients 
+    specsim_sky.moon.KS_CR = 10**5.70 
+    specsim_sky.moon.KS_CM0 = 7.15
+    specsim_sky.moon.KS_CM1 = 40.
+    
+    Isky = specsim_sky.surface_brightness.value
+    return specsim_wave.value, Isky
+
+
 def sky_ESO(airmass, moon_sun_sep, moonalt, moonsep, observatory='2400'): 
     ''' calculate sky brightness using ESO sky calc 
 
@@ -319,7 +354,8 @@ def sky_ESO(airmass, moon_sun_sep, moonalt, moonsep, observatory='2400'):
     - https://www.eso.org/observing/etc/bin/gen/form?INS.MODE=swspectr+INS.NAME=SKYCALC
     - https://www.eso.org/observing/etc/doc/skycalc/helpskycalccli.html
     '''
-    dic = {'airmass': round(airmass,3), 
+    airmassp = 1./(1./airmass + 0.025*np.exp(-11./airmass)) # correct sec(z) airmass to Rozenberg (1966) airmass
+    dic = {'airmass': round(airmass,5), 
             'incl_moon': 'Y', 
             'moon_sun_sep': moon_sun_sep, 
             'moon_target_sep': moonsep, 
@@ -400,7 +436,7 @@ def _Noll_sky_ESO():
     '''
     # Noll+(2012) Figure 1 generated from parameters in Table 1 
     dic = {
-            'airmass': 1.00366676717,   # skysim.zodiacal.airmass_zodi(90 - 85.1) (based on alitutde) 
+            'airmass': 1.0366676717,   # skysim.zodiacal.airmass_zodi(90 - 85.1) (based on alitutde) 
             'moon_sun_sep': 77.9,       # separation of sun and moon 
             'moon_target_sep': 51.3,    # separation of moon and target 
             'moon_alt': 41.3,           # altitude of the moon above the horizon
@@ -455,6 +491,108 @@ def _Noll_sky_ESO():
     return None 
 
 
+def _sky_ESOvsKSvband(): 
+    '''
+    '''
+    # get default ESO moon scatterlight brightness 
+    dic = {
+            'airmass': 1.0366676717,   # skysim.zodiacal.airmass_zodi(90 - 85.1) (based on alitutde) 
+            'moon_sun_sep': 77.9,       # separation of sun and moon 
+            'moon_target_sep': 51.3,    # separation of moon and target 
+            'moon_alt': 41.3,           # altitude of the moon above the horizon
+            'moon_earth_dist': 1.,      # relative distance to the moon  
+            'ecl_lon': -124.5,          # heliocentric eclipitic longitude
+            'ecl_lat': -31.6,           # heliocentric eclipitic latitude
+            'msolflux': 205.5,          # monthly-averaged solar radio flux at 10.7 cm
+            'pwv_mode': 'season',       # pwv or season
+            'season': 4, 
+            'time': 3, 
+            'vacair': 'air', 
+            'wmin': 300.,
+            'wmax': 4200., 
+            'wdelta': 5.,
+            'observatory': '2640'}
+    
+    skyModel = skycalc.SkyModel()
+    skyModel.callwith(dic)
+    ftmp = os.path.join(UT.dat_dir(), 'sky', '_tmp.fits')
+    skyModel.write(ftmp) # the clunkiest way to deal with this ever. 
+
+    f = fits.open(ftmp) 
+    fdata = f[1].data 
+    wave_eso = fdata['lam']         # wavelength in Ang 
+    radiance = fdata['flux_sml']    # photons/s/m^2/microm/arcsec^2 (radiance -- fuck)
+    radiance *= 1e-8                # photons/s/cm^2/Ang/arcsec^2 
+    Im_eso = 1.99 * 1e-8 * radiance / (wave_eso * 1e4) * 1e17 # 10^-17 erg/s/cm^2/Ang/arcsec^2
+    
+    # get moon brightness where some moon spectra is caled by KS V-band 
+    specsim_sky = Sky.specsim_initialize('desi')
+    specsim_wave = specsim_sky._wavelength # Ang
+    specsim_sky.airmass = 1.0366676717 
+    specsim_sky.moon.moon_phase = 77.9/180. #np.arccos(2.*moonill - 1)/np.pi
+    specsim_sky.moon.moon_zenith = (90. - 41.3) * u.deg
+    specsim_sky.moon.separation_angle = 51.3 * u.deg
+    
+    # updated KS coefficients 
+    specsim_sky.moon.KS_CR = 10**5.70 
+    specsim_sky.moon.KS_CM0 = 7.15
+    specsim_sky.moon.KS_CM1 = 40.
+    
+    Im_ks = specsim_sky.moon.surface_brightness.value
+    
+    rho = specsim_sky.moon.separation_angle.to(u.deg).value
+    fR = 10**5.36*(1.06 + np.cos(np.radians(rho))**2)
+    fM = 10 ** (6.15 -  rho/ 40.)
+    fRp = 10**5.70*(1.06 + np.cos(np.radians(rho))**2)
+    fMp = 10 ** (7.15 -  rho/ 40.)
+    fRn = 10**5.66*(1.06 + np.cos(np.radians(rho))**2)
+    fMn = 10 ** (5.54 -  rho/ 178.)
+    tRS = np.interp(specsim_wave/1e4, wave_eso, fdata['trans_rs']) 
+    tMS = np.interp(specsim_wave/1e4, wave_eso, fdata['trans_ms']) 
+    tall = np.interp(specsim_wave/1e4, wave_eso, fdata['trans']) 
+    Xo = (1 - 0.96 * np.sin(specsim_sky.moon.obs_zenith)**2)**(-0.5)
+    Xm = (1 - 0.96 * np.sin(specsim_sky.moon.moon_zenith)**2)**(-0.5) 
+    tkso = 10 ** (-0.4 * (specsim_sky.moon.vband_extinction * Xo))
+    tksm = 10 ** (-0.4 * (specsim_sky.moon.vband_extinction * Xm))
+    fcorr = ((fRp*(1.-tRS**Xo) + fMp*(1.-tMS**Xo))*tall**Xm)/((fRp+fMp) * (1-tkso) * tksm)
+    f_eso_ks = ((fRp*(1.-tRS**Xo) + fMp*(1.-tMS**Xo))*tall**Xm)/((fR+fM) * (1-tkso) * tksm)
+    f_nks_ks = (fRn + fMn)/(fR + fM) 
+    f_peso_ks = (fRp + fMp)/(fR + fM) 
+    
+    fig = plt.figure(figsize=(10,5))
+    sub = fig.add_subplot(111)
+    sub.plot(wave_eso, Im_eso, c='k', label='ESO refit KS')
+    sub.plot(specsim_wave/1e4, fcorr*Im_ks * 1e17, c='C1', label='V-band scale ESO coeff.') 
+    sub.legend(loc='upper right', fontsize=20) 
+    sub.set_xlabel(r'Wavelength [$\mu m$]', fontsize=20) 
+    sub.set_xlim(0.3, 1.) 
+    sub.set_ylabel(r'Moon Brightness', fontsize=20) 
+    fig.savefig(os.path.join(UT.code_dir(), 'figs', '_sky_ESOvsKSvband.png'), bbox_inches='tight') 
+
+    fig = plt.figure(figsize=(10,5))
+    sub = fig.add_subplot(111)
+    sub.plot(specsim_wave, f_eso_ks, c='k', label='ESO')
+    sub.plot(specsim_wave, np.repeat(f_nks_ks, len(specsim_wave)), c='C0', label='refit KS')
+    sub.plot(specsim_wave, np.repeat(f_peso_ks, len(specsim_wave)), c='C1', label='pseudo ESO')
+    sub.legend(loc='upper right', fontsize=20) 
+    sub.set_xlabel(r'Wavelength [$A$]', fontsize=20) 
+    sub.set_xlim(3.4e3, 9.8e3) 
+    sub.set_ylabel(r'(moon model)/(KS moon)', fontsize=20) 
+    fig.savefig(os.path.join(UT.code_dir(), 'figs', '_sky_ESOoverKS.png'), bbox_inches='tight') 
+
+    fig = plt.figure(figsize=(10,5))
+    sub = fig.add_subplot(111)
+    sub.plot(wave_eso, fdata['trans_rs'], c='k', label='Rayleigh')
+    sub.plot(wave_eso, fdata['trans_ms'], c='C1', label='Mie') 
+    sub.plot(wave_eso, np.repeat(10**(-0.4*specsim_sky.moon.vband_extinction*dic['airmass']), len(wave_eso)))
+    sub.legend(loc='upper right', fontsize=20) 
+    sub.set_xlabel(r'Wavelength [$\mu m$]', fontsize=20) 
+    sub.set_xlim(0.3, 1.) 
+    sub.set_ylabel(r'transmission', fontsize=20) 
+    fig.savefig(os.path.join(UT.code_dir(), 'figs', '_sky_ESOvsKSvband.trans.png'), bbox_inches='tight') 
+    return None 
+
+
 def _test_sky_ESO(): 
     boss = boss_sky() # read in BOSS sky data 
 
@@ -499,5 +637,6 @@ if __name__=="__main__":
     #BOSS_sky_validate()
     #decam_sky(overwrite=True)
     #DECam_sky_validate()
-    _Noll_sky_ESO()
+    #_Noll_sky_ESO()
+    _sky_ESOvsKSvband()
     #_test_sky_ESO()
