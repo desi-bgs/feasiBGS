@@ -118,7 +118,7 @@ def BOSS_sky_validate():
             sub = fig.add_subplot(5,1,i+1)
             sub.scatter(boss[k][:n_sky], boss_ww/ks_ww, c='C0', s=3, label='original KS')
             sub.scatter(boss[k][:n_sky], boss_ww/nks_ww, c='C1', s=3, label='rescaled KS + twi')
-            sub.scatter(boss[k][:n_sky], boss_ww/eso_ww, c='C2', s=3, label='ESO') 
+            sub.scatter(boss[k][:n_sky], boss_ww/eso_ww, c='C2', s=3, label='pseudo ESO') 
             sub.set_xlabel(' '.join(k.split('_')).lower(), fontsize=25)
             if i == 0:
                 sub.legend(loc='upper right', handletextpad=0, markerscale=10, fontsize=20)
@@ -148,6 +148,7 @@ def BOSS_sky_validate():
         sub.hist(boss_ww/eso_ww, range=(0., 5.), bins=50, color='C2', label='pesudo ESO') 
         _, ymax = sub.get_ylim()
         sub.vlines(1., 0, ymax, color='k', linestyle='--')
+        sub.legend(loc='upper right', fontsize=20) 
         sub.set_xlim(0., 5.) 
         sub.set_ylabel('(BOSS Sky)/(sky model) at %.fA' % ww, fontsize=20)
         fig.savefig(os.path.join(UT.code_dir(), 'figs', 'BOSS_sky_validate.sky%.f.hist.png' % ww), 
