@@ -663,11 +663,38 @@ def _test_sky_ESO():
     return None 
 
 
+def _sky_ESO_altitude(): 
+    ''' test whether atlitude makes a significant impact 
+    '''
+    boss = boss_sky() # read in BOSS sky data 
+
+    fig = plt.figure(figsize=(10,10)) 
+    igals = np.random.choice(range(len(boss['AIRMASS'])), 3, replace=False) 
+    for i in range(3): 
+        sub = fig.add_subplot(3,1,i+1) 
+        print boss['AIRMASS'][igals[i]], boss['SUN_MOON_SEP'][igals[i]], boss['MOON_ALT'][igals[i]], boss['MOON_SEP'][igals[i]]
+        for obs in ['2400', '2640', '3060']: 
+            w_eso, eso_i = sky_ESO(boss['AIRMASS'][igals[i]], boss['SUN_MOON_SEP'][igals[i]], boss['MOON_ALT'][igals[i]], boss['MOON_SEP'][igals[i]], 
+                    observatory=obs)
+            sub.plot(w_eso, eso_i, lw=1, label='%s altitude' % obs) 
+        if i == 0: sub.legend(loc='upper left', fontsize=15) 
+        sub.set_xlim(3550, 9850) 
+        sub.set_ylim(0, 10)
+
+    bkgd = fig.add_subplot(111, frameon=False) # x,y labels
+    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    bkgd.set_xlabel('Wavelength [Angstrom]', fontsize=20) 
+    bkgd.set_ylabel('Sky Brightness [$10^{-17} erg/s/cm^2/\AA/arcsec^2$]', fontsize=20) 
+    fig.savefig(os.path.join(UT.code_dir(), 'figs', '_sky_ESO_altitude.png'), bbox_inches='tight') 
+    return None 
+
+
 if __name__=="__main__": 
     #twilight_coeffs()
-    BOSS_sky_validate()
+    #BOSS_sky_validate()
     #decam_sky(overwrite=True)
     #DECam_sky_validate()
     #_Noll_sky_ESO()
     #_sky_ESOvsKSvband()
     #_test_sky_ESO()
+    _sky_ESO_altitude()
