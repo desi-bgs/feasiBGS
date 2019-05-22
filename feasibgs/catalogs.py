@@ -57,15 +57,15 @@ class GAMA(Catalog):
         if not silent: 
             print('colums in GAMA photometry') 
             print(sorted(grp_p.keys()))
-            print '========================'
-            print 'colums in GAMA spectroscopy'
+            print('========================')
+            print('colums in GAMA spectroscopy')
             print(sorted(grp_s.keys()))
-            print '========================'
-            print 'colums in GAMA kcorrects'
+            print('========================')
+            print('colums in GAMA kcorrects')
             print(sorted(grp_k0.keys()))
-            print '========================'
+            print('========================')
             print('%i objects' % len(grp_p['ra'].value)) 
-            print '========================'
+            print('========================')
 
         data = {} 
         for dkey, grp in zip(['photo', 'spec', 'kcorr_z0.0', 'kcorr_z0.1'], [grp_p, grp_s, grp_k0, grp_k1]): 

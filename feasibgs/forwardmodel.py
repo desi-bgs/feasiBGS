@@ -539,7 +539,7 @@ class fakeDESIspec(object):
         
         sbright_unit = u.erg / (u.arcsec**2 * u.Angstrom * u.s * u.cm ** 2 )
         Bmoon = desi.atmosphere.moon.surface_brightness.value * sbright_unit # 1e17
-        print Bmoon
+        print(Bmoon)
         return Bmoon 
 
     def _skySurfBright(self, wave, cond='bright'): 
@@ -969,8 +969,8 @@ class SimulatorHacked(Simulator):
         # check that input sky_surface_brightness is the same size 
         # as the source_flux 
         if source_flux.shape[0] != sky_surface_brightness.shape[0]: 
-            print source_flux.shape
-            print sky_surface_brightness.shape
+            print(source_flux.shape)
+            print(sky_surface_brightness.shape)
             raise ValueError
         #assert source_flux.shape[0] == sky_surface_brightness.shape[0] 
 
@@ -1081,9 +1081,9 @@ class SimulatorHacked(Simulator):
                     output['num_sky_electrons'] +
                     output['num_dark_electrons'])
             if mean_electrons.min() < 0.: 
-                print output['num_source_electrons']
-                print output['num_sky_electrons']
-                print output['num_dark_electrons']
+                print(output['num_source_electrons'])
+                print(output['num_sky_electrons'])
+                print(output['num_dark_electrons'])
 
             # Calculate the effective calibration from detected electrons to
             # source flux above the atmosphere, downsampled to output pixels.

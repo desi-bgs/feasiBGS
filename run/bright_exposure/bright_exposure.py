@@ -71,7 +71,7 @@ def texp_factor(validate=False, silent=True):
     f_exp = np.zeros(n_exps)
     for i_exp in range(n_exps): 
         f_exp[i_exp] = np.median((sky_bright[i_exp] / sky_dark.value)[wlim])
-    print np.median(f_exp) 
+    print(np.median(f_exp)) 
 
     # write exposure subsets out to file 
     ff = os.path.join(UT.dat_dir(), 'bright_exposure', 'texp_factor_exposures.hdf5')
@@ -158,11 +158,6 @@ def texp_factor_GP(validate=False):
         bgs_exps[k] = ffexp[k.lower()].value 
         thetas[:,i_k] = ffexp[k.lower()].value 
 
-    kern = ConstantKernel(1.0, (1e-4, 1e4)) * RBF(1, (1e-4, 1e4)) # kernel
-    gp = GPR(kernel=kern, n_restarts_optimizer=10) # instanciate a GP model
-    gp.fit(thetas[::2], f_exp[::2])
-    print gp.get_params(deep=True) 
-
     _thetas = np.zeros((5000, 6))
     for i in range(6): 
         _thetas[:,i] = np.random.uniform(thetas[:,i].min(), thetas[:,i].max(), 5000)
@@ -170,9 +165,28 @@ def texp_factor_GP(validate=False):
     param_hull = sp.spatial.Delaunay(thetas[::10,:])
     inhull = (param_hull.find_simplex(_thetas) >= 0) 
     thetas_test = _thetas[inhull]
-    print('GP predicting')  
-    mu_theta_test = gp.predict(thetas_test)
+    mu_theta_test = np.zeros(np.sum(inhull))
     
+    for typ in ['nottwi', 'twi']:
+        if typ == 'nottwi': 
+            cut = (thetas[:,4] <= -20.) 
+            test_cut = (thetas_test[:,4] <= -20.) 
+        elif typ == 'twi': 
+            cut = (thetas[:,4] > -20.) 
+            test_cut = (thetas_test[:,4] > -20.) 
+        kern = ConstantKernel(1.0, (1e-4, 1e4)) * RBF(1, (1e-4, 1e4)) # kernel
+        print('training %s GP' % typ) 
+        gp = GPR(kernel=kern, n_restarts_optimizer=10) # instanciate a GP model
+        gp.fit(thetas[cut,:][::5], f_exp[cut][::5])
+        # save GP parameters to file 
+        #params = gp.get_params(deep=True).copy() 
+        #kern_thetas = gp.kernel_.theta
+        #kern_params = gp.kernel_.get_params(deep=True).copy() 
+        pickle.dump(gp, open(ff.replace('.hdf5', '.%s.GPparams.p' % typ), 'wb')) 
+
+        print('%s GP predicting' % typ)  
+        mu_theta_test[test_cut] = gp.predict(thetas_test[test_cut,:]) 
+    print(np.median(mu_theta_test)) 
     if validate: 
         fig = plt.figure(figsize=(15,25))
         sub = fig.add_subplot(611)
@@ -226,6 +240,47 @@ def texp_factor_GP(validate=False):
     return None 
 
 
+def test_texp_factor_GP(): 
+    ff = os.path.join(UT.dat_dir(), 'bright_exposure', 'texp_factor_exposures.hdf5')
+    ffexp = h5py.File(ff, 'r')
+    
+    f_exp  = ffexp['f_exp'].value 
+    bgs_exps = {} 
+    thetas = np.zeros((len(f_exp), 6))
+    for i_k, k in enumerate(['AIRMASS', 'MOONFRAC', 'MOONALT', 'MOONSEP', 'SUNALT', 'SUNSEP']): 
+        bgs_exps[k] = ffexp[k.lower()].value 
+        thetas[:,i_k] = ffexp[k.lower()].value 
+
+    _thetas = np.zeros((5000, 6))
+    for i in range(6): 
+        _thetas[:,i] = np.random.uniform(thetas[:,i].min(), thetas[:,i].max(), 5000)
+    param_hull = sp.spatial.Delaunay(thetas[::10,:])
+    inhull = (param_hull.find_simplex(_thetas) >= 0) 
+    thetas_test = _thetas[inhull]
+
+    for typ in ['nottwi', 'twi']:
+        if typ == 'nottwi': 
+            test_cut = (thetas_test[:,4] <= -20.) 
+        elif typ == 'twi': 
+            test_cut = (thetas_test[:,4] > -20.) 
+        # saved GP parameters 
+        gp = pickle.load(open(ff.replace('.hdf5', '.%s.GPparams.p' % typ), 'rb')) 
+
+        #kern = ConstantKernel(1.0, (1e-4, 1e4)) * RBF(1, (1e-4, 1e4)) # kernel
+        #kern.set_params(**kern_params)
+        #kern.theta = kern_thetas
+        #print kern_params
+        #print kern.get_params() 
+        #print kern.theta
+        #gp = GPR(kernel=kern) # instanciate a GP model
+        #gp.set_params(**params) 
+        print(gp.predict(thetas_test[test_cut,:]))
+        print(thetas_test[0,:])
+        print(gp.predict(np.atleast_2d(thetas_test[0,:])))
+    return None
+
+
 if __name__=="__main__": 
     #texp_factor(validate=True)
     texp_factor_GP(validate=True)
+    test_texp_factor_GP()
