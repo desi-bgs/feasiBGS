@@ -40,7 +40,6 @@ def texp_factor(validate=False, silent=True):
     Outputs a file that contains the observing conditions (parameters) and 
     the ratio between (new sky flux)/(nominal dark time sky flux) 
 
-
     :param validate: (default: False)
         If True, generate some figures to validate things 
 
