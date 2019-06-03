@@ -86,14 +86,16 @@ def extractBGS(fname, notwilight=True):
     return exps 
 
 
-def surveysim_output(): 
+def surveysim_output(expfile): 
     ''' read in surveysim output that Jeremy provided and check the exposures
     with super high exptime. 
     '''
+    fmaster = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_master.fits')
+    exps_master = extractBGS(fmaster) 
     # read in exposures output from surveysim 
-    #fexp = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim.fits') 
-    #fexp = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_master.fits')
-    fexp = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_fork_nocorr.fits') 
+    print('--- %s ---' % expfile) 
+    fexp = os.path.join(UT.dat_dir(), 'bright_exposure', expfile)
+    # get BGS exposures only 
     exps = extractBGS(fexp) 
     
     nexp    = exps['nexp']
@@ -115,8 +117,19 @@ def surveysim_output():
     print('seeing=', seeing[np.argmax(texptot),:nexp[np.argmax(texptot)]])  
     print('')  
 
+    # histogram of total exposures: 
+    fig = plt.figure(figsize=(5,5))
+    sub = fig.add_subplot(111)
+    sub.hist(exps_master['texptot'], bins=100, density=True, range=(0, 10000), color='C0', label='master branch')
+    sub.hist(texptot, bins=100, density=True, range=(0, 10000), alpha=0.75, color='C1', label='Bright Exp. Corr.')
+    sub.legend(loc='upper right', fontsize=20) 
+    sub.set_xlabel(r'$t_{\rm exp}$', fontsize=20) 
+    sub.set_xlim(0., 10000) 
+    fig.savefig(os.path.join(UT.dat_dir(), 'bright_exposure', 'texp.%s.png' % expfile.replace('.fits', '')), bbox_inches='tight')
+
     superhigh = (texptot > 60*60.) # tiles exposed for longer than 60 mins 
     print('%i exposures with very high exposure times' % np.sum(superhigh)) 
+    '''
     for i in np.arange(len(texptot))[superhigh]: 
         # get sky parameters for given ra, dec, and mjd
         moon_ill, moon_alt, moon_sep, sun_alt, sun_sep = get_thetaSky(
@@ -130,52 +143,7 @@ def surveysim_output():
         print(exp_factor)
         print(texps[i,:nexp[i]])
         print(snr2arr[i,:nexp[i]])
-    raise ValueError
-    
-    # exposures longer than 30 mins 
-    superhigh = (texp > 30.*60.) 
-    print('%i exposures with very high exposure times' % np.sum(superhigh)) 
-    exp_factor = np.array([detc.bright_exposure_factor(moon_ill[i], moon_alt[i], np.array([moon_sep[i]]), 
-                                              np.array([sun_alt[i]]), np.array([sun_sep[i]]), np.array([airm[i]])) 
-                  for i in range(len(moon_ill))])
-    print(exp_factor.flatten()[superhigh]) 
-    print(texp[superhigh]) 
-
-    fig = plt.figure(figsize=(20, 5)) 
-    # moon: alt vs ill
-    sub = fig.add_subplot(141) 
-    sub.scatter(moon_alt, moon_ill, c='k', s=1) 
-    sub.scatter(moon_alt[superhigh], moon_ill[superhigh], c='C1', s=5) 
-    sub.set_xlabel('Moon Altitude', fontsize=20)
-    sub.set_xlim([-90., 90.])
-    sub.set_ylabel('Moon Illumination', fontsize=20)
-    sub.set_ylim([0., 1.])
-    # moon: sep vs ill
-    sub = fig.add_subplot(142) 
-    sub.scatter(moon_sep, moon_ill, c='k', s=1) 
-    sub.scatter(moon_sep[superhigh], moon_ill[superhigh], c='C1', s=5) 
-    sub.set_xlabel('Moon Separation', fontsize=20)
-    sub.set_xlim([0., 180.])
-    sub.set_ylabel('Moon Illumination', fontsize=20)
-    sub.set_ylim([0., 1.])
-    # sun: alt vs sep 
-    sub = fig.add_subplot(143) 
-    sub.scatter(sun_alt, sun_sep, c='k', s=1) 
-    sub.scatter(sun_alt[superhigh], sun_sep[superhigh], c='C1', s=5) 
-    sub.set_xlabel('Sun Altitude', fontsize=20)
-    sub.set_xlim([-90., 0.])
-    sub.set_ylabel('Sun Separation', fontsize=20)
-    sub.set_ylim([40., 180.])
-    # airmass 
-    sub = fig.add_subplot(144) 
-    sub.scatter(sun_alt, airm, c='k', s=1) 
-    sub.scatter(sun_alt[superhigh], airm[superhigh], c='C1', s=5) 
-    sub.set_xlabel('Sun Altitude', fontsize=20)
-    sub.set_xlim([-90., 0.])
-    sub.set_ylabel('Airmass', fontsize=20)
-    sub.set_ylim([0.9, 2.])
-
-    fig.savefig(fexp.replace('.fits', '.png'), bbox_inches='tight') 
+    '''
     return None 
 
 
@@ -227,4 +195,8 @@ def get_thetaSky(ra, dec, mjd) :
 
 
 if __name__=="__main__": 
-    surveysim_output()
+    #surveysim_output('exposures_surveysim_fork_corr.fits') 
+    surveysim_output('exposures_surveysim_fork_300s.fits')
+    #surveysim_output('exposures_surveysim_fork_200s.fits')
+    surveysim_output('exposures_surveysim_fork_150s.fits')
+    #surveysim_output('exposures_surveysim_fork_100s.fits')

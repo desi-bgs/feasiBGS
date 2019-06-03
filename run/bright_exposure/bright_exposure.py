@@ -85,6 +85,8 @@ def texp_factor(validate=False, silent=True):
         fig = plt.figure(figsize=(15,25))
         sub = fig.add_subplot(611)
         sub.scatter(bgs_exps['MOONALT'], f_exp, c='k', s=1)
+        nomoon = (bgs_exps['MOONALT'] < 0.)
+        sub.scatter(bgs_exps['MOONALT'][nomoon], f_exp[nomoon], c='C0') 
         f_exp_i, bin_edges, _ = sp.stats.binned_statistic(bgs_exps['MOONALT'], f_exp, statistic='median', bins=20)
         sub.scatter(0.5*(bin_edges[:-1] + bin_edges[1:]), f_exp_i, c='C1') 
         sub.set_xlabel('Moon Altitude', fontsize=20)
@@ -94,6 +96,7 @@ def texp_factor(validate=False, silent=True):
 
         sub = fig.add_subplot(612)
         sub.scatter(bgs_exps['MOONFRAC'], f_exp, c='k', s=1)
+        sub.scatter(bgs_exps['MOONFRAC'][nomoon], f_exp[nomoon], c='C0') 
         f_exp_i, bin_edges, _ = sp.stats.binned_statistic(bgs_exps['MOONFRAC'], f_exp, statistic='median', bins=20)
         sub.scatter(0.5*(bin_edges[:-1] + bin_edges[1:]), f_exp_i, c='C1') 
         sub.set_xlabel('Moon Illumination', fontsize=20)
@@ -103,6 +106,7 @@ def texp_factor(validate=False, silent=True):
 
         sub = fig.add_subplot(613)
         sub.scatter(bgs_exps['MOONSEP'], f_exp, c='k', s=1)
+        sub.scatter(bgs_exps['MOONSEP'][nomoon], f_exp[nomoon], c='C0') 
         f_exp_i, bin_edges, _ = sp.stats.binned_statistic(bgs_exps['MOONSEP'], f_exp, statistic='median', bins=20)
         sub.scatter(0.5*(bin_edges[:-1] + bin_edges[1:]), f_exp_i, c='C1') 
         sub.set_xlabel('Moon Separation', fontsize=20)
@@ -112,6 +116,7 @@ def texp_factor(validate=False, silent=True):
         
         sub = fig.add_subplot(614)
         sub.scatter(bgs_exps['SUNALT'], f_exp, c='k', s=1)
+        sub.scatter(bgs_exps['SUNALT'][nomoon], f_exp[nomoon], c='C0') 
         f_exp_i, bin_edges, _ = sp.stats.binned_statistic(bgs_exps['SUNALT'], f_exp, statistic='median', bins=20) 
         sub.scatter(0.5*(bin_edges[:-1] + bin_edges[1:]), f_exp_i, c='C1') 
         sub.set_xlabel('Sun Altitude', fontsize=20)
@@ -121,6 +126,7 @@ def texp_factor(validate=False, silent=True):
         
         sub = fig.add_subplot(615)
         sub.scatter(bgs_exps['SUNSEP'], f_exp, c='k', s=1)
+        sub.scatter(bgs_exps['SUNSEP'][nomoon], f_exp[nomoon], c='C0') 
         f_exp_i, bin_edges, _ = sp.stats.binned_statistic(bgs_exps['SUNSEP'], f_exp, statistic='median', bins=20) 
         sub.scatter(0.5*(bin_edges[:-1] + bin_edges[1:]), f_exp_i, c='C1') 
         sub.set_xlabel('Sun Separation', fontsize=20)
@@ -130,6 +136,7 @@ def texp_factor(validate=False, silent=True):
 
         sub = fig.add_subplot(616)
         sub.scatter(bgs_exps['AIRMASS'], f_exp, c='k', s=1)
+        sub.scatter(bgs_exps['AIRMASS'][nomoon], f_exp[nomoon], c='C0') 
         f_exp_i, bin_edges, _ = sp.stats.binned_statistic(bgs_exps['AIRMASS'], f_exp, statistic='median', bins=20)
         sub.scatter(0.5*(bin_edges[:-1] + bin_edges[1:]), f_exp_i, c='C1') 
         sub.set_xlabel('Airmass', fontsize=20)
