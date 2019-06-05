@@ -33,7 +33,7 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
-def texp_factor(validate=False, silent=True): 
+def texp_factor(validate=False, silent=True, wrange=4500): 
     ''' Calculate the exposure time correction factor using the `surveysim` 
     exposure list from Jeremy: `bgs_survey_exposures.withsun.hdf5', which 
     supplemented the observing conditions with sun observing conditions. 
@@ -52,24 +52,39 @@ def texp_factor(validate=False, silent=True):
     for k in fexps.keys():
         bgs_exps[k] = fexps[k].value
     n_exps = len(bgs_exps['RA']) # number of exposures
-        
+    
     # read in pre-computed old and new sky brightness (this takes a bit) 
     if not silent: print('reading in sky brightness') 
     fnew = ''.join([UT.dat_dir(), 'newKSsky_twi_brightness.bgs_survey_exposures.withsun.p'])
     wave, sky_bright = pickle.load(open(fnew, 'rb'))
-
+    
     # nominal dark sky brightness 
     config = desisim.simexp._specsim_config_for_wave(wave, dwave_out=None, specsim_config_file='desi')
     atm_config = config.atmosphere
     surface_brightness_dict = config.load_table(atm_config.sky, 'surface_brightness', as_dict=True)
     sky_dark= surface_brightness_dict['dark'] 
+    
+    # get the continuums 
+    w_cont, sky_dark_cont = getContinuum(wave, sky_dark.value)
+
+    sky_bright_cont = np.zeros((len(sky_bright), len(w_cont)))
+    for isky in range(len(sky_bright)):  
+        _, sky_bright_cont_i = getContinuum(wave, sky_bright[isky])
+        sky_bright_cont[isky,:] = sky_bright_cont_i
 
     # calculate (new sky brightness)/(nominal dark sky brightness), which is the correction
     # factor for the exposure time. 
-    wlim = ((wave > 4000.) & (wave < 5000.)) # ratio over 4000 - 5000 A  
-    f_exp = np.zeros(n_exps)
-    for i_exp in range(n_exps): 
-        f_exp[i_exp] = np.median((sky_bright[i_exp] / sky_dark.value)[wlim])
+    if wrange == 4500: 
+        wlim = ((wave > 4000.) & (wave < 5000.)) # ratio over 4000 - 5000 A  
+        f_exp = np.zeros(n_exps)
+        for i_exp in range(n_exps): 
+            f_exp[i_exp] = np.median((sky_bright[i_exp] / sky_dark.value)[wlim])
+    elif wrange == 7000: 
+        wlim = ((w_cont > 6500.) & (w_cont < 7500.)) # ratio over 4000 - 5000 A  
+        assert np.sum(wlim) == 1
+        f_exp = np.zeros(n_exps)
+        for i_exp in range(n_exps): 
+            f_exp[i_exp] = (sky_bright_cont[i_exp] / sky_dark_cont)[wlim][0]
     print(np.median(f_exp)) 
 
     # write exposure subsets out to file 
@@ -137,7 +152,7 @@ def texp_factor(validate=False, silent=True):
         sub.set_xlim([1., 2.])
         sub.set_ylim([0.5, 15.])
         fig.subplots_adjust(hspace=0.4)
-        fig.savefig(ff.replace('.hdf5', '.png'), bbox_inches='tight')
+        fig.savefig(ff.replace('.hdf5', '%iA.png' % wrange), bbox_inches='tight')
 
         # plot some of the sky brightnesses
         fig = plt.figure(figsize=(15,20))
@@ -145,7 +160,9 @@ def texp_factor(validate=False, silent=True):
         for ii, isky in enumerate(np.random.choice(range(n_exps), 4, replace=False)):
             sub = fig.add_subplot(4,1,ii+1)
             sub.plot(wave, sky_bright[isky,:], c='C1', label='bright sky')
+            sub.plot(w_cont, sky_bright_cont[isky,:], c='k', ls='--')
             sub.plot(wave, sky_dark, c='k', label='nomnial dark sky')
+            sub.plot(w_cont, sky_dark_cont, c='C0')
             sub.set_xlim([3500., 9500.]) 
             sub.set_ylim([0., 20]) 
             if ii == 0: sub.legend(loc='upper left', fontsize=20) 
@@ -290,6 +307,18 @@ def test_texp_factor_GP():
         print(thetas_test[0,:])
         print(gp.predict(np.atleast_2d(thetas_test[0,:])))
     return None
+
+
+def getContinuum(ww, sb): 
+    ''' smooth out the sufrace brightness somehow...
+    '''
+    wavebin = np.linspace(3.6e3, 1e4, 10)
+    sb_med = np.zeros(len(wavebin)-1)
+    for i in range(len(wavebin)-1): 
+        inwbin = ((wavebin[i] < ww) & (ww < wavebin[i+1]) & np.isfinite(sb))
+        if np.sum(inwbin) > 0.: 
+            sb_med[i] = np.median(sb[inwbin])
+    return 0.5*(wavebin[1:]+wavebin[:-1]), sb_med
 
 
 if __name__=="__main__": 
