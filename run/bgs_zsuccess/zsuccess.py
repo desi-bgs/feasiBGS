@@ -132,7 +132,6 @@ def zsuccess_iexps_fibermag(nexp, method='spacefill', nsub=3000, spec_flag='', m
             'bgs_zsuccess/', 'g15.simSpectra.', str(nsub), spec_flag, '.v2.hdf5']), 'r') 
         ztrue = fspec['gama-spec']['z'].value 
         r_mag_legacy = fspec['r_mag_apflux'].value #UT.flux2mag(fspec['legacy-photo']['flux_r'].value)
-        print r_mag_legacy.max() 
 
         # read in sampled exposures
         fexps = h5py.File(''.join([UT.dat_dir(), 'bgs_zsuccess/', 
@@ -403,8 +402,8 @@ def zsuccess(zrr, ztrue, zwarn, deltachi2=None, min_deltachi2=9.):
 if __name__=="__main__": 
     #zsuccess_iexps(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=9.)
     #zsuccess_iexps(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=25.)
-    #zsuccess_iexps(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=40.) # 40 is boss limit 
-    #zsuccess_iexps_fibermag(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=40.)
+    zsuccess_iexps(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=40.) # 40 is boss limit 
+    zsuccess_iexps_fibermag(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=40.)
     zsuccess_iexps_gamapetro(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=40.)
 
     #for i in range(1, 15): 

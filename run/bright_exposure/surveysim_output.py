@@ -3,11 +3,14 @@
 scripts to check outputs from hacked surveysim  
 '''
 import os 
+import h5py 
 import numpy as np 
+import scipy as sp 
 import desisurvey.etc as detc
 # --- astropy --- 
 import astropy.units as u
 from astropy.io import fits
+from astropy.table import Table as aTable
 # -- feasibgs -- 
 from feasibgs import util as UT
 # -- plotting -- 
@@ -147,7 +150,141 @@ def surveysim_output(expfile):
     return None 
 
 
-def get_thetaSky(ra, dec, mjd) : 
+def surveysim_convexhull(expfile): 
+    ''' read in surveysim output and examine the observing parameters and compare
+    it to the convex hull of the GP training set. 
+    '''
+    fmaster = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_master.fits')
+    exps_master = extractBGS(fmaster) 
+    # read in exposures output from surveysim 
+    print('--- %s ---' % expfile) 
+    fexp = os.path.join(UT.dat_dir(), 'bright_exposure', expfile)
+    # get BGS exposures only 
+    exps = extractBGS(fexp) 
+    
+    nexp    = exps['nexp']
+    ra      = exps['ra']
+    dec     = exps['dec']
+    mjds    = exps['mjd'] 
+    texptot = exps['texptot']  
+    texps   = exps['texps']  
+    snr2max = exps['snr2max'] 
+    snr2arr = exps['snr2arr']
+    airmass = exps['airmass'] 
+    seeing  = exps['seeing']
+
+    moon_ill, moon_alt, moon_sep, sun_alt, sun_sep, airmasses = [], [], [], [], [], [] 
+    for  _ra, _dec, _texps, _mjds, _airmass in zip(ra, dec, texps, mjds, airmass): 
+        hasexp = (_texps > 0.)
+        _moon_ill, _moon_alt, _moon_sep, _sun_alt, _sun_sep = get_thetaSky(np.repeat(_ra, np.sum(hasexp)), np.repeat(_dec, np.sum(hasexp)), _mjds[hasexp])
+        moon_ill.append(_moon_ill) 
+        moon_alt.append(_moon_alt) 
+        moon_sep.append(_moon_sep) 
+        sun_alt.append(_sun_alt) 
+        sun_sep.append(_sun_sep) 
+        #airmasses.append(_airmass[hasexp]) 
+
+    moon_ill    = np.concatenate(moon_ill)
+    moon_alt    = np.concatenate(moon_alt)
+    moon_sep    = np.concatenate(moon_sep)
+    sun_alt     = np.concatenate(sun_alt)
+    sun_sep     = np.concatenate(sun_sep)
+    #airmasses  = np.concatenate(airmasses)
+    thetas = np.zeros((len(moon_ill), 5))
+    thetas[:,0] = moon_ill
+    thetas[:,1] = moon_alt
+    thetas[:,2] = moon_sep
+    thetas[:,3] = sun_alt
+    thetas[:,4] = sun_sep
+
+    # read BGS exposures used to train the GP 
+    _fexps = h5py.File(''.join([UT.dat_dir(), 'bgs_survey_exposures.withsun.hdf5']), 'r')
+    theta_train = np.zeros((len(_fexps['MOONALT'][...]), 5))
+    theta_train[:,0] = _fexps['MOONFRAC'][...]
+    theta_train[:,1] = _fexps['MOONALT'][...]
+    theta_train[:,2] = _fexps['MOONSEP'][...]
+    theta_train[:,3] = _fexps['SUNALT'][...]
+    theta_train[:,4] = _fexps['SUNSEP'][...]
+
+    theta_hull = sp.spatial.Delaunay(theta_train)
+    inhull = (theta_hull.find_simplex(thetas) >= 0) 
+
+    fboss = os.path.join(UT.dat_dir(), 'sky', 'Bright_BOSS_Sky_blue.fits')
+    boss = aTable.read(fboss)
+    theta_boss = np.zeros((len(boss['MOON_ALT']), 5))
+    theta_boss[:,0] = boss['MOON_ILL']
+    theta_boss[:,1] = boss['MOON_ALT']
+    theta_boss[:,2] = boss['MOON_SEP']
+    theta_boss[:,3] = boss['SUN_ALT']
+    theta_boss[:,4] = boss['SUN_SEP']
+    
+    theta_hull_boss = sp.spatial.Delaunay(theta_boss)
+    inbosshull = (theta_hull_boss.find_simplex(thetas) >= 0) 
+
+    fig = plt.figure(figsize=(15,5))
+    sub = fig.add_subplot(131)
+    sub.scatter(moon_alt, moon_ill, c='k', s=1, label='SurveySim exp.')
+    sub.scatter(moon_alt[inhull], moon_ill[inhull], c='C1', s=1, label='w/in training')
+    sub.scatter(moon_alt[inbosshull], moon_ill[inbosshull], c='C0', s=2, label='w/in BOSS skies')
+    sub.set_xlabel('Moon Altitude', fontsize=20)
+    sub.set_xlim([-90., 90.])
+    sub.set_ylabel('Moon Illumination', fontsize=20)
+    sub.set_ylim([0.0, 1.])
+    sub.legend(loc='upper left', handletextpad=0, markerscale=10, frameon=True, fontsize=12) 
+
+    sub = fig.add_subplot(132)
+    sub.scatter(moon_sep, moon_ill, c='k', s=1)
+    sub.scatter(moon_sep[inhull], moon_ill[inhull], c='C1', s=1)
+    sub.scatter(moon_sep[inbosshull], moon_ill[inbosshull], c='C0', s=2)
+    sub.set_xlabel('Moon Separation', fontsize=20)
+    sub.set_xlim([0., 180.])
+    sub.set_ylabel('Moon Illumination', fontsize=20)
+    sub.set_ylim([0., 1.])
+
+    sub = fig.add_subplot(133)
+    sub.scatter(sun_alt, sun_sep, c='k', s=1)
+    sub.scatter(sun_alt[inhull], sun_sep[inhull], c='C1', s=1)
+    sub.scatter(sun_alt[inbosshull], sun_sep[inbosshull], c='C0', s=2)
+    sub.set_xlabel('Sun Altitude', fontsize=20)
+    sub.set_xlim([-90., 0.])
+    sub.set_ylabel('Sun Separation', fontsize=20)
+    sub.set_ylim([40., 180.])
+    fig.subplots_adjust(wspace=0.3)
+    fig.savefig(os.path.join(UT.dat_dir(), 'bright_exposure', 'params.%s.png' % expfile.replace('.fits', '')), bbox_inches='tight')
+
+    fig = plt.figure(figsize=(15,5))
+    sub = fig.add_subplot(131)
+    sub.scatter(moon_alt, moon_ill, c='k', s=1, zorder=1)
+    sub.scatter(theta_train[:,1], theta_train[:,0], c='C1', s=1, zorder=5)
+    sub.scatter(theta_boss[:,1], theta_boss[:,0], c='C0', s=2, zorder=10)
+    sub.set_xlabel('Moon Altitude', fontsize=20)
+    sub.set_xlim([-90., 90.])
+    sub.set_ylabel('Moon Illumination', fontsize=20)
+    sub.set_ylim([0.0, 1.])
+
+    sub = fig.add_subplot(132)
+    sub.scatter(moon_sep, moon_ill, c='k', s=1, zorder=1)
+    sub.scatter(theta_train[:,2], theta_train[:,0], c='C1', s=1, zorder=5)
+    sub.scatter(theta_boss[:,2], theta_boss[:,0], c='C0', s=2, zorder=10)
+    sub.set_xlabel('Moon Separation', fontsize=20)
+    sub.set_xlim([0., 180.])
+    sub.set_ylabel('Moon Illumination', fontsize=20)
+    sub.set_ylim([0., 1.])
+
+    sub = fig.add_subplot(133)
+    sub.scatter(sun_alt, sun_sep, c='k', s=1, zorder=1)
+    sub.scatter(theta_train[:,3], theta_train[:,4], c='C1', s=1, zorder=5)
+    sub.scatter(theta_boss[:,3], theta_boss[:,4], c='C0', s=2, zorder=10)
+    sub.set_xlabel('Sun Altitude', fontsize=20)
+    sub.set_xlim([-90., 0.])
+    sub.set_ylabel('Sun Separation', fontsize=20)
+    sub.set_ylim([40., 180.])
+    fig.subplots_adjust(wspace=0.3)
+    fig.savefig(os.path.join(UT.dat_dir(), 'bright_exposure', 'params_overlap.%s.png' % expfile.replace('.fits', '')), bbox_inches='tight')
+    return None 
+
+
+def get_thetaSky(ra, dec, mjd): 
     ''' given RA, Dec, and mjd time return sky parameters at kitt peak 
     '''
     import ephem 
@@ -198,5 +335,6 @@ if __name__=="__main__":
     #surveysim_output('exposures_surveysim_fork_corr.fits') 
     #surveysim_output('exposures_surveysim_fork_300s.fits')
     #surveysim_output('exposures_surveysim_fork_200s.fits')
-    surveysim_output('exposures_surveysim_fork_150s.fits')
+    #surveysim_output('exposures_surveysim_fork_150s.fits')
     #surveysim_output('exposures_surveysim_fork_100s.fits')
+    surveysim_convexhull('exposures_surveysim_fork_150s.fits')

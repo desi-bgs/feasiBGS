@@ -7,6 +7,7 @@ import numpy as np
 import scipy as sp 
 # -- astropy -- 
 from astropy import units as u
+from astropy.table import Table as aTable
 # --- sklearn ---
 from sklearn.gaussian_process import GaussianProcessRegressor as GPR 
 from sklearn.gaussian_process.kernels import RBF, ConstantKernel
