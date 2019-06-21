@@ -177,19 +177,27 @@ def surveysim_convexhull(expfile):
     for  _ra, _dec, _texps, _mjds, _airmass in zip(ra, dec, texps, mjds, airmass): 
         hasexp = (_texps > 0.)
         _moon_ill, _moon_alt, _moon_sep, _sun_alt, _sun_sep = get_thetaSky(np.repeat(_ra, np.sum(hasexp)), np.repeat(_dec, np.sum(hasexp)), _mjds[hasexp])
+        airmasses.append(_airmass[hasexp]) 
         moon_ill.append(_moon_ill) 
         moon_alt.append(_moon_alt) 
         moon_sep.append(_moon_sep) 
         sun_alt.append(_sun_alt) 
         sun_sep.append(_sun_sep) 
-        #airmasses.append(_airmass[hasexp]) 
 
+    airmasses  = np.concatenate(airmasses)
     moon_ill    = np.concatenate(moon_ill)
     moon_alt    = np.concatenate(moon_alt)
     moon_sep    = np.concatenate(moon_sep)
     sun_alt     = np.concatenate(sun_alt)
     sun_sep     = np.concatenate(sun_sep)
-    #airmasses  = np.concatenate(airmasses)
+
+    print('%f < airmass < %f' % (airmasses.min(), airmasses.max())) 
+    print('%f < moonill < %f' % (moon_ill.min(), moon_ill.max())) 
+    print('%f < moonalt < %f' % (moon_alt.min(), moon_alt.max())) 
+    print('%f < moonsep < %f' % (moon_sep.min(), moon_sep.max())) 
+    print('%f < sun_alt < %f' % (sun_alt.min(), sun_alt.max())) 
+    print('%f < sun_sep < %f' % (sun_sep.min(), sun_sep.max())) 
+
     thetas = np.zeros((len(moon_ill), 5))
     thetas[:,0] = moon_ill
     thetas[:,1] = moon_alt
@@ -284,6 +292,95 @@ def surveysim_convexhull(expfile):
     return None 
 
 
+def surveysim_convexhull_exposure_samples(expfile): 
+    ''' read in surveysim output and examine the observing parameters and construct
+    a sample of exposures that includes the convexhull and a random set of exposures. 
+    '''
+    from scipy.spatial import ConvexHull
+    fmaster = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_master.fits')
+    exps_master = extractBGS(fmaster) 
+    # read in exposures output from surveysim 
+    print('--- %s ---' % expfile) 
+    fexp = os.path.join(UT.dat_dir(), 'bright_exposure', expfile)
+    # get BGS exposures only 
+    exps = extractBGS(fexp) 
+    
+    nexp    = exps['nexp']
+    ra      = exps['ra']
+    dec     = exps['dec']
+    mjds    = exps['mjd'] 
+    texptot = exps['texptot']  
+    texps   = exps['texps']  
+    snr2max = exps['snr2max'] 
+    snr2arr = exps['snr2arr']
+    airmass = exps['airmass'] 
+    seeing  = exps['seeing']
+    
+    # first lets compile the sky parameters of all exposures 
+    moon_ill, moon_alt, moon_sep, sun_alt, sun_sep, airmasses = [], [], [], [], [], [] 
+    for  _ra, _dec, _texps, _mjds, _airmass in zip(ra, dec, texps, mjds, airmass): 
+        hasexp = (_texps > 0.)
+        _moon_ill, _moon_alt, _moon_sep, _sun_alt, _sun_sep = get_thetaSky(np.repeat(_ra, np.sum(hasexp)), np.repeat(_dec, np.sum(hasexp)), _mjds[hasexp])
+        airmasses.append(_airmass[hasexp]) 
+        moon_ill.append(_moon_ill) 
+        moon_alt.append(_moon_alt) 
+        moon_sep.append(_moon_sep) 
+        sun_alt.append(_sun_alt) 
+        sun_sep.append(_sun_sep) 
+
+    airmasses   = np.concatenate(airmasses)
+    moon_ill    = np.concatenate(moon_ill)
+    moon_alt    = np.concatenate(moon_alt)
+    moon_sep    = np.concatenate(moon_sep)
+    sun_alt     = np.concatenate(sun_alt)
+    sun_sep     = np.concatenate(sun_sep)
+
+    params = np.zeros((len(airmasses), 6))
+    params[:,0] = airmasses  
+    params[:,1] = moon_ill  
+    params[:,2] = moon_alt 
+    params[:,3] = moon_sep 
+    params[:,4] = sun_alt
+    params[:,5] = sun_sep 
+    hull = ConvexHull(params)
+    samples = np.zeros(params.shape[0]).astype(bool) # veritices of the hull 
+    samples[hull.vertices] = True
+    samples[np.random.choice(np.arange(params.shape[0])[~samples], size=5000-np.sum(samples), replace=False)] = True
+    fsamp = os.path.join(UT.dat_dir(), 'bright_exposure', 
+            'params.exp_samples.%s.npy' % expfile.replace('.fits', ''))
+    np.save(fsamp, params[samples,:]) 
+
+    fig = plt.figure(figsize=(15,5))
+    sub = fig.add_subplot(131)
+    sub.scatter(moon_alt, moon_ill, c='k', s=1, label='SurveySim exp.')
+    sub.scatter(moon_alt[samples], moon_ill[samples], c='C1', s=0.5, label='samples')
+    sub.set_xlabel('Moon Altitude', fontsize=20)
+    sub.set_xlim([-90., 90.])
+    sub.set_ylabel('Moon Illumination', fontsize=20)
+    sub.set_ylim([0.0, 1.])
+    sub.legend(loc='upper left', handletextpad=0, markerscale=10, frameon=True, fontsize=12) 
+
+    sub = fig.add_subplot(132)
+    sub.scatter(moon_sep, moon_ill, c='k', s=1)
+    sub.scatter(moon_sep[samples], moon_ill[samples], c='C1', s=0.5)
+    sub.set_xlabel('Moon Separation', fontsize=20)
+    sub.set_xlim([0., 180.])
+    sub.set_ylabel('Moon Illumination', fontsize=20)
+    sub.set_ylim([0., 1.])
+
+    sub = fig.add_subplot(133)
+    sub.scatter(sun_alt, sun_sep, c='k', s=1)
+    sub.scatter(sun_alt[samples], sun_sep[samples], c='C1', s=0.5)
+    sub.set_xlabel('Sun Altitude', fontsize=20)
+    sub.set_xlim([-90., 0.])
+    sub.set_ylabel('Sun Separation', fontsize=20)
+    sub.set_ylim([40., 180.])
+    fig.subplots_adjust(wspace=0.3)
+    fig.savefig(os.path.join(UT.dat_dir(), 'bright_exposure', 
+        'params.exp_samples.%s.png' % expfile.replace('.fits', '')), bbox_inches='tight')
+    return None 
+
+
 def get_thetaSky(ra, dec, mjd): 
     ''' given RA, Dec, and mjd time return sky parameters at kitt peak 
     '''
@@ -335,6 +432,7 @@ if __name__=="__main__":
     #surveysim_output('exposures_surveysim_fork_corr.fits') 
     #surveysim_output('exposures_surveysim_fork_300s.fits')
     #surveysim_output('exposures_surveysim_fork_200s.fits')
-    #surveysim_output('exposures_surveysim_fork_150s.fits')
     #surveysim_output('exposures_surveysim_fork_100s.fits')
-    surveysim_convexhull('exposures_surveysim_fork_150s.fits')
+    #surveysim_output('exposures_surveysim_fork_150s.fits')
+    #surveysim_convexhull('exposures_surveysim_fork_150s.fits')
+    surveysim_convexhull_exposure_samples('exposures_surveysim_fork_150s.fits') 
