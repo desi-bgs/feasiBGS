@@ -429,10 +429,11 @@ def get_thetaSky(ra, dec, mjd):
 
 
 if __name__=="__main__": 
+    #surveysim_convexhull('exposures_surveysim_fork_150s.fits')
+    #surveysim_convexhull_exposure_samples('exposures_surveysim_fork_150s.fits') 
     #surveysim_output('exposures_surveysim_fork_corr.fits') 
     #surveysim_output('exposures_surveysim_fork_300s.fits')
     #surveysim_output('exposures_surveysim_fork_200s.fits')
     #surveysim_output('exposures_surveysim_fork_100s.fits')
     #surveysim_output('exposures_surveysim_fork_150s.fits')
-    #surveysim_convexhull('exposures_surveysim_fork_150s.fits')
-    surveysim_convexhull_exposure_samples('exposures_surveysim_fork_150s.fits') 
+    surveysim_output('exposures_surveysim_fork_150sv0p1.fits') 
