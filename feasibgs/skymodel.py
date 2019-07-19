@@ -1,5 +1,6 @@
 '''
 '''
+import os 
 import pickle
 import numpy as np 
 import pandas as pd 
@@ -464,6 +465,70 @@ class specsimMoon(Moon):
     def KS_CM1(self, ks_cm1):
         self._KS_CM1 = ks_cm1 
         self._update_required = True
+
+
+def _Isky(airmass, moonill, moonalt, moonsep): 
+    ''' sky surface brightness. stream-lined verison of specsim.atmosphere.Atmosphere surface brightness
+    calculation. 
+    '''
+    # translate moon parameter inputs 
+    moon_phase = np.arccos(2.*moonill - 1)/np.pi
+    moon_zenith = (90. - moonalt) * u.deg
+    separation_angle = moonsep * u.deg
+
+    # load supporting data  
+    skydata = pickle.load(open(os.path.join(UT.dat_dir(), 'data4skymodel.p'), 'rb')) 
+    wavelength              = skydata['wavelength'] 
+    Idark                   = skydata['darksky_surface_brightness'] # nominal dark sky surface brightness
+    extinction_coefficient  = skydata['extinction_coefficient']         
+    seeing                  = skydata['seeing'] 
+    moon_spectrum           = skydata['moon_spectrum'] 
+
+    extinction = 10 ** (-extinction_coefficient * airmass / 2.5)
+
+    _Imoon = Imoon(wavelength, moon_spectrum, extinction_coefficient,
+            airmass, moon_zenith, separation_angle, moon_phase)
+
+    sky = extinction * Idark + _Imoon
+    return wavelength.value, sky
+
+
+def Imoon(wavelength, moon_spectrum, extinction_coefficient, airmass, moon_zenith, separation_angle, moon_phase): 
+    ''' moon surface brightness. stream-lined verison of specsim.atmosphere.Atmosphere surface brightness
+    calculation. 
+    '''
+    KS_CR = 458173.535128
+    KS_CM0 = 5.540103
+    KS_CM1 = 178.141045
+
+    obs_zenith = np.arcsin(np.sqrt((1 - airmass ** -2) / 0.96)) * u.rad
+
+    _vband = speclite.filters.load_filter('bessell-V')
+    V = _vband.get_ab_magnitude(moon_spectrum, wavelength)
+
+    extinction = 10 ** (-extinction_coefficient / 2.5)
+
+    Vstar = _vband.get_ab_magnitude(moon_spectrum * extinction, wavelength)
+    vband_extinction = Vstar - V
+
+    # Calculate the V-band surface brightness of scattered moonlight.
+    scattered_V = krisciunas_schaefer_free(
+        obs_zenith, moon_zenith, separation_angle,
+        moon_phase, vband_extinction, KS_CR, KS_CM0, KS_CM1)
+
+    # Calculate the wavelength-dependent extinction of moonlight
+    # scattered once into the observed field of view.
+    scattering_airmass = (1 - 0.96 * np.sin(moon_zenith) ** 2) ** (-0.5)
+    extinction = (
+        10 ** (-extinction_coefficient * scattering_airmass / 2.5) *
+        (1 - 10 ** (-extinction_coefficient * airmass / 2.5)))
+    surface_brightness = moon_spectrum * extinction
+
+    # Renormalized the extincted spectrum to the correct V-band magnitude.
+    raw_V = _vband.get_ab_magnitude(surface_brightness, wavelength) * u.mag
+    area = 1 * u.arcsec ** 2
+    surface_brightness *= 10 ** ( -(scattered_V * area - raw_V) / (2.5 * u.mag)) / area
+    return surface_brightness
 
 
 def krisciunas_schaefer_free(obs_zenith, moon_zenith, separation_angle, moon_phase,
