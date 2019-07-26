@@ -21,6 +21,11 @@ wave    = config.wavelength # wavelength
 Idark   = surface_brightness_dict['dark'].copy()  
 
 extinction_coefficient = config.load_table(atm_config.extinction, 'extinction_coefficient')
+
+extinction_array = 10**(-extinction_coefficient * np.linspace(1., 5., 101)[:,None] / 2.5)
+print(extinction_array.shape)
+print(extinction_array[0]) 
+print(extinction_array[-1]) 
     
 psf_config = getattr(atm_config, 'seeing', None)
 seeing = dict(
@@ -60,6 +65,7 @@ data = {
         'wavelength': wave, 
         'darksky_surface_brightness': Idark, 
         'extinction_coefficient': extinction_coefficient, 
+        'extinction_array': extinction_array, 
         'seeing': seeing, 
         'moon_spectrum': moon_spectrum, 
         'darksky_4500a': Idark4500,
