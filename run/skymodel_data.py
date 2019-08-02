@@ -13,19 +13,22 @@ from feasibgs import util as UT
 
 config = specsim.config.load_config('desi')
 atm_config = config.atmosphere
-    
+
 surface_brightness_dict = config.load_table(
     atm_config.sky, 'surface_brightness', as_dict=True)
-# dark sky surface brightness 
+
 wave    = config.wavelength # wavelength 
+# surface brightness of nominal dark sky 
 Idark   = surface_brightness_dict['dark'].copy()  
+
+# we're only interested in the wavelength range
+wlim = (wave.value > 4000.) & (wave.value <= 7000.) 
+
+Idark4500 = np.median(Idark.value[(wave.value > 4000.) & (wave.value <= 5000.)])
 
 extinction_coefficient = config.load_table(atm_config.extinction, 'extinction_coefficient')
 
 extinction_array = 10**(-extinction_coefficient * np.linspace(1., 5., 101)[:,None] / 2.5)
-print(extinction_array.shape)
-print(extinction_array[0]) 
-print(extinction_array[-1]) 
     
 psf_config = getattr(atm_config, 'seeing', None)
 seeing = dict(
@@ -35,9 +38,6 @@ seeing = dict(
     
 moon_config = getattr(atm_config, 'moon', None)
 moon_spectrum = config.load_table(moon_config, 'flux')
-
-wlim = (wave.value > 4000.) & (wave.value < 5000.) 
-Idark4500 = np.median(Idark.value[wlim])
 
 # lets also save twilgith data 
 import pandas as pd
@@ -62,13 +62,10 @@ for k in ['t0', 't1', 't2', 't3', 't4', 'c0']:
     twi[k] = np.array(twi_coeffs[k])[wave_sort]
 
 data = {
-        'wavelength': wave, 
-        'darksky_surface_brightness': Idark, 
-        'extinction_coefficient': extinction_coefficient, 
-        'extinction_array': extinction_array, 
-        'seeing': seeing, 
-        'moon_spectrum': moon_spectrum, 
-        'darksky_4500a': Idark4500,
+        'wavelength': wave[wlim], 
+        'darksky_surface_brightness': Idark[wlim], 
+        'extinction_array': extinction_array[:,wlim], 
+        'moon_spectrum': moon_spectrum[wlim], 
         'wavelength_twi': twi['wave'],  
         't0': twi['t0'],  
         't1': twi['t1'],  
