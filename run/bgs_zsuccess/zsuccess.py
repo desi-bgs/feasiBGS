@@ -11,6 +11,9 @@ import numpy as np
 # -- astropy -- 
 from astropy.io import fits
 from astropy import units as u
+# -- desisurvey --
+import specsim.config 
+from desisurvey import etc as ETC
 # -- feasibgs -- 
 from feasibgs import util as UT
 # -- plotting -- 
@@ -44,7 +47,7 @@ def zsuccess_surveysim_exp(nexp, method='spacefill', nsub=3000, expfile=None, mi
         string specifying different spectra runs 
     '''
     # read in noiseless spectra (for true redshift and r-band magnitude) 
-    fspec = h5py.File(os.path.join(UT.dat_dir(), 'bgs_zsuccess', 'g15.simSpectra.%i.v2.hdf5' % nsub), 'r') 
+    fspec = h5py.File(os.path.join(UT.dat_dir(), 'bgs_zsuccess', 'GALeg.g15.sourceSpec.%i.hdf5' % nsub), 'r') 
     ztrue = fspec['gama-spec']['z'].value 
     r_mag_legacy = UT.flux2mag(fspec['legacy-photo']['flux_r'].value)
 
@@ -52,9 +55,21 @@ def zsuccess_surveysim_exp(nexp, method='spacefill', nsub=3000, expfile=None, mi
     file_exps = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 
             '%s.subset.%i%s.hdf5' % (os.path.splitext(os.path.basename(expfile))[0], nexp, method))
     fexps = h5py.File(file_exps, 'r')
-
+    
+    # read in nominal dark sky 
+    config = specsim.config.load_config('desi')
+    atm_config = config.atmosphere
+    surface_brightness_dict = config.load_table(
+        atm_config.sky, 'surface_brightness', as_dict=True)
+    _wave    = config.wavelength # wavelength 
+    _Idark   = surface_brightness_dict['dark'].copy().value
+    
+    nrow, ncol = 3, int(np.ceil(float(nexp)/3.))
     fig = plt.figure(figsize=(18,9))#6*ncol, 6*nrow))
     for iexp in range(nexp): 
+        print('--- exposure %i ---' % iexp) 
+        print('%s' % ', '.join(['%s = %.2f' % (k, fexps[k][iexp]) for k in ['texp', 'airmass', 'moon_alt', 'moon_ill', 'moon_sep', 'sun_alt', 'sun_sep']]))
+            
         # read in redrock outputs
         f_bgs = os.path.join(UT.dat_dir(), 'bgs_zsuccess',
                 'GALeg.g15.sourceSpec.%s.%i.rr.fits' % (os.path.splitext(os.path.basename(file_exps))[0], iexp))
@@ -70,7 +85,7 @@ def zsuccess_surveysim_exp(nexp, method='spacefill', nsub=3000, expfile=None, mi
         sub.plot([15., 22.], [1., 1.], c='k', ls='--', lw=2)
 
         wmean, rate, err_rate = zsuccess_rate(r_mag_legacy, zsuccess_exp, range=[15,22], nbins=28, bin_min=10) 
-        sub.errorbar(wmean, rate, err_rate, fmt='.k', elinewidth=2, markersize=10)
+        sub.errorbar(wmean, rate, err_rate, fmt='.C0', elinewidth=2, markersize=10)
 
         sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
         sub.set_xlim([16., 21.]) 
@@ -82,8 +97,26 @@ def zsuccess_surveysim_exp(nexp, method='spacefill', nsub=3000, expfile=None, mi
             sub.set_yticklabels([]) 
         if (iexp // ncol) != nrow-1: 
             sub.set_xticklabels([]) 
-        sub.text(0.05, 0.05, ('%i.' % iexp), ha='left', va='bottom', transform=sub.transAxes, fontsize=20)
-        
+        sub.text(0.05, 0.05, ('%i.' % (iexp+1)), ha='left', va='bottom', transform=sub.transAxes, fontsize=20)
+        sub.text(0.95, 0.4, r'$t_{\rm exp} = %.f$' % (fexps['texp'][iexp]), 
+                ha='right', va='bottom', transform=sub.transAxes, fontsize=10) 
+        sub.text(0.95, 0.275, r'airmass = %.2f' % (fexps['airmass'][iexp]), 
+                ha='right', va='bottom', transform=sub.transAxes, fontsize=10) 
+        sub.text(0.95, 0.15, r'moon ill=%.2f, alt=%.f, sep=%.f' % 
+                (fexps['moon_ill'][iexp], fexps['moon_alt'][iexp], fexps['moon_sep'][iexp]), 
+                ha='right', va='bottom', transform=sub.transAxes, fontsize=10) 
+        sub.text(0.95, 0.025, r'sun alt=%.f, sep=%.f' % 
+                (fexps['sun_alt'][iexp], fexps['sun_sep'][iexp]), 
+                ha='right', va='bottom', transform=sub.transAxes, fontsize=10) 
+        wlim = (fexps['wave'][...] > 4000.) & (fexps['wave'][...] < 5000.) 
+        print('sky at 4500A = %.2f' % np.median(fexps['sky'][iexp][wlim]))
+        wlim = (fexps['wave'][...] > 6800.) & (fexps['wave'][...] < 7200.) 
+        _wlim = (_wave.value > 6800.) & (_wave.value < 7200.) 
+        print('sky at 7000A = %.2f' % (np.median(fexps['sky'][iexp][wlim])/np.median(_Idark[_wlim])))
+        fbright = ETC.bright_exposure_factor(fexps['moon_ill'][iexp], fexps['moon_alt'][iexp], np.array(fexps['moon_sep'][iexp]),
+                fexps['sun_alt'][iexp], np.array(fexps['sun_sep'][iexp]), np.array(fexps['airmass'][iexp]))
+        print(fexps['texp'][iexp], 150.*fbright)
+
     bkgd = fig.add_subplot(111, frameon=False)
     bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
     bkgd.set_xlabel(r'Legacy DR7 $r$ magnitude', labelpad=10, fontsize=30)

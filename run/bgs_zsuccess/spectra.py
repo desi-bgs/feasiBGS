@@ -27,6 +27,86 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
+def gleg_bgsSpec(nspec, iexp, nsub, expfile=None, method='spacefill', silent=True, validate=False): 
+    ''' Given noiseless spectra, simulate DESI BGS noise based on observing
+    conditions provided by iexp of nexp sampled observing conditions 
+
+    :param nsub: 
+        number of no noise spectra 
+
+    :param iexp: 
+        index of nexp observing conditions sampled using `method`
+
+    :param nexp: (default: 15) 
+        number of observing conditions sampled from `surveysim` 
+
+    :param method: (default: 'spacefill') 
+        method used for sampling `nexp` observing conditions 
+
+    :param spec_flag: (default: '') 
+        string that specifies what type of spectra options are
+        '',  '.lowHalpha', '.noEmline'
+
+    :param silent: (default: True)
+
+    :param validate: (default: False) 
+        if True generate some plots 
+    '''
+    # read in no noise spectra
+    _fspec = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 'GALeg.g15.sourceSpec.%i.hdf5' % nspec)
+    fspec = h5py.File(_fspec, 'r') 
+    wave = fspec['wave'].value 
+    flux = fspec['flux'].value 
+
+    # read in sampled exposures
+    expfile_subset = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 
+        '%s.subset.%i%s.hdf5' % (os.path.splitext(os.path.basename(expfile))[0], nsub, method))
+    fexps = h5py.File(expfile_subset, 'r')
+    texp    = fexps['texp'].value
+    airmass = fexps['airmass'].value 
+    wave_sky= fexps['wave'].value
+    u_sb    = 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
+    sky     = fexps['sky'].value
+    if not silent: print('t_exp=%f, airmass=%f' % (texp[iexp], airmass[iexp]))
+
+    # simulate the exposures 
+    fdesi = FM.fakeDESIspec()
+    if not silent: print('simulate exposures with sky model') 
+    f_bgs = os.path.join(UT.dat_dir(), 'bgs_zsuccess',
+            'GALeg.g15.sourceSpec.%s.%i.fits' % (os.path.splitext(os.path.basename(expfile_subset))[0], iexp))
+    bgs = fdesi.simExposure(wave, flux, 
+            exptime=texp[iexp], 
+            airmass=airmass[iexp],
+            skycondition={'name': 'input', 'sky': np.clip(sky[iexp,:], 0, None) * u_sb, 'wave': wave_sky}, 
+            filename=f_bgs)
+    if validate: 
+        fig = plt.figure(figsize=(10,20))
+        sub = fig.add_subplot(411) 
+        sub.plot(wave_sky, sky[iexp], c='C1') 
+        sub.text(0.05, 0.95, 
+                'texp=%.0f, airmass=%.2f\nmoon ill=%.2f, alt=%.0f, sep=%.0f\nsun alt=%.0f, sep=%.f' % 
+                (texp[iexp], airmass[iexp], fexps['moon_ill'][iexp], fexps['moon_alt'][iexp], 
+                    fexps['moon_sep'][iexp], fexps['sun_alt'][iexp], fexps['sun_sep'][iexp]), 
+                ha='left', va='top', transform=sub.transAxes, fontsize=15)
+        sub.legend(loc='upper right', frameon=True, fontsize=20) 
+        sub.set_xlim([3e3, 1e4]) 
+        sub.set_ylim([0., 20.]) 
+        for i in range(3): 
+            sub = fig.add_subplot(4,1,i+2)
+            for band in ['b', 'r', 'z']: 
+                sub.plot(bgs.wave[band], bgs.flux[band][i], c='C1') 
+            sub.plot(wave, flux[i], c='k', ls=':', lw=1, label='no noise')
+            if i == 0: sub.legend(loc='upper right', fontsize=20)
+            sub.set_xlim([3e3, 1e4]) 
+            sub.set_ylim([0., 15.]) 
+        bkgd = fig.add_subplot(111, frameon=False) 
+        bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+        bkgd.set_xlabel('rest-frame wavelength [Angstrom]', labelpad=10, fontsize=25) 
+        bkgd.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', labelpad=10, fontsize=25) 
+        fig.savefig(f_bgs.replace('.fits', '.png'), bbox_inches='tight') 
+    return None 
+
+
 def gleg_sourceSpec_hackday(nsub, validate=False): 
     '''generate noiseless simulated spectra for a subset of GAMAlegacy 
     galaxies. The output hdf5 file will also contain all the galaxy
@@ -123,86 +203,6 @@ def gleg_sourceSpec_hackday(nsub, validate=False):
         sub.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', fontsize=25) 
         sub.set_ylim([0., 20.]) 
         fig.savefig(fspec.replace('.hdf5', '.png'), bbox_inches='tight') 
-    return None 
-
-
-def gleg_bgsSpec(nspec, iexp, nsub, expfile=None, method='spacefill', silent=True, validate=False): 
-    ''' Given noiseless spectra, simulate DESI BGS noise based on observing
-    conditions provided by iexp of nexp sampled observing conditions 
-
-    :param nsub: 
-        number of no noise spectra 
-
-    :param iexp: 
-        index of nexp observing conditions sampled using `method`
-
-    :param nexp: (default: 15) 
-        number of observing conditions sampled from `surveysim` 
-
-    :param method: (default: 'spacefill') 
-        method used for sampling `nexp` observing conditions 
-
-    :param spec_flag: (default: '') 
-        string that specifies what type of spectra options are
-        '',  '.lowHalpha', '.noEmline'
-
-    :param silent: (default: True)
-
-    :param validate: (default: False) 
-        if True generate some plots 
-    '''
-    # read in no noise spectra
-    _fspec = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 'GALeg.g15.sourceSpec.%i.hdf5' % nspec)
-    fspec = h5py.File(_fspec, 'r') 
-    wave = fspec['wave'].value 
-    flux = fspec['flux'].value 
-
-    # read in sampled exposures
-    expfile_subset = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 
-        '%s.subset.%i%s.hdf5' % (os.path.splitext(os.path.basename(expfile))[0], nsub, method))
-    fexps = h5py.File(expfile_subset, 'r')
-    texp    = fexps['texp'].value
-    airmass = fexps['airmass'].value 
-    wave_sky= fexps['wave'].value
-    u_sb    = 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
-    sky     = fexps['sky'].value
-    if not silent: print('t_exp=%f, airmass=%f' % (texp[iexp], airmass[iexp]))
-
-    # simulate the exposures 
-    fdesi = FM.fakeDESIspec()
-    if not silent: print('simulate exposures with sky model') 
-    f_bgs = os.path.join(UT.dat_dir(), 'bgs_zsuccess',
-            'GALeg.g15.sourceSpec.%s.%i.fits' % (os.path.splitext(os.path.basename(expfile_subset))[0], iexp))
-    bgs = fdesi.simExposure(wave, flux, 
-            exptime=texp[iexp], 
-            airmass=airmass[iexp],
-            skycondition={'name': 'input', 'sky': np.clip(sky[iexp,:], 0, None) * u_sb, 'wave': wave_sky}, 
-            filename=f_bgs)
-    if validate: 
-        fig = plt.figure(figsize=(10,20))
-        sub = fig.add_subplot(411) 
-        sub.plot(wave_sky, sky[iexp], c='C1') 
-        sub.text(0.05, 0.95, 
-                'texp=%.0f, airmass=%.2f\nmoon ill=%.2f, alt=%.0f, sep=%.0f\nsun alt=%.0f, sep=%.f' % 
-                (texp[iexp], airmass[iexp], fexps['moon_ill'][iexp], fexps['moon_alt'][iexp], 
-                    fexps['moon_sep'][iexp], fexps['sun_alt'][iexp], fexps['sun_sep'][iexp]), 
-                ha='left', va='top', transform=sub.transAxes, fontsize=15)
-        sub.legend(loc='upper right', frameon=True, fontsize=20) 
-        sub.set_xlim([3e3, 1e4]) 
-        sub.set_ylim([0., 20.]) 
-        for i in range(3): 
-            sub = fig.add_subplot(4,1,i+2)
-            for band in ['b', 'r', 'z']: 
-                sub.plot(bgs.wave[band], bgs.flux[band][i], c='C1') 
-            sub.plot(wave, flux[i], c='k', ls=':', lw=1, label='no noise')
-            if i == 0: sub.legend(loc='upper right', fontsize=20)
-            sub.set_xlim([3e3, 1e4]) 
-            sub.set_ylim([0., 15.]) 
-        bkgd = fig.add_subplot(111, frameon=False) 
-        bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
-        bkgd.set_xlabel('rest-frame wavelength [Angstrom]', labelpad=10, fontsize=25) 
-        bkgd.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', labelpad=10, fontsize=25) 
-        fig.savefig(f_bgs.replace('.fits', '.png'), bbox_inches='tight') 
     return None 
 
 

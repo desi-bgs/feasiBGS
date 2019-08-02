@@ -296,6 +296,7 @@ def extractBGSsurveysim(fname):
     
     RAs, DECs = [], [] 
     airmasses, moon_ills, moon_alts, moon_seps, sun_alts, sun_seps, texps = [], [], [], [], [], [], []
+    seeings, transps = [], [] 
     nexps = 0 
     for i in range(len(ssbgs)): 
         isexps  = (ssout['TILEID'] == ssout['TILEID'][iuniq][ssbgs[i]]) 
@@ -315,6 +316,10 @@ def extractBGSsurveysim(fname):
         moon_seps.append(moon_sep)
         sun_alts.append(sun_alt) 
         sun_seps.append(sun_sep) 
+        
+        # atmospheric seeing and transp
+        seeings.append(ssout['SEEING'][isexps]) 
+        transps.append(ssout['TRANSP'][isexps]) 
 
         nexps += nexp 
 
