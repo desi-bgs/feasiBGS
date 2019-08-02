@@ -29,6 +29,73 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
+def zsuccess_surveysim_exp(nexp, method='spacefill', nsub=3000, expfile=None, min_deltachi2=40.):
+    ''' plot the compiled redshift success rate for the redrock output 
+    of BGS-like spectra for the nexp observing conditions
+
+    :param nexp: 
+        nubmer of total observing condition sampled from `surveysim`
+        exposures
+
+    :param nsub: (default: 3000)  
+        number of spectra in the G15 subsample. 
+    
+    :param spec_flag: (default: '') 
+        string specifying different spectra runs 
+    '''
+    # read in noiseless spectra (for true redshift and r-band magnitude) 
+    fspec = h5py.File(os.path.join(UT.dat_dir(), 'bgs_zsuccess', 'g15.simSpectra.%i.v2.hdf5' % nsub), 'r') 
+    ztrue = fspec['gama-spec']['z'].value 
+    r_mag_legacy = UT.flux2mag(fspec['legacy-photo']['flux_r'].value)
+
+    # read in sampled exposures
+    file_exps = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 
+            '%s.subset.%i%s.hdf5' % (os.path.splitext(os.path.basename(expfile))[0], nexp, method))
+    fexps = h5py.File(file_exps, 'r')
+
+    fig = plt.figure(figsize=(18,9))#6*ncol, 6*nrow))
+    for iexp in range(nexp): 
+        # read in redrock outputs
+        f_bgs = os.path.join(UT.dat_dir(), 'bgs_zsuccess',
+                'GALeg.g15.sourceSpec.%s.%i.rr.fits' % (os.path.splitext(os.path.basename(file_exps))[0], iexp))
+        rr      = fits.open(f_bgs)[1].data
+        zrr     = rr['Z']
+        dchi2   = rr['DELTACHI2']
+        zwarn   = rr['ZWARN']
+
+        # redshift success 
+        zsuccess_exp = zsuccess(zrr, ztrue, zwarn, deltachi2=dchi2, min_deltachi2=min_deltachi2) 
+        
+        sub = fig.add_subplot(nrow, ncol, iexp+1)
+        sub.plot([15., 22.], [1., 1.], c='k', ls='--', lw=2)
+
+        wmean, rate, err_rate = zsuccess_rate(r_mag_legacy, zsuccess_exp, range=[15,22], nbins=28, bin_min=10) 
+        sub.errorbar(wmean, rate, err_rate, fmt='.k', elinewidth=2, markersize=10)
+
+        sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
+        sub.set_xlim([16., 21.]) 
+        sub.set_ylim([0.6, 1.1])
+        sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
+        if iexp == ncol-1: 
+            sub.legend(loc='lower right', markerscale=0.5, handletextpad=-0.7, prop={'size': 20})
+        if (iexp % ncol) != 0:  
+            sub.set_yticklabels([]) 
+        if (iexp // ncol) != nrow-1: 
+            sub.set_xticklabels([]) 
+        sub.text(0.05, 0.05, ('%i.' % iexp), ha='left', va='bottom', transform=sub.transAxes, fontsize=20)
+        
+    bkgd = fig.add_subplot(111, frameon=False)
+    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    bkgd.set_xlabel(r'Legacy DR7 $r$ magnitude', labelpad=10, fontsize=30)
+    bkgd.set_ylabel(r'redrock redshift success', labelpad=10, fontsize=30)
+    fig.subplots_adjust(wspace=0.05, hspace=0.05)
+    ffig = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 
+            'GALeg.g15.sourceSpec.%s.zsuccess.min_deltachi2_%.f.png' % 
+            (os.path.splitext(os.path.basename(file_exps))[0], min_deltachi2))
+    fig.savefig(ffig, bbox_inches='tight') 
+    return None 
+
+
 def zsuccess_iexps(nexp, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=9.):
     ''' plot the compiled redshift success rate for the redrock output 
     of BGS-like spectra for the nexp observing conditions
@@ -97,7 +164,6 @@ def zsuccess_iexps(nexp, method='spacefill', nsub=3000, spec_flag='', min_deltac
         
     bkgd = fig.add_subplot(111, frameon=False)
     bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
-    bkgd.set_xlabel("$k$ [$h$/Mpc]", labelpad=10, fontsize=25) 
     bkgd.set_xlabel(r'Legacy DR7 $r$ magnitude', labelpad=10, fontsize=30)
     bkgd.set_ylabel(r'redrock redshift success', labelpad=10, fontsize=30)
     fig.subplots_adjust(wspace=0.05, hspace=0.05)
@@ -400,11 +466,14 @@ def zsuccess(zrr, ztrue, zwarn, deltachi2=None, min_deltachi2=9.):
 
 
 if __name__=="__main__": 
+    fexp = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_fork_150sv0p3.fits') 
+    zsuccess_surveysim_exp(14, method='spacefill', expfile=fexp, min_deltachi2=40.)
+
     #zsuccess_iexps(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=9.)
     #zsuccess_iexps(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=25.)
-    zsuccess_iexps(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=40.) # 40 is boss limit 
-    zsuccess_iexps_fibermag(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=40.)
-    zsuccess_iexps_gamapetro(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=40.)
+    #zsuccess_iexps(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=40.) # 40 is boss limit 
+    #zsuccess_iexps_fibermag(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=40.)
+    #zsuccess_iexps_gamapetro(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=40.)
 
     #for i in range(1, 15): 
     #    zsuccess_iexp(i, nexp=15, method='spacefill', nsub=3000, spec_flag='')

@@ -98,7 +98,7 @@ def pickExposures(nsub, method='random', validate=False, expfile=None, silent=Tr
     Iskys = np.array(Iskys)
     # write exposure subsets out to file 
     fpick = h5py.File(os.path.join(UT.dat_dir(), 'bgs_zsuccess/', 
-        'surveysim_bgs_exposures.subset.%i%s.hdf5' % (nsub, method)), 'w')
+        '%s.subset.%i%s.hdf5' % (os.path.splitext(os.path.basename(expfile))[0], nsub, method)), 'w')
     # write observing conditions 
     for k in ['airmass', 'moon_ill', 'moon_alt', 'moon_sep', 'sun_alt', 'sun_sep', 'texp']:  
         fpick.create_dataset(k.lower(), data=bgs_exps[k][iexp_sub]) 
@@ -138,9 +138,9 @@ def pickExposures(nsub, method='random', validate=False, expfile=None, silent=Tr
         sub.set_xlim([40., 180.])
         sub.set_ylabel('Sun Altitude', fontsize=20)
         sub.set_ylim([-90., 0.])
-        fig.savefig(''.join([UT.dat_dir(), 'bgs_zsuccess/', 
-            'surveysim_bgs_exposures.subset.', str(nsub), method, '.png']), 
-            bbox_inches='tight')
+        ffig = os.path.join(UT.dat_dir(), 'bgs_zsuccess/', 
+                '%s.subset.%i%s.png' % (os.path.splitext(os.path.basename(expfile))[0], nsub, method))
+        fig.savefig(ffig, bbox_inches='tight')
 
         # plot some of the sky brightnesses
         fig = plt.figure(figsize=(15,5))
@@ -153,9 +153,9 @@ def pickExposures(nsub, method='random', validate=False, expfile=None, silent=Tr
         bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
         bkgd.set_xlabel('wavelength [Angstrom]', fontsize=25) 
         bkgd.set_ylabel('sky brightness [$erg/s/cm^2/A/\mathrm{arcsec}^2$]', fontsize=25) 
-        fig.savefig(''.join([UT.dat_dir(), 'bgs_zsuccess/', 
-            'surveysim_bgs_exposures.subset.', str(nsub), method, '.skybright.png']), 
-            bbox_inches='tight')
+        ffig = os.path.join(UT.dat_dir(), 'bgs_zsuccess/', 
+                '%s.subset.%i%s.skybright.png' % (os.path.splitext(os.path.basename(expfile))[0], nsub, method))
+        fig.savefig(ffig, bbox_inches='tight')
     return None 
 
 
@@ -350,7 +350,6 @@ def sky_KSrescaled_twi(airmass, moonill, moonalt, moonsep, sun_alt, sun_sep):
     specsim_sky.moon.KS_CR = 458173.535128
     specsim_sky.moon.KS_CM0 = 5.540103
     specsim_sky.moon.KS_CM1 = 178.141045
-        
 
     _sky = specsim_sky._surface_brightness_dict['dark'].copy()
     _sky *= specsim_sky.extinction
@@ -518,6 +517,5 @@ if __name__=="__main__":
     #pickExposures(10, method='spacefill', silent=False, validate=True)
     #plotExposures(15, method='spacefill') 
     #tableExposures(15, method='spacefill')
-    #fexp = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_fork_150sv0p2.fits') 
-    #extractBGSsurveysim(fexp) 
-    #pickExposures(15, method='spacefill', validate=True, expfile=fexp, silent=False)
+    fexp = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_fork_150sv0p3.fits') 
+    pickExposures(15, method='spacefill', validate=True, expfile=fexp, silent=False)

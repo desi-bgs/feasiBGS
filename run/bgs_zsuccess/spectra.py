@@ -27,6 +27,185 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
+def gleg_sourceSpec_hackday(nsub, validate=False): 
+    '''generate noiseless simulated spectra for a subset of GAMAlegacy 
+    galaxies. The output hdf5 file will also contain all the galaxy
+    properties 
+
+    :param nsub: 
+        number of galaxies to randomly select from the GAMALegacy 
+        joint catalog 
+
+    :param spec_flag: (default: '') 
+        string that specifies what type of spectra options are
+        '',  '.lowHalpha', '.noEmline'
+
+    :param validate: (default: False) 
+        if True make some plots that validate the chosen spectra
+    '''
+    # read in GAMA-Legacy catalog
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read('g15', dr_gama=3, dr_legacy=7, silent=False) # these values shouldn't change 
+
+    redshift = gleg['gama-spec']['z']
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1
+    r_mag_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
+    r_mag_gama = gleg['gama-photo']['r_model'] # r-band magnitude from GAMA (SDSS) photometry
+
+    ha_gama = gleg['gama-spec']['ha_flux'] # halpha line flux
+
+    ngal = len(redshift) # number of galaxies
+    vdisp = np.repeat(100.0, ngal) # velocity dispersions [km/s]
+
+    # match GAMA galaxies to templates 
+    bgs3 = FM.BGStree()
+    match = bgs3._GamaLegacy(gleg)
+    hasmatch = (match != -999)
+    criterion = hasmatch 
+    
+    # randomly pick a few more than nsub galaxies from the catalog
+    subsamp = np.random.choice(np.arange(ngal)[criterion], int(1.1 * nsub), replace=False) 
+
+    # generate noiseless spectra for these galaxies 
+    s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=15000) 
+    emline_flux = s_bgs.EmissionLineFlux(gleg, index=subsamp, dr_gama=3, silent=True) # emission lines from GAMA 
+    flux, wave, _, magnorm_flag = s_bgs.Spectra(r_mag_apflux[subsamp], redshift[subsamp],
+                                                    vdisp[subsamp], seed=1, templateid=match[subsamp],
+                                                    emflux=emline_flux, mag_em=r_mag_gama[subsamp], 
+                                                    silent=True)
+    # some of the galaxies will have issues where the emission line is brighter  
+    # than the photometric magnitude. Lets make sure we take nsub galaxies that 
+    # do not include these. 
+    isubsamp = np.random.choice(np.arange(len(subsamp))[magnorm_flag], nsub, replace=False) 
+    subsamp = subsamp[isubsamp]
+    
+    fspec = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 'GALeg.g15.metadata.%i.hdf5' % nsub)
+    fmeta = h5py.File(fspec, 'w') 
+    fmeta.create_dataset('zred', data=redshift[subsamp])
+    fmeta.create_dataset('absmag_ugriz', data=absmag_ugriz[:,subsamp]) 
+    fmeta.create_dataset('r_mag_apflux', data=r_mag_apflux[subsamp]) 
+    fmeta.create_dataset('r_mag_gama', data=r_mag_gama[subsamp]) 
+    for grp in gleg.keys(): 
+        group = fsub.create_group(grp) 
+        for key in gleg[grp].keys(): 
+            group.create_dataset(key, data=gleg[grp][key][subsamp])
+    fmeta.close()
+    
+    fspec = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 'GALeg.g15.sourceSpec.%i.hdf5' % nsub)
+    fsub = h5py.File(fspec, 'w') 
+    fsub.create_dataset('zred', data=redshift[subsamp])
+    fsub.create_dataset('absmag_ugriz', data=absmag_ugriz[:,subsamp]) 
+    fsub.create_dataset('r_mag_apflux', data=r_mag_apflux[subsamp]) 
+    fsub.create_dataset('r_mag_gama', data=r_mag_gama[subsamp]) 
+    for grp in gleg.keys(): 
+        group = fsub.create_group(grp) 
+        for key in gleg[grp].keys(): 
+            group.create_dataset(key, data=gleg[grp][key][subsamp])
+    fsub.create_dataset('flux', data=flux[isubsamp, :])
+    fsub.create_dataset('wave', data=wave)
+    fsub.close()
+
+    if validate: 
+        fig = plt.figure(figsize=(10,8))
+        sub = fig.add_subplot(111)
+        for i in range(10): #np.random.choice(isubsamp, 10, replace=False): 
+            wave_rest = wave / (1.+redshift[subsamp][i])
+            sub.plot(wave_rest, flux[isubsamp[i],:]) 
+        emline_keys = ['oiib', 'oiir', 'hb',  'oiiib', 'oiiir', 'ha', 'siib', 'siir']
+        emline_lambda = [3727.092, 3729.874, 4862.683, 4960.295, 5008.239, 6564.613, 6718.294, 6732.673]
+        for k, l in zip(emline_keys, emline_lambda): 
+            if k == 'ha': 
+                sub.vlines(l, 0., 20, color='k', linestyle='--', linewidth=1)
+            else: 
+                sub.vlines(l, 0., 20, color='k', linestyle=':', linewidth=0.5)
+        sub.set_xlabel('rest-frame wavelength [Angstrom]', fontsize=25) 
+        sub.set_xlim([3e3, 1e4]) 
+        sub.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', fontsize=25) 
+        sub.set_ylim([0., 20.]) 
+        fig.savefig(fspec.replace('.hdf5', '.png'), bbox_inches='tight') 
+    return None 
+
+
+def gleg_bgsSpec(nspec, iexp, nsub, expfile=None, method='spacefill', silent=True, validate=False): 
+    ''' Given noiseless spectra, simulate DESI BGS noise based on observing
+    conditions provided by iexp of nexp sampled observing conditions 
+
+    :param nsub: 
+        number of no noise spectra 
+
+    :param iexp: 
+        index of nexp observing conditions sampled using `method`
+
+    :param nexp: (default: 15) 
+        number of observing conditions sampled from `surveysim` 
+
+    :param method: (default: 'spacefill') 
+        method used for sampling `nexp` observing conditions 
+
+    :param spec_flag: (default: '') 
+        string that specifies what type of spectra options are
+        '',  '.lowHalpha', '.noEmline'
+
+    :param silent: (default: True)
+
+    :param validate: (default: False) 
+        if True generate some plots 
+    '''
+    # read in no noise spectra
+    _fspec = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 'GALeg.g15.sourceSpec.%i.hdf5' % nspec)
+    fspec = h5py.File(_fspec, 'r') 
+    wave = fspec['wave'].value 
+    flux = fspec['flux'].value 
+
+    # read in sampled exposures
+    expfile_subset = os.path.join(UT.dat_dir(), 'bgs_zsuccess', 
+        '%s.subset.%i%s.hdf5' % (os.path.splitext(os.path.basename(expfile))[0], nsub, method))
+    fexps = h5py.File(expfile_subset, 'r')
+    texp    = fexps['texp'].value
+    airmass = fexps['airmass'].value 
+    wave_sky= fexps['wave'].value
+    u_sb    = 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
+    sky     = fexps['sky'].value
+    if not silent: print('t_exp=%f, airmass=%f' % (texp[iexp], airmass[iexp]))
+
+    # simulate the exposures 
+    fdesi = FM.fakeDESIspec()
+    if not silent: print('simulate exposures with sky model') 
+    f_bgs = os.path.join(UT.dat_dir(), 'bgs_zsuccess',
+            'GALeg.g15.sourceSpec.%s.%i.fits' % (os.path.splitext(os.path.basename(expfile_subset))[0], iexp))
+    bgs = fdesi.simExposure(wave, flux, 
+            exptime=texp[iexp], 
+            airmass=airmass[iexp],
+            skycondition={'name': 'input', 'sky': np.clip(sky[iexp,:], 0, None) * u_sb, 'wave': wave_sky}, 
+            filename=f_bgs)
+    if validate: 
+        fig = plt.figure(figsize=(10,20))
+        sub = fig.add_subplot(411) 
+        sub.plot(wave_sky, sky[iexp], c='C1') 
+        sub.text(0.05, 0.95, 
+                'texp=%.0f, airmass=%.2f\nmoon ill=%.2f, alt=%.0f, sep=%.0f\nsun alt=%.0f, sep=%.f' % 
+                (texp[iexp], airmass[iexp], fexps['moon_ill'][iexp], fexps['moon_alt'][iexp], 
+                    fexps['moon_sep'][iexp], fexps['sun_alt'][iexp], fexps['sun_sep'][iexp]), 
+                ha='left', va='top', transform=sub.transAxes, fontsize=15)
+        sub.legend(loc='upper right', frameon=True, fontsize=20) 
+        sub.set_xlim([3e3, 1e4]) 
+        sub.set_ylim([0., 20.]) 
+        for i in range(3): 
+            sub = fig.add_subplot(4,1,i+2)
+            for band in ['b', 'r', 'z']: 
+                sub.plot(bgs.wave[band], bgs.flux[band][i], c='C1') 
+            sub.plot(wave, flux[i], c='k', ls=':', lw=1, label='no noise')
+            if i == 0: sub.legend(loc='upper right', fontsize=20)
+            sub.set_xlim([3e3, 1e4]) 
+            sub.set_ylim([0., 15.]) 
+        bkgd = fig.add_subplot(111, frameon=False) 
+        bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+        bkgd.set_xlabel('rest-frame wavelength [Angstrom]', labelpad=10, fontsize=25) 
+        bkgd.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', labelpad=10, fontsize=25) 
+        fig.savefig(f_bgs.replace('.fits', '.png'), bbox_inches='tight') 
+    return None 
+
+
 def gleg_simSpec(nsub, spec_flag='', validate=False): 
     '''generate noiseless simulated spectra for a subset of GAMAlegacy 
     galaxies. The output hdf5 file will also contain all the galaxy
@@ -223,8 +402,14 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
 
 
 if __name__=="__main__": 
+    #gleg_sourceSpec_hackday(3000, validate=True)
+
+    fexp = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_fork_150sv0p3.fits') 
+    for iexp in [0]+range(2,14): 
+        print('%i of 14' % (iexp+1))
+        gleg_bgsSpec(3000, iexp, 14, expfile=fexp, silent=False, validate=True)
     #gleg_simSpec(3000, validate=True)
-    for iexp in [0]: #range(0,15): 
-        gleg_simSpec_mockexp(3000, iexp, nexp=15, method='spacefill', validate=True)
+    #for iexp in [0]: #range(0,15): 
+    #    gleg_simSpec_mockexp(3000, iexp, nexp=15, method='spacefill', validate=True)
     #gleg_simSpec(3000, spec_flag='.lowHalpha', validate=True)
     #gleg_simSpec_mockexp(3000, 0, spec_flag='.lowHalpha', nexp=15, method='spacefill', validate=True)
