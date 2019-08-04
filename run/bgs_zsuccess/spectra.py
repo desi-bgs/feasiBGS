@@ -67,7 +67,12 @@ def gleg_bgsSpec(nspec, iexp, nsub, expfile=None, method='spacefill', silent=Tru
     wave_sky= fexps['wave'].value
     u_sb    = 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
     sky     = fexps['sky'].value
-    if not silent: print('t_exp=%f, airmass=%f' % (texp[iexp], airmass[iexp]))
+    if not silent: 
+        print('t_exp=%f' % texp[iexp])
+        print('airmass=%f' % airmass[iexp])
+        print('moon ill=%.2f alt=%.f, sep=%.f' % 
+                (fexps['moon_ill'].value[iexp], fexps['moon_alt'].value[iexp], fexps['moon_sep'].value[iexp]))
+        print('sun alt=%.f, sep=%.f' % (fexps['sun_alt'].value[iexp], fexps['sun_sep'].value[iexp]))
 
     # simulate the exposures 
     fdesi = FM.fakeDESIspec()
@@ -341,7 +346,12 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
     u_sb = 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
     sky_old = fexps['sky_old'].value
     sky_new = fexps['sky_new'].value
-    if not silent: print('t_exp=%f, airmass=%f' % (texp[iexp], airmass[iexp]))
+    if not silent: 
+        print('t_exp=%f' % texp[iexp])
+        print('airmass=%f' % airmass[iexp])
+        print('moon ill=%.2f alt=%.f, sep=%.f' % 
+                (fexps['moon_ill'].value[iexp], fexps['moon_alt'].value[iexp], fexps['moon_sep'].value[iexp]))
+        print('sun alt=%.f, sep=%.f' % (fexps['sun_alt'].value[iexp], fexps['sun_sep'].value[iexp]))
 
     # simulate the exposures 
     fdesi = FM.fakeDESIspec()
@@ -404,10 +414,10 @@ def gleg_simSpec_mockexp(nsub, iexp, nexp=15, method='spacefill', spec_flag='', 
 if __name__=="__main__": 
     #gleg_sourceSpec_hackday(3000, validate=True)
 
-    fexp = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_fork_150sv0p3.fits') 
-    for iexp in [0]+range(2,14): 
-        print('%i of 14' % (iexp+1))
-        gleg_bgsSpec(3000, iexp, 14, expfile=fexp, silent=False, validate=True)
+    fexp = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_fork_150sv0p4.fits') 
+    for iexp in range(15): 
+        print('--- exposure #%i ---' % (iexp+1))
+        gleg_bgsSpec(3000, iexp, 22, expfile=fexp, silent=False, validate=True)
     #gleg_simSpec(3000, validate=True)
     #for iexp in [0]: #range(0,15): 
     #    gleg_simSpec_mockexp(3000, iexp, nexp=15, method='spacefill', validate=True)

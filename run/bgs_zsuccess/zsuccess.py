@@ -112,6 +112,7 @@ def zsuccess_surveysim_exp(nexp, method='spacefill', nsub=3000, expfile=None, mi
         print('sky at 4500A = %.2f' % np.median(fexps['sky'][iexp][wlim]))
         wlim = (fexps['wave'][...] > 6800.) & (fexps['wave'][...] < 7200.) 
         _wlim = (_wave.value > 6800.) & (_wave.value < 7200.) 
+        print (np.median(fexps['sky'][iexp][wlim])/np.median(_Idark[_wlim]))
         print('sky at 7000A = %.2f' % (np.median(fexps['sky'][iexp][wlim])/np.median(_Idark[_wlim])))
         fbright = ETC.bright_exposure_factor(fexps['moon_ill'][iexp], fexps['moon_alt'][iexp], np.array(fexps['moon_sep'][iexp]),
                 fexps['sun_alt'][iexp], np.array(fexps['sun_sep'][iexp]), np.array(fexps['airmass'][iexp]))

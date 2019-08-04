@@ -67,13 +67,14 @@ def pickExposures(nsub, method='random', validate=False, expfile=None, silent=Tr
         iexp_sub = np.random.choice(np.arange(n_exps), nsub)
     elif method == 'spacefill': # pick exposures that span the observing conditions
         if not silent: print('picking exposures to span observing conditions')
-        obs = np.zeros((n_exps, 4))
+        obs = np.zeros((n_exps, 5))
         #obs[:,0] = airmass 
         obs[:,0] = moonill
         obs[:,1] = moonalt 
         obs[:,2] = moonsep 
         obs[:,3] = sun_alt 
-        histmd, edges = np.histogramdd(obs[obs[:,1] > 0.,:], 2)
+        obs[:,4] = sun_sep 
+        histmd, edges = np.histogramdd(obs, 2)
         _hasexp = histmd > 0.
         has_exp = np.where(_hasexp)
         iexp_sub = []
@@ -518,9 +519,7 @@ def validate_desisurvey_etc():
 
 
 if __name__=="__main__": 
-    #pickExposures(10, method='random', silent=False, validate=True)
-    #pickExposures(10, method='spacefill', silent=False, validate=True)
     #plotExposures(15, method='spacefill') 
     #tableExposures(15, method='spacefill')
-    fexp = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_fork_150sv0p3.fits') 
+    fexp = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_fork_150sv0p4.fits') 
     pickExposures(15, method='spacefill', validate=True, expfile=fexp, silent=False)
