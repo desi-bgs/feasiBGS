@@ -64,9 +64,9 @@ def zsuccess_surveysim_exp(nexp, method='spacefill', nsub=3000, expfile=None, mi
     _wave    = config.wavelength # wavelength 
     _Idark   = surface_brightness_dict['dark'].copy().value
     
-    nrow, ncol = 3, int(np.ceil(float(nexp)/3.))
+    nrow, ncol = 3, 5#int(np.ceil(float(nexp)/3.))
     fig = plt.figure(figsize=(18,9))#6*ncol, 6*nrow))
-    for iexp in range(nexp): 
+    for iexp in range(15):#nexp): 
         print('--- exposure %i ---' % iexp) 
         print('%s' % ', '.join(['%s = %.2f' % (k, fexps[k][iexp]) for k in ['texp', 'airmass', 'moon_alt', 'moon_ill', 'moon_sep', 'sun_alt', 'sun_sep']]))
             
@@ -86,6 +86,7 @@ def zsuccess_surveysim_exp(nexp, method='spacefill', nsub=3000, expfile=None, mi
 
         wmean, rate, err_rate = zsuccess_rate(r_mag_legacy, zsuccess_exp, range=[15,22], nbins=28, bin_min=10) 
         sub.errorbar(wmean, rate, err_rate, fmt='.C0', elinewidth=2, markersize=10)
+        print(iexp, rate) 
 
         sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
         sub.set_xlim([16., 21.]) 
@@ -500,8 +501,8 @@ def zsuccess(zrr, ztrue, zwarn, deltachi2=None, min_deltachi2=9.):
 
 
 if __name__=="__main__": 
-    fexp = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_fork_150sv0p3.fits') 
-    zsuccess_surveysim_exp(14, method='spacefill', expfile=fexp, min_deltachi2=40.)
+    fexp = os.path.join(UT.dat_dir(), 'bright_exposure', 'exposures_surveysim_fork_150sv0p4.fits') 
+    zsuccess_surveysim_exp(22, method='spacefill', expfile=fexp, min_deltachi2=40.)
 
     #zsuccess_iexps(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=9.)
     #zsuccess_iexps(15, method='spacefill', nsub=3000, spec_flag='', min_deltachi2=25.)

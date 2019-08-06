@@ -58,15 +58,15 @@ def extractBGS(fname, notwilight=True):
     exps = {
         'nexp':     np.zeros(len(ssbgs)).astype(int),
         'texptot':  np.zeros(len(ssbgs)),
-        'texps':    np.zeros((len(ssbgs), 25)), 
+        'texps':    np.zeros((len(ssbgs), 100)), 
         'snr2max':  np.zeros(len(ssbgs)),
-        'snr2arr':  np.zeros((len(ssbgs), 25)), 
+        'snr2arr':  np.zeros((len(ssbgs), 100)), 
         'ra':       np.zeros(len(ssbgs)), 
         'dec':      np.zeros(len(ssbgs)),
-        'mjd':      np.zeros((len(ssbgs), 25)),
-        'airmass':  np.zeros((len(ssbgs), 25)),
-        'seeing':   np.zeros((len(ssbgs), 25)),
-        'transp':   np.zeros((len(ssbgs), 25))
+        'mjd':      np.zeros((len(ssbgs), 100)),
+        'airmass':  np.zeros((len(ssbgs), 100)),
+        'seeing':   np.zeros((len(ssbgs), 100)),
+        'transp':   np.zeros((len(ssbgs), 100))
     }
 
     for i in range(len(ssbgs)): 
@@ -436,4 +436,7 @@ if __name__=="__main__":
     #surveysim_output('exposures_surveysim_fork_200s.fits')
     #surveysim_output('exposures_surveysim_fork_100s.fits')
     #surveysim_output('exposures_surveysim_fork_150s.fits')
-    surveysim_output('exposures_surveysim_fork_150sv0p1.fits') 
+    #surveysim_output('exposures_surveysim_fork_150sv0p1.fits') 
+    #surveysim_output('exposures_surveysim_fork_150sv0p2.fits') 
+    #surveysim_output('exposures_surveysim_fork_150sv0p3.fits') 
+    surveysim_output('exposures_surveysim_fork_150sv0p4.fits') 
