@@ -603,3 +603,89 @@ def krisciunas_schaefer_free(obs_zenith, moon_zenith, separation_angle, moon_pha
     # PASP, vol. 98, Mar. 1986, p. 364 (http://dx.doi.org/10.1086/131768)
     return ((20.7233 - np.log(B_moon / 34.08)) / 0.92104 *
             u.mag / (u.arcsec ** 2))
+
+
+def sky_KSrescaled_twi(airmass, moonill, moonalt, moonsep, sun_alt, sun_sep):
+    ''' calculate sky brightness using rescaled KS coefficients plus a twilight
+    factor from Parker. 
+
+    :return specsim_wave, Isky: 
+        returns wavelength [Angstrom] and sky surface brightness [$10^{-17} erg/cm^{2}/s/\AA/arcsec^2$]
+    '''
+    specsim_sky = specsim_initialize('desi')
+    specsim_wave = specsim_sky._wavelength # Ang
+    specsim_sky.airmass = airmass
+    specsim_sky.moon.moon_phase = np.arccos(2.*moonill - 1)/np.pi
+    specsim_sky.moon.moon_zenith = (90. - moonalt) * u.deg
+    specsim_sky.moon.separation_angle = moonsep * u.deg
+    
+    # updated KS coefficients 
+    specsim_sky.moon.KS_CR = 458173.535128
+    specsim_sky.moon.KS_CM0 = 5.540103
+    specsim_sky.moon.KS_CM1 = 178.141045
+
+    _sky = specsim_sky._surface_brightness_dict['dark'].copy()
+    _sky *= specsim_sky.extinction
+
+    I_ks_rescale = specsim_sky.surface_brightness
+    Isky = I_ks_rescale.value
+    if sun_alt > -20.: # adding in twilight
+        w_twi, I_twi = _cI_twi(sun_alt, sun_sep, airmass)
+        I_twi /= np.pi
+        I_twi_interp = interp1d(10. * w_twi, I_twi, fill_value='extrapolate')
+        Isky += np.clip(I_twi_interp(specsim_wave), 0, None) 
+    return specsim_wave, Isky
+
+
+def _cI_twi(alpha, delta, airmass):
+    ''' twilight contribution
+
+    :param alpha: 
+
+    :param delta: 
+
+    :param airmass: 
+
+    :return twi: 
+
+    '''
+    ftwi = os.path.join(UT.dat_dir(), 'sky', 'twilight_coeffs.p')
+    twi_coeffs = pickle.load(open(ftwi, 'rb'))
+    twi = (
+        twi_coeffs['t0'] * np.abs(alpha) +      # CT2
+        twi_coeffs['t1'] * np.abs(alpha)**2 +   # CT1
+        twi_coeffs['t2'] * np.abs(delta)**2 +   # CT3
+        twi_coeffs['t3'] * np.abs(delta)        # CT4
+    ) * np.exp(-twi_coeffs['t4'] * airmass) + twi_coeffs['c0']
+    return twi_coeffs['wave'], np.array(twi)
+
+
+def _twilight_coeffs(): 
+    ''' save twilight coefficients from Parker
+    '''
+    import pandas as pd
+    f = os.path.join(UT.code_dir(), 'dat', 'sky', 'MoonResults.csv')
+
+    coeffs = pd.DataFrame.from_csv(f)
+    coeffs.columns = [
+        'wl', 'model', 'data_var', 'unexplained_var',' X2', 'rX2',
+        'c0', 'c_am', 'tau', 'tau2', 'c_zodi', 'c_isl', 'sol', 'I',
+        't0', 't1', 't2', 't3', 't4', 'm0', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6',
+        'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec',
+        'c2', 'c3', 'c4', 'c5', 'c6']
+    # keep moon models
+    twi_coeffs = coeffs[coeffs['model'] == 'twilight']
+    coeffs = coeffs[coeffs['model'] == 'moon']
+    # order based on wavelengths for convenience
+    wave_sort = np.argsort(np.array(coeffs['wl']))
+
+    twi = {} 
+    twi['wave'] = np.array(coeffs['wl'])[wave_sort] 
+    for k in ['t0', 't1', 't2', 't3', 't4', 'c0']:
+        twi[k] = np.array(twi_coeffs[k])[wave_sort]
+    
+    # save to file 
+    ftwi = os.path.join(UT.dat_dir(), 'sky', 'twilight_coeffs.p')
+    pickle.dump(twi, open(ftwi, 'wb'))
+    return None 
+

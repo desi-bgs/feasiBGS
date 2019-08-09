@@ -14,6 +14,9 @@ from astropy.io import fits
 from astropy.table import Table as aTable
 # -- feasibgs -- 
 from feasibgs import util as UT
+from feasibgs import skymodel as Sky 
+from feasibgs import catalogs as Cat
+from feasibgs import forwardmodel as FM 
 # -- plotting -- 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -33,6 +36,307 @@ mpl.rcParams['legend.frameon'] = False
 dir_dat = os.path.join(UT.dat_dir(), 'survey_validation')
 
 
+def GALeg_bgsSpec(specfile='GALeg.g15.sourceSpec.3000.hdf5', expfile=None, seed=0): 
+    ''' Given noiseless spectra, simulate DESI BGS noise based on observing
+    conditions provided by iexp of nexp sampled observing conditions 
+
+    :param nsub: 
+        number of no noise spectra 
+
+    :param iexp: 
+        index of nexp observing conditions sampled using `method`
+
+    :param nexp: (default: 15) 
+        number of observing conditions sampled from `surveysim` 
+
+    :param method: (default: 'spacefill') 
+        method used for sampling `nexp` observing conditions 
+
+    :param spec_flag: (default: '') 
+        string that specifies what type of spectra options are
+        '',  '.lowHalpha', '.noEmline'
+
+    :param silent: (default: True)
+
+    :param validate: (default: False) 
+        if True generate some plots 
+    '''
+    # read in no noise spectra
+    _fspec = os.path.join(dir_dat, specfile) 
+    fspec = h5py.File(_fspec, 'r') 
+    wave = fspec['wave'].value 
+    flux = fspec['flux'].value 
+
+    # read in sampled exposures
+    _fsample = os.path.join(dir_dat, expfile.replace('.fits', '.sample.seed%i.fits' % seed)) 
+    fexps       = h5py.File(_fsample, 'r')
+    texp        = fexps['texp'][...]
+    airmass     = fexps['airmass'][...]
+    moon_ill    = fexps['moon_ill'][...]
+    moon_alt    = fexps['moon_alt'][...]
+    moon_sep    = fexps['moon_sep'][...]
+    sun_alt     = fexps['sun_alt'][...]
+    sun_sep     = fexps['sun_sep'][...]
+    seeing      = fexps['seeing'][...]
+    transp      = fexps['transp'][...]
+    n_sample    = len(texp) 
+    # sky brightness 
+    wave_sky    = fexps['wave'][...]
+    u_sb        = 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
+    sky         = fexps['sky'][...]
+
+    print('--- simulate exposures with sky model ---') 
+    for iexp in range(n_sample): 
+        print('t_exp=%f' % texp[iexp])
+        print('airmass=%f' % airmass[iexp])
+        print('moon ill=%.2f alt=%.f, sep=%.f' % (moon_ill[iexp], moon_alt[iexp], moon_sep[iexp]))
+        print('sun alt=%.f, sep=%.f' % (sun_alt[iexp], sun_sep[iexp]))
+        print('seeing=%.2f, transp=%.2f' % (seeing[iexp], transp[iexp]))
+
+        # simulate the exposures 
+        fdesi = FM.fakeDESIspec()
+        f_bgs = os.path.join(dir_dat, 
+                specfile.replace('sourceSpec', 'bgsSpec').replace('.hdf5', '.sample%i.seed%i.fits' % (iexp, seed)))
+
+        bgs = fdesi.simExposure(wave, flux, 
+                exptime=texp[iexp], 
+                airmass=airmass[iexp],
+                skycondition={'name': 'input', 'sky': np.clip(sky[iexp,:], 0, None) * u_sb, 'wave': wave_sky}, 
+                filename=f_bgs)
+
+        fig = plt.figure(figsize=(10,20))
+        sub = fig.add_subplot(411) 
+        sub.plot(wave_sky, sky[iexp], c='C1') 
+        sub.text(0.05, 0.95, 
+                'texp=%.f, airmass=%.2f\nmoon ill=%.2f, alt=%.f, sep=%.f\nsun alt=%.f, sep=%.f\nseeing=%.1f, transp=%.1f' % 
+                (texp[iexp], airmass[iexp], moon_ill[iexp], moon_alt[iexp], moon_sep[iexp], 
+                    sun_alt[iexp], sun_sep[iexp], seeing[iexp], transp[iexp]), 
+                ha='left', va='top', transform=sub.transAxes, fontsize=15)
+        sub.legend(loc='upper right', frameon=True, fontsize=20) 
+        sub.set_xlim([3e3, 1e4]) 
+        sub.set_ylim([0., 20.]) 
+        for i in range(3): 
+            sub = fig.add_subplot(4,1,i+2)
+            for band in ['b', 'r', 'z']: 
+                sub.plot(bgs.wave[band], bgs.flux[band][i], c='C1') 
+            sub.plot(wave, flux[i], c='k', ls=':', lw=1, label='no noise')
+            if i == 0: sub.legend(loc='upper right', fontsize=20)
+            sub.set_xlim([3e3, 1e4]) 
+            sub.set_ylim([0., 15.]) 
+        bkgd = fig.add_subplot(111, frameon=False) 
+        bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+        bkgd.set_xlabel('rest-frame wavelength [Angstrom]', labelpad=10, fontsize=25) 
+        bkgd.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', labelpad=10, fontsize=25) 
+        fig.savefig(f_bgs.replace('.fits', '.png'), bbox_inches='tight') 
+    return None 
+
+
+def GALeg_sourceSpec(nsub, validate=False): 
+    '''generate noiseless simulated spectra for a subset of GAMAlegacy 
+    galaxies. The output hdf5 file will also contain all the galaxy
+    properties 
+
+    :param nsub: 
+        number of galaxies to randomly select from the GAMALegacy 
+        joint catalog 
+
+    :param spec_flag: (default: '') 
+        string that specifies what type of spectra options are
+        '',  '.lowHalpha', '.noEmline'
+
+    :param validate: (default: False) 
+        if True make some plots that validate the chosen spectra
+    '''
+    # read in GAMA-Legacy catalog
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read('g15', dr_gama=3, dr_legacy=7, silent=False) # these values shouldn't change 
+
+    redshift = gleg['gama-spec']['z']
+    absmag_ugriz = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1
+    r_mag_apflux = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1])
+    r_mag_gama = gleg['gama-photo']['r_model'] # r-band magnitude from GAMA (SDSS) photometry
+
+    ha_gama = gleg['gama-spec']['ha_flux'] # halpha line flux
+
+    ngal = len(redshift) # number of galaxies
+    vdisp = np.repeat(100.0, ngal) # velocity dispersions [km/s]
+
+    # match GAMA galaxies to templates 
+    bgs3 = FM.BGStree()
+    match = bgs3._GamaLegacy(gleg)
+    hasmatch = (match != -999)
+    criterion = hasmatch 
+    
+    # randomly pick a few more than nsub galaxies from the catalog
+    subsamp = np.random.choice(np.arange(ngal)[criterion], int(1.1 * nsub), replace=False) 
+
+    # generate noiseless spectra for these galaxies 
+    s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=15000) 
+    emline_flux = s_bgs.EmissionLineFlux(gleg, index=subsamp, dr_gama=3, silent=True) # emission lines from GAMA 
+    flux, wave, _, magnorm_flag = s_bgs.Spectra(r_mag_apflux[subsamp], redshift[subsamp],
+                                                    vdisp[subsamp], seed=1, templateid=match[subsamp],
+                                                    emflux=emline_flux, mag_em=r_mag_gama[subsamp], 
+                                                    silent=True)
+    # some of the galaxies will have issues where the emission line is brighter  
+    # than the photometric magnitude. Lets make sure we take nsub galaxies that 
+    # do not include these. 
+    isubsamp = np.random.choice(np.arange(len(subsamp))[magnorm_flag], nsub, replace=False) 
+    subsamp = subsamp[isubsamp]
+    
+    fspec = os.path.join(dir_dat, 'GALeg.g15.metadata.%i.hdf5' % nsub)
+    fmeta = h5py.File(fspec, 'w') 
+    fmeta.create_dataset('zred', data=redshift[subsamp])
+    fmeta.create_dataset('absmag_ugriz', data=absmag_ugriz[:,subsamp]) 
+    fmeta.create_dataset('r_mag_apflux', data=r_mag_apflux[subsamp]) 
+    fmeta.create_dataset('r_mag_gama', data=r_mag_gama[subsamp]) 
+    for grp in gleg.keys(): 
+        group = fsub.create_group(grp) 
+        for key in gleg[grp].keys(): 
+            group.create_dataset(key, data=gleg[grp][key][subsamp])
+    fmeta.close()
+    
+    fspec = os.path.join(dir_dat, 'GALeg.g15.sourceSpec.%i.hdf5' % nsub)
+    fsub = h5py.File(fspec, 'w') 
+    fsub.create_dataset('zred', data=redshift[subsamp])
+    fsub.create_dataset('absmag_ugriz', data=absmag_ugriz[:,subsamp]) 
+    fsub.create_dataset('r_mag_apflux', data=r_mag_apflux[subsamp]) 
+    fsub.create_dataset('r_mag_gama', data=r_mag_gama[subsamp]) 
+    for grp in gleg.keys(): 
+        group = fsub.create_group(grp) 
+        for key in gleg[grp].keys(): 
+            group.create_dataset(key, data=gleg[grp][key][subsamp])
+    fsub.create_dataset('flux', data=flux[isubsamp, :])
+    fsub.create_dataset('wave', data=wave)
+    fsub.close()
+
+    fig = plt.figure(figsize=(10,8))
+    sub = fig.add_subplot(111)
+    for i in range(10): #np.random.choice(isubsamp, 10, replace=False): 
+        wave_rest = wave / (1.+redshift[subsamp][i])
+        sub.plot(wave_rest, flux[isubsamp[i],:]) 
+    emline_keys = ['oiib', 'oiir', 'hb',  'oiiib', 'oiiir', 'ha', 'siib', 'siir']
+    emline_lambda = [3727.092, 3729.874, 4862.683, 4960.295, 5008.239, 6564.613, 6718.294, 6732.673]
+    for k, l in zip(emline_keys, emline_lambda): 
+        if k == 'ha': 
+            sub.vlines(l, 0., 20, color='k', linestyle='--', linewidth=1)
+        else: 
+            sub.vlines(l, 0., 20, color='k', linestyle=':', linewidth=0.5)
+    sub.set_xlabel('rest-frame wavelength [Angstrom]', fontsize=25) 
+    sub.set_xlim([3e3, 1e4]) 
+    sub.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', fontsize=25) 
+    sub.set_ylim([0., 20.]) 
+    fig.savefig(fspec.replace('.hdf5', '.png'), bbox_inches='tight') 
+    return None 
+
+
+def sample_surveysimExposures(expfile, seed=0): 
+    '''sample BGS exposures of the surveysim output to cover a wide set of parameter combinations
+    '''
+    np.random.seed(seed)
+    fexp = os.path.join(dir_dat, expfile)
+    exps = extractBGS(fexp) # get BGS exposures only 
+    n_exps = len(exps['moon_ill'])
+    
+    # cut out some of the BGS expsoures
+    cut = (exps['texp'] > 100) # bug when twilight=True
+    
+    # sample along moon ill, alt, and sun alt 
+    moonill_bins = [0.4, 0.7, 1.]
+    moonalt_bins = [0.0, 40., 90.] 
+    sun_alt_bins = [0.0, -20., -90.]
+    
+    i_samples = [] 
+    for i0 in range(len(moonill_bins)-1): 
+        for i1 in range(len(moonalt_bins)-1): 
+            for i2 in range(len(sun_alt_bins)-1): 
+                inbin = (
+                        (exps['moon_ill'] > moonill_bins[i0]) & 
+                        (exps['moon_ill'] < moonill_bins[i0+1]) & 
+                        (exps['moon_alt'] > moonalt_bins[i1]) & 
+                        (exps['moon_alt'] < moonalt_bins[i1+1]) & 
+                        (exps['sun_alt'] < sun_alt_bins[i2]) & 
+                        (exps['sun_alt'] > sun_alt_bins[i2+1]) 
+                        )
+                _i_samples = np.random.choice(np.arange(n_exps)[cut & inbin])
+                i_samples.append(_i_samples) 
+                print('moon ill=%.2f, alt=%.f' % (exps['moon_ill'][_i_samples], exps['moon_alt'][_i_samples]))
+                print('sun alt=%.f' % exps['sun_alt'][_i_samples])
+    i_samples = np.array(i_samples) 
+
+    # compute sky brightness of the sampled exposures 
+    Iskys = [] 
+    for i in i_samples: 
+        wave, _Isky = Sky.sky_KSrescaled_twi(
+                exps['airmass'][i], 
+                exps['moon_ill'][i], 
+                exps['moon_alt'][i], 
+                exps['moon_sep'][i], 
+                exps['sun_alt'][i], 
+                exps['sun_sep'][i])
+        Iskys.append(_Isky)
+    Iskys = np.array(Iskys)
+    
+    # save to file 
+    _fsample = fexp.replace('.fits', '.sample.seed%i.fits' % seed)
+    fsample = h5py.File(_fsample, 'w') 
+    for k in ['ra', 'dec', 'airmass', 'moon_ill', 'moon_alt', 'moon_sep', 
+            'sun_alt', 'sun_sep', 'texp', 'seeing', 'transp']:  
+        fsample.create_dataset(k.lower(), data=exps[k][i_samples]) 
+    # save sky brightnesses
+    fsample.create_dataset('wave', data=wave) 
+    fsample.create_dataset('sky', data=Iskys) 
+    fsample.close() 
+
+    fig = plt.figure(figsize=(21,5))
+    sub = fig.add_subplot(141)
+    sub.scatter(exps['moon_alt'], exps['moon_ill'], c='k', s=1)
+    scat = sub.scatter(exps['moon_alt'][i_samples], exps['moon_ill'][i_samples], c='C1', s=10)
+    sub.set_xlabel('Moon Altitude', fontsize=20)
+    sub.set_xlim([-90., 90.])
+    sub.set_ylabel('Moon Illumination', fontsize=20)
+    sub.set_ylim([0.5, 1.])
+
+    sub = fig.add_subplot(142)
+    sub.scatter(exps['moon_sep'], exps['moon_ill'], c='k', s=1)
+    scat = sub.scatter(exps['moon_sep'][i_samples], exps['moon_ill'][i_samples], c='C1', s=10) 
+    sub.set_xlabel('Moon Separation', fontsize=20)
+    sub.set_xlim([40., 180.])
+    sub.set_ylim([0.5, 1.])
+
+    sub = fig.add_subplot(143)
+    sub.scatter(exps['airmass'], exps['moon_ill'], c='k', s=1)
+    scat = sub.scatter(exps['airmass'][i_samples], exps['moon_ill'][i_samples], c='C1', s=10)  
+    sub.set_xlabel('Airmass', fontsize=20)
+    sub.set_xlim([1., 2.])
+    sub.set_ylim([0.5, 1.])
+
+    sub = fig.add_subplot(144)
+    sub.scatter(exps['sun_sep'], exps['sun_alt'], c='k', s=1)
+    scat = sub.scatter(exps['sun_sep'][i_samples], exps['sun_alt'][i_samples], c='C1', s=10)
+    sub.set_xlabel('Sun Separation', fontsize=20)
+    sub.set_xlim([40., 180.])
+    sub.set_ylabel('Sun Altitude', fontsize=20)
+    sub.set_ylim([-90., 0.])
+    ffig = _fsample.replace('.fits', '.png')  
+    fig.savefig(ffig, bbox_inches='tight')
+
+    # plot some of the sky brightnesses
+    fig = plt.figure(figsize=(15,5))
+    bkgd = fig.add_subplot(111, frameon=False) 
+    for isky in range(Iskys.shape[0]):
+        sub = fig.add_subplot(111)
+        sub.plot(wave, Iskys[isky,:])
+    sub.set_xlim([3500., 9500.]) 
+    sub.set_ylim([0., 20]) 
+    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    bkgd.set_xlabel('wavelength [Angstrom]', fontsize=25) 
+    bkgd.set_ylabel('sky brightness [$erg/s/cm^2/A/\mathrm{arcsec}^2$]', fontsize=25) 
+
+    ffig = _fsample.replace('.fits', '.sky.png')  
+    fig.savefig(ffig, bbox_inches='tight')
+    return None 
+
+# --- surveysim output --- 
 def surveysim_BGS(expfile): 
     ''' read in surveysim output exposures and plot the exposure time distributions 
     for BGS exposures. Also check the BGS exposure time vs exposure properties.
@@ -313,6 +617,11 @@ def extractAll(fname, notwilight=True):
 
 
 if __name__=="__main__": 
-    surveysim_BGS('exposures_surveysim_fork_150sv0p4.fits') 
+    #sample_surveysimExposures('exposures_surveysim_fork_150sv0p4.fits', seed=0)
+    GALeg_bgsSpec(
+            specfile='GALeg.g15.sourceSpec.3000.hdf5', 
+            expfile='exposures_surveysim_fork_150sv0p4.fits', 
+            seed=0)
+    #surveysim_BGS('exposures_surveysim_fork_150sv0p4.fits') 
     #surveysim_All('exposures_surveysim_fork_150sv0p4.fits') 
     #surveysim_Weird('exposures_surveysim_fork_150sv0p4.fits') 

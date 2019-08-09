@@ -87,6 +87,54 @@ def nersc_submit_job(fjob):
     return None 
 
 
+def get_thetaSky(ra, dec, mjd): 
+    ''' given RA, Dec, and mjd time return sky parameters at kitt peak 
+    '''
+    import ephem 
+    import astropy.units as u
+    from astropy.time import Time
+    import desisurvey.config
+    import desisurvey.utils as dutils
+    config = desisurvey.config.Configuration()
+
+    mayall = ephem.Observer()
+    mayall.lat = config.location.latitude().to(u.rad).value
+    mayall.lon = config.location.longitude().to(u.rad).value
+    mayall.elevation = config.location.elevation().to(u.m).value
+    # Configure atmospheric refraction model for rise/set calculations.
+    mayall.pressure = 1e3 * config.location.pressure().to(u.bar).value
+    mayall.temp = config.location.temperature().to(u.C).value
+
+    # observed time (MJD) 
+    mjd_time = Time(mjd, format='mjd')
+
+    moon_alt    = np.zeros(len(mjd))
+    moon_ra     = np.zeros(len(mjd))
+    moon_dec    = np.zeros(len(mjd)) 
+    moon_ill    = np.zeros(len(mjd))
+    sun_alt     = np.zeros(len(mjd))
+    sun_ra      = np.zeros(len(mjd))
+    sun_dec     = np.zeros(len(mjd)) 
+    for i in range(len(mjd)):
+        mayall.date = mjd_time.datetime[i] 
+        _moon = ephem.Moon()
+        _moon.compute(mayall) 
+        _sun = ephem.Sun()
+        _sun.compute(mayall) 
+        
+        moon_alt[i] = 180./np.pi*_moon.alt
+        moon_ra[i]  = 180./np.pi*_moon.ra
+        moon_dec[i] = 180./np.pi*_moon.dec
+        moon_ill[i] = _moon.moon_phase
+        sun_alt[i] = 180./np.pi*_sun.alt
+        sun_ra[i]  = 180./np.pi*_sun.ra
+        sun_dec[i] = 180./np.pi*_sun.dec
+
+    moon_sep    = np.diag(dutils.separation_matrix(moon_ra, moon_dec, np.atleast_1d(ra), np.atleast_1d(dec)))
+    sun_sep     = np.diag(dutils.separation_matrix(sun_ra, sun_dec, np.atleast_1d(ra), np.atleast_1d(dec)))
+    return moon_ill, moon_alt, moon_sep, sun_alt, sun_sep
+
+
 def zeff_hist(prop, ztrue, zest, range=None, threshold=0.003, nbins=20, bin_min=2): 
     ''' histogram looking at dependence of redshift efficiency on `prop`. redshift 
     is considered "successful" if dz/(1+ztrue) < threshold. This is taken from 
