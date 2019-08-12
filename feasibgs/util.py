@@ -189,3 +189,72 @@ def zeff_hist(prop, ztrue, zest, range=None, threshold=0.003, nbins=20, bin_min=
 
     e1, ee1 = _eff(h1, h0)
     return vv, e1, ee1
+
+
+def zsuccess_rate(prop, zsuccess_cond, range=None, nbins=20, bin_min=2):
+    ''' measure the redshift success rate along with property `prop`
+
+    :params prop: 
+        array of properties (i.e. Legacy r-band magnitude) 
+
+    :params zsuccess_cond:
+        boolean array indicating redshift success 
+
+    :params range: (default: None) 
+        range of the `prop` 
+
+    :params nbins: (default: 20) 
+        number of bins to divide `prop` by 
+    
+    :params bin_min: (default: 2)  
+        minimum number of objects in bin to exlcude it 
+
+    :return wmean: 
+        weighted mean of `prop` in the bins 
+
+    :return e1: 
+        redshift success rate in the bins
+
+    :return ee1: 
+        simple poisson error on the success rate
+    '''
+    h0, bins = np.histogram(prop, bins=nbins, range=range)
+    hv, _ = np.histogram(prop, bins=bins, weights=prop)
+    h1, _ = np.histogram(prop[zsuccess_cond], bins=bins)
+    
+    good = h0 > bin_min
+    hv = hv[good]
+    h0 = h0[good]
+    h1 = h1[good]
+
+    wmean = hv / h0 # weighted mean 
+    rate = h1.astype("float") / (h0.astype('float') + (h0==0))
+    e_rate = np.sqrt(rate * (1 - rate)) / np.sqrt(h0.astype('float') + (h0 == 0))
+    return wmean, rate, e_rate
+
+
+def zsuccess(zrr, ztrue, zwarn, deltachi2=None, min_deltachi2=9.):
+    ''' apply redshift success crition
+
+    |z_redrock - z_true|/(1+z_true) < 0.003 and ZWARN flag = 0 
+
+    :params zrr: 
+        redrock best-fit redshift
+
+    :params ztrue: 
+        true redshift 
+
+    :params zwarn: 
+        zwarn flag value 
+
+    :return crit: 
+        boolean array indiciate which redshifts were successfully
+        measured by redrock 
+    '''
+    dz_1pz = np.abs(ztrue - zrr)/(1.+ztrue)
+    if deltachi2 is None: 
+        crit = (dz_1pz < 0.003) & (zwarn == 0)
+    else: 
+        crit = (dz_1pz < 0.003) & (zwarn == 0) & (deltachi2 > min_deltachi2) 
+    return crit
+

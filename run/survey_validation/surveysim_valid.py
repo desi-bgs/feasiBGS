@@ -7,7 +7,8 @@ import h5py
 import numpy as np 
 import scipy as sp 
 import corner as DFM 
-# --- desisurvey --- 
+# --- desi --- 
+import specsim.config 
 from desisurvey import etc as ETC
 # --- astropy --- 
 import astropy.units as u
@@ -35,6 +36,102 @@ mpl.rcParams['legend.frameon'] = False
 
 
 dir_dat = os.path.join(UT.dat_dir(), 'survey_validation')
+
+
+def zsuccess_surveysimExposures(specfile='GALeg.g15.sourceSpec.3000.hdf5', expfile=None, seed=0, min_deltachi2=40.):
+    ''' plot the compiled redshift success rate for the redrock output 
+    of BGS-like spectra for the nexp observing conditions
+
+    :param spec_flag: 
+        noiseless source spectra file. (default: 'GALeg.g15.sourceSpec.3000.hdf5') 
+    '''
+    # read in noiseless spectra (for true redshift and r-band magnitude) 
+    _fspec = os.path.join(dir_dat, specfile)
+    fspec = h5py.File(_fspec, 'r') 
+    ztrue = fspec['gama-spec']['z'].value 
+    r_mag_legacy = UT.flux2mag(fspec['legacy-photo']['flux_r'].value)
+
+    # read in sampled exposures
+    _fexp = os.path.join(dir_dat, expfile)
+    fexps = h5py.File(_fexp.replace('.fits', '.sample.seed%i.hdf5' % seed), 'r') 
+    nexps = len(fexps['airmass'][...]) 
+    
+    # read in nominal dark sky 
+    config = specsim.config.load_config('desi')
+    atm_config = config.atmosphere
+    surface_brightness_dict = config.load_table(
+        atm_config.sky, 'surface_brightness', as_dict=True)
+    _wave    = config.wavelength # wavelength 
+    _Idark   = surface_brightness_dict['dark'].copy().value
+    
+    ncol = 4
+    nrow = int(np.ceil(float(nexps)/ncol)) 
+    fig = plt.figure(figsize=(4*ncol, 4*nrow))
+    for iexp in range(nexps): 
+        print('--- exposure %i ---' % iexp) 
+        print('%s' % ', '.join(['%s = %.2f' % (k, fexps[k][iexp]) 
+            for k in ['texp_total', 'airmass', 'moon_alt', 'moon_ill', 'moon_sep', 'sun_alt', 'sun_sep']]))
+            
+        # read in redrock outputs
+        f_bgs   = _fspec.replace('sourceSpec', 'bgsSpec').replace('.hdf5', '.sample%i.seed%i.rr.fits' % (iexp, seed))
+        rr      = fits.open(f_bgs)[1].data
+        zrr     = rr['Z']
+        dchi2   = rr['DELTACHI2']
+        zwarn   = rr['ZWARN']
+
+        # redshift success 
+        zsuccess_exp = UT.zsuccess(zrr, ztrue, zwarn, deltachi2=dchi2, min_deltachi2=min_deltachi2) 
+        wmean, rate, err_rate = UT.zsuccess_rate(r_mag_legacy, zsuccess_exp, range=[15,22], nbins=28, bin_min=10) 
+        
+        sub = fig.add_subplot(nrow, ncol, iexp+1)
+        sub.plot([15., 22.], [1., 1.], c='k', ls='--', lw=2)
+        sub.errorbar(wmean, rate, err_rate, fmt='.C0', elinewidth=2, markersize=10)
+        sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
+        sub.set_xlim([16.5, 21.]) 
+        sub.set_ylim([0.6, 1.1])
+        sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
+        if iexp == ncol-1: 
+            sub.legend(loc='lower right', markerscale=0.5, handletextpad=-0.7, prop={'size': 20})
+        if (iexp % ncol) != 0:  
+            sub.set_yticklabels([]) 
+        if (iexp // ncol) != nrow-1: 
+            sub.set_xticklabels([]) 
+
+        wlim = (fexps['wave'][...] > 6800.) & (fexps['wave'][...] < 7200.) 
+        _wlim = (_wave.value > 6800.) & (_wave.value < 7200.) 
+        print('sky is %.2fx brighter than nominal at 7000A' % 
+                (np.median(fexps['sky'][iexp][wlim])/np.median(_Idark[_wlim])))
+        fbright = ETC.bright_exposure_factor(fexps['moon_ill'][iexp], fexps['moon_alt'][iexp], np.array(fexps['moon_sep'][iexp]),
+                fexps['sun_alt'][iexp], np.array(fexps['sun_sep'][iexp]), np.array(fexps['airmass'][iexp]))
+        print('bright factor = %.1f' % fbright) 
+        _ETC = ETC.ExposureTimeCalculator() 
+        fweather = _ETC.weather_factor(fexps['seeing'][iexp], fexps['transp'][iexp])
+        print('weather factor = %.1f' % fweather) 
+        fairmass = ETC.airmass_exposure_factor(fexps['airmass'][iexp]) 
+        print('airmass factor = %.1f' % fairmass) 
+
+        sub.text(0.05, 0.05, ('%i.' % (iexp+1)), ha='left', va='bottom', transform=sub.transAxes, fontsize=20)
+        sub.text(0.95, 0.4, r'$t_{\rm exp} = %.f$' % (fexps['texp_total'][iexp]), 
+                ha='right', va='bottom', transform=sub.transAxes, fontsize=10) 
+        sub.text(0.95, 0.275, r'exp factor = %.1f, airmass = %.2f' % (fbright, fexps['airmass'][iexp]), 
+                ha='right', va='bottom', transform=sub.transAxes, fontsize=10) 
+        sub.text(0.95, 0.15, r'moon ill=%.2f, alt=%.f, sep=%.f' % 
+                (fexps['moon_ill'][iexp], fexps['moon_alt'][iexp], fexps['moon_sep'][iexp]), 
+                ha='right', va='bottom', transform=sub.transAxes, fontsize=10) 
+        sub.text(0.95, 0.025, r'sun alt=%.f, sep=%.f' % 
+                (fexps['sun_alt'][iexp], fexps['sun_sep'][iexp]), 
+                ha='right', va='bottom', transform=sub.transAxes, fontsize=10) 
+
+    bkgd = fig.add_subplot(111, frameon=False)
+    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    bkgd.set_xlabel(r'Legacy DR7 $r$ magnitude', labelpad=10, fontsize=30)
+    bkgd.set_ylabel(r'redrock redshift success', labelpad=10, fontsize=30)
+
+    fig.subplots_adjust(wspace=0.05, hspace=0.05)
+    ffig = os.path.join(dir_dat, 
+            'GALeg.g15%s.zsuccess.min_deltachi2_%.f.png' % (expfile.replace('.fits', '.sample.seed%i' % seed), min_deltachi2))
+    fig.savefig(ffig, bbox_inches='tight') 
+    return None 
 
 
 def GALeg_bgsSpec(specfile='GALeg.g15.sourceSpec.3000.hdf5', expfile=None, seed=0): 
@@ -329,7 +426,7 @@ def sample_surveysimExposures(expfile, seed=0):
     Iskys = np.array(Iskys)
     
     # save to file 
-    _fsample = fexp.replace('.fits', '.sample.seed%i.fits' % seed)
+    _fsample = fexp.replace('.fits', '.sample.seed%i.hdf5' % seed)
     fsample = h5py.File(_fsample, 'w') 
     fsample.create_dataset('texp_total', data=texp_total)
     fsample.create_dataset('airmass', data=airmass)  
@@ -753,12 +850,18 @@ def extractAll(fname, notwilight=True):
 
 
 if __name__=="__main__": 
-    #sample_surveysimExposures('exposures_surveysim_fork_150sv0p4.fits', seed=0)
-    GALeg_bgsSpec(
-            specfile='GALeg.g15.sourceSpec.3000.hdf5', 
-            expfile='exposures_surveysim_fork_150sv0p4.fits', 
-            seed=0)
     #surveysim_BGS_texp('exposures_surveysim_fork_150sv0p4.fits')
     #surveysim_BGS('exposures_surveysim_fork_150sv0p4.fits') 
     #surveysim_All('exposures_surveysim_fork_150sv0p4.fits') 
     #surveysim_Weird('exposures_surveysim_fork_150sv0p4.fits') 
+
+    #sample_surveysimExposures('exposures_surveysim_fork_150sv0p4.fits', seed=0)
+    #GALeg_bgsSpec(
+    #        specfile='GALeg.g15.sourceSpec.3000.hdf5', 
+    #        expfile='exposures_surveysim_fork_150sv0p4.fits', 
+    #        seed=0)
+    zsuccess_surveysimExposures(
+            specfile='GALeg.g15.sourceSpec.3000.hdf5', 
+            expfile='exposures_surveysim_fork_150sv0p4.fits', 
+            seed=0, 
+            min_deltachi2=40.)
