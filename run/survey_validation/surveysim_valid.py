@@ -4,9 +4,11 @@ scripts to validate surveysim outputs
 '''
 import os 
 import h5py 
+import pickle 
 import numpy as np 
 import scipy as sp 
 import corner as DFM 
+from itertools import product 
 # --- desi --- 
 import specsim.config 
 from desisurvey import etc as ETC
@@ -14,6 +16,10 @@ from desisurvey import etc as ETC
 import astropy.units as u
 from astropy.io import fits
 from astropy.table import Table as aTable
+# --- sklearn ---
+from sklearn.gaussian_process import GaussianProcessRegressor as GPR 
+from sklearn.gaussian_process.kernels import RBF, ConstantKernel
+from sklearn.linear_model import LinearRegression as LR 
 # -- feasibgs -- 
 from feasibgs import util as UT
 from feasibgs import skymodel as Sky 
@@ -36,6 +42,224 @@ mpl.rcParams['legend.frameon'] = False
 
 
 dir_dat = os.path.join(UT.dat_dir(), 'survey_validation')
+
+
+def buildGP_bright_exposure_factor(expfile='exposures_surveysim_fork_150sv0p4.fits'): 
+    ''' build Gaussian process emulator for the bright exposure factor 
+    and validate. 1) select training sample that fully encompasses 
+    the range of observing conditions of surveysim output exposures.
+    2) train GP. 3) validate on test sample of observing conditions. 
+
+    :param expfile: 
+        surveysim output exposure file. (default: 'exposures_surveysim_fork_150sv0p4.fits') 
+    '''
+    # read in surveysim output file 
+    print('--- %s ---' % expfile) 
+    fexp = os.path.join(dir_dat, expfile)
+    exps = extractBGS(fexp) # get BGS exposures only 
+    nexp = len(exps['airmass']) 
+
+    # read in precomputed exposure factors
+    exp_factors = np.load(os.path.join(dir_dat, 'exposure_factor.BGS.%s' % expfile.replace('.fits', '.npy'))) 
+
+    # select training sample that fully encompasses the surveysim output exposures 
+    
+    # split into twilight and non twilight 
+    for cond in ['twilight', 'not_twilight']: 
+        if cond == 'twilight': 
+            cut = (exps['sun_alt'] >= -20.) 
+            props = ['airmass', 'moon_ill', 'moon_alt', 'moon_sep', 'sun_alt', 'sun_sep']
+            nbins = [2, 5, 4, 3, 3, 3]
+        elif cond == 'not_twilight': 
+            cut = (exps['sun_alt'] < -20.) 
+            props = ['airmass', 'moon_ill', 'moon_alt', 'moon_sep']
+            nbins = [4, 4, 4, 4]
+        print('%i exposures in %s' % (np.sum(cut), cond)) 
+        #n_test = int(np.floor(0.1 * float(np.sum(cut)) * 0.3)) 
+        #print('%i exposures in %s test sample' % (n_test, cond)) 
+        
+        prop_range = np.zeros((len(props), 2)) 
+        for i, prop in enumerate(props): 
+            prop_range[i,0] = exps[prop][cut].min() 
+            prop_range[i,1] = exps[prop][cut].max()
+            print('%s: %f - %f' % (prop, prop_range[i,0], prop_range[i,1])) 
+        
+        # randomly select 100 exposures from surveysim output and calculate the exposure factors  
+        i_test = np.arange(nexp)[cut]#np.random.choice(np.arange(nexp)[cut], size=n_test, replace=False) 
+        theta_test, exp_factor_test = [], []
+        for iexp in i_test: 
+            # compile test parameters 
+            theta_test.append(np.array([exps[k][iexp] for k in props])) 
+            # exposure factor 
+            exp_factor_test.append(exp_factors[iexp]) 
+        theta_test = np.array(theta_test) 
+        exp_factor_test = np.array(exp_factor_test)
+    
+        # training sample on a grid
+        prop_bins = tuple([np.linspace(_prop_range[0], _prop_range[1], nbin)  for _prop_range, nbin in zip(prop_range, nbins)]) 
+        #if cond == 'not_twilight': 
+        #    prop_bins[2] = np.array([0., 5., 10., 20., 40., 60., 80.]) 
+        
+        # calculate exposure factors for training set 
+        theta_train, exp_factor_train = [], [] 
+        if cond == 'twilight':  
+            for airmass, moon_ill, moon_alt, moon_sep, sun_alt, sun_sep in product(*prop_bins):  
+                # compile training parameters 
+                theta_train.append(np.array([airmass, moon_ill, moon_alt, moon_sep, sun_alt, sun_sep])) 
+                # exposure factor 
+                _exp_factor = ETC.bright_exposure_factor(moon_ill, moon_alt, np.array(moon_sep), 
+                        sun_alt, np.array(sun_sep), np.array(airmass))
+                exp_factor_train.append(_exp_factor) 
+        elif cond == 'not_twilight':  
+            for airmass, moon_ill, moon_alt, moon_sep in product(*prop_bins):  
+                theta_train.append(np.array([airmass, moon_ill, moon_alt, moon_sep])) 
+                # exposure factor 
+                _exp_factor = ETC.bright_exposure_factor(moon_ill, moon_alt, np.array(moon_sep), 
+                        -30., np.array(180.), np.array(airmass))
+                exp_factor_train.append(_exp_factor) 
+
+        if cond == 'twilight':         
+            i_train = np.random.choice(np.arange(nexp)[cut], 500, replace=False) 
+        elif cond == 'not_twilight': 
+            i_train = np.random.choice(np.arange(nexp)[cut], 1000, replace=False) 
+
+        for iexp in i_train: 
+            # compile training parameters 
+            theta_train.append(np.array([exps[k][iexp] for k in props])) 
+            # exposure factor 
+            exp_factor_train.append(exp_factors[iexp]) 
+        
+        if cond == 'not_twilight': 
+            i_train = np.random.choice(np.setdiff1d(np.arange(nexp)[cut & (exps['moon_alt'] < 10.)], np.array(i_train)), 
+                    200, replace=False) 
+            for iexp in i_train: 
+                # compile training parameters 
+                theta_train.append(np.array([exps[k][iexp] for k in props])) 
+                # exposure factor 
+                exp_factor_train.append(exp_factors[iexp]) 
+
+        theta_train = np.array(theta_train) 
+        exp_factor_train = np.array(exp_factor_train)
+
+        # train fits 
+        _length_scale = np.ones(theta_train.shape[1])
+        _length_scale[2] = 10. 
+        kern = ConstantKernel(1.0, (1e-4, 1e4)) + ConstantKernel(1.0, (1e-4, 1e4)) * RBF(_length_scale, (1e-4, 1e4)) # kernel
+        gp = GPR(kernel=kern, alpha=np.std(exp_factor_train)**2, n_restarts_optimizer=10) # instanciate a GP model
+        gp.fit(theta_train, exp_factor_train)
+        exp_factor_test_gp = gp.predict(theta_test)
+        print(exp_factor_test_gp) 
+        print(exp_factor_test) 
+        
+        # store GP 
+        pickle.dump(gp, open(os.path.join(dir_dat, 'GP_bright_exp_factor.%s.p' % cond), 'wb')) # entire GP (for my purposes) 
+        # store more memory efficiently (for surveysim) 
+        f_gp_param = h5py.File(os.path.join(dir_dat, 'GP_bright_exp_factor.%s.params.hdf5' % cond), 'w') 
+        f_gp_param.create_dataset('Xtrain', data=gp.X_train_) 
+        f_gp_param.create_dataset('alpha', data=gp.alpha_) 
+        f_gp_param.close() 
+        f_gp_kernel = os.path.join(dir_dat, 'GP_bright_exp_factor.%s.kernel.p' % cond)
+        pickle.dump(gp.kernel_, open(f_gp_kernel, 'wb'))
+
+        if cond == 'twilight': 
+            theta_train_twi = theta_train
+            exp_factor_train_twi = exp_factor_train
+            theta_test_twi = theta_test
+            exp_factor_test_gp_twi = exp_factor_test_gp 
+            exp_factor_test_twi = exp_factor_test 
+        elif cond == 'not_twilight': 
+            theta_train_notwi = theta_train
+            exp_factor_train_notwi = exp_factor_train
+            theta_test_notwi = theta_test
+            exp_factor_test_gp_notwi = exp_factor_test_gp 
+            exp_factor_test_notwi = exp_factor_test 
+
+    badfit_twi = (np.abs((exp_factor_test_gp_twi / exp_factor_test_twi) - 1.) > 0.25) 
+    badfit_notwi = (np.abs((exp_factor_test_gp_notwi / exp_factor_test_notwi) - 1.) > 0.25) 
+    print('%i bad fits in twilight' % np.sum(badfit_twi)) 
+    print('%i bad fits in not twilight' % np.sum(badfit_notwi)) 
+    print(theta_test[badfit_notwi]) 
+
+    # exposure time vs various properties 
+    fig = plt.figure(figsize=(10,10)) 
+    props   = ['airmass', 'moon_ill', 'moon_alt', 'moon_sep', 'sun_alt', 'sun_sep']
+    lims    = [(0.9, 2.1), (0.4, 1.), (-10., 90.), (40., 180.), (-90., -10.), (30., 180.)]
+    lbls    = ['airmass', 'moon ill.', 'moon alt.', 'moon sep.', 'sun alt.', 'sun sep.']
+    for _i, i, j in zip(range(4), [0, 2, 3, 4], [1, 1, 1, 5]):
+        sub = fig.add_subplot(2,2,_i+1) 
+        sub.scatter(exps[props[i]], exps[props[j]], s=1, c='k') 
+        sub.scatter(theta_train_twi[:,i], theta_train_twi[:,j], s=2, c='C0', label='training set')
+        sub.scatter(theta_test_twi[badfit_twi,i], theta_test_twi[badfit_twi,j], s=3, c='C1', label='fit is worse than $25\%$')
+        if i < 4: 
+            sub.scatter(theta_train_notwi[:,i], theta_train_notwi[:,j], s=2, c='C0')
+            sub.scatter(theta_test_notwi[badfit_notwi,i], theta_test_notwi[badfit_notwi,j], s=3, c='C1')
+        sub.set_xlabel(lbls[i], fontsize=20) 
+        sub.set_xlim(lims[i]) 
+        sub.set_ylabel(lbls[j], fontsize=20) 
+        sub.set_ylim(lims[j]) 
+    sub.legend(loc='lower left', markerscale=5, handletextpad=0.1, fontsize=15) 
+
+    bkgd = fig.add_subplot(111, frameon=False)
+    bkgd.set_xlabel(r'$t_{\rm exp}$ (sec)', fontsize=25) 
+    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    fig.subplots_adjust(hspace=0.3, wspace=0.3) 
+    fig.savefig(os.path.join(dir_dat, 'GP_bright_exp_factor.traintest.png'), bbox_inches='tight') 
+    
+    fig = plt.figure(figsize=(6,6))
+    sub = fig.add_subplot(111)
+    sub.scatter(exp_factor_test_notwi, exp_factor_test_gp_notwi, c='C0', s=1) 
+    sub.scatter(exp_factor_test_twi, exp_factor_test_gp_twi, c='C1', s=1, label='twilight') 
+    sub.scatter(exp_factor_test_notwi[badfit_notwi], exp_factor_test_gp_notwi[badfit_notwi], c='C3', s=1) 
+    sub.plot([1., 50], [1., 50.], c='k', ls='--') 
+    sub.legend(loc='upper left', markerscale=5, handletextpad=0.2, fontsize=20) 
+    sub.set_xlabel('bright exposure factor', fontsize=20) 
+    sub.set_xlim(0., 20) 
+    sub.set_ylabel('predicted bright exposure factor', fontsize=20) 
+    sub.set_ylim(0., 20) 
+    fig.savefig(os.path.join(dir_dat, 'GP_bright_exp_factor.png'), bbox_inches='tight') 
+    return None 
+
+
+def _test_loadGP(): 
+    ''' test the best way to store and load GP emulator for bright_exposure_factor 
+    '''
+    # read in surveysim output file 
+    expfile = 'exposures_surveysim_fork_150sv0p4.fits'
+    print('--- %s ---' % expfile) 
+    fexp = os.path.join(dir_dat, expfile)
+    exps = extractBGS(fexp) # get BGS exposures only 
+    nexp = len(exps['airmass']) 
+
+    for cond in ['twilight', 'not_twilight']: 
+        if cond == 'twilight': 
+            cut = (exps['sun_alt'] >= -20.) 
+            props = ['airmass', 'moon_ill', 'moon_alt', 'moon_sep', 'sun_alt', 'sun_sep']
+        elif cond == 'not_twilight': 
+            cut = (exps['sun_alt'] < -20.) 
+            props = ['airmass', 'moon_ill', 'moon_alt', 'moon_sep']
+    
+        # read in fully pickled GP 
+        gp_true     = pickle.load(open(os.path.join(dir_dat, 'GP_bright_exp_factor.%s.p' % cond), 'rb')) 
+
+        # read in stored GP parameters 
+        f_gp_param = h5py.File(os.path.join(dir_dat, 'GP_bright_exp_factor.%s.params.hdf5' % cond), 'r') 
+        _alpha_true = f_gp_param['alpha'][...]
+        _Xtrain_true = f_gp_param['Xtrain'][...]
+        # read in pickled GP kernel  
+        _kern_true = pickle.load(open(os.path.join(dir_dat, 'GP_bright_exp_factor.%s.kernel.p' % cond), 'rb'))
+
+        gp_load = GPR()
+        gp_load.alpha_ = _alpha_true
+        gp_load.kernel_ = _kern_true
+        gp_load.X_train_ = _Xtrain_true
+        gp_load._y_train_mean = [0] 
+
+        iexps = np.random.choice(np.arange(nexp)[cut], 10, replace=False)
+        for iexp in iexps: 
+            theta_i = np.array([exps[k][iexp] for k in props]) 
+            print('true GP = %f' % gp_true.predict(np.atleast_2d(theta_i))) 
+            print('load GP = %f' % gp_load.predict(np.atleast_2d(theta_i)))
+    return None 
 
 
 def zsuccess_surveysimExposures(specfile='GALeg.g15.sourceSpec.3000.hdf5', expfile=None, seed=0, min_deltachi2=40.):
@@ -622,6 +846,26 @@ def surveysim_BGS(expfile):
     return None 
 
 
+def exposure_factor_surveysim_BGS(expfile): 
+    ''' calculate the exposure factor for all BGS exposures of the specified
+    surveysim output. 
+    '''
+    # read in exposures output from surveysim 
+    print('--- %s ---' % expfile) 
+    fexp = os.path.join(dir_dat, expfile)
+    exps = extractBGS(fexp) # get BGS exposures only 
+        
+    # exposure time vs exposure time correction factor
+    from desisurvey import etc as ETC
+    exp_factor = np.zeros(len(exps['texp'])) 
+    for iexp in range(len(exps['texp'])): 
+        exp_factor[iexp] = ETC.bright_exposure_factor(
+                exps['moon_ill'][iexp], exps['moon_alt'][iexp], np.array(exps['moon_sep'][iexp]),
+                exps['sun_alt'][iexp], np.array(exps['sun_sep'][iexp]), np.array(exps['airmass'][iexp]))
+    np.save(os.path.join(dir_dat, 'exposure_factor.BGS.%s' % expfile), exp_factor) 
+    return None 
+
+
 def surveysim_All(expfile): 
     ''' read in surveysim output exposures and plot the exposure time distributions 
     '''
@@ -860,8 +1104,11 @@ if __name__=="__main__":
     #        specfile='GALeg.g15.sourceSpec.3000.hdf5', 
     #        expfile='exposures_surveysim_fork_150sv0p4.fits', 
     #        seed=0)
-    zsuccess_surveysimExposures(
-            specfile='GALeg.g15.sourceSpec.3000.hdf5', 
-            expfile='exposures_surveysim_fork_150sv0p4.fits', 
-            seed=0, 
-            min_deltachi2=40.)
+    #zsuccess_surveysimExposures(
+    #        specfile='GALeg.g15.sourceSpec.3000.hdf5', 
+    #        expfile='exposures_surveysim_fork_150sv0p4.fits', 
+    #        seed=0, 
+    #        min_deltachi2=40.)
+    #exposure_factor_surveysim_BGS('exposures_surveysim_fork_150sv0p4.fits')
+    buildGP_bright_exposure_factor(expfile='exposures_surveysim_fork_150sv0p4.fits')
+    _test_loadGP() 
