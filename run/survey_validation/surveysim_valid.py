@@ -358,7 +358,7 @@ def zsuccess_surveysimExposures(specfile='GALeg.g15.sourceSpec.3000.hdf5', expfi
     return None 
 
 
-def GALeg_bgsSpec(specfile='GALeg.g15.sourceSpec.3000.hdf5', expfile=None, seed=0): 
+def GALeg_bgsSpec(specfile='GALeg.g15.sourceSpec.3000.hdf5', expfile=None, flag=None, seed=0): 
     ''' Given noiseless spectra, simulate DESI BGS noise based on observing
     conditions provided by iexp of nexp sampled observing conditions 
 
@@ -383,6 +383,8 @@ def GALeg_bgsSpec(specfile='GALeg.g15.sourceSpec.3000.hdf5', expfile=None, seed=
     :param validate: (default: False) 
         if True generate some plots 
     '''
+    if flag is None: str_flag = ''
+    else: str_flag = '.%s' % flag 
     # read in no noise spectra
     _fspec = os.path.join(dir_dat, specfile) 
     fspec = h5py.File(_fspec, 'r') 
@@ -418,7 +420,7 @@ def GALeg_bgsSpec(specfile='GALeg.g15.sourceSpec.3000.hdf5', expfile=None, seed=
         # simulate the exposures 
         fdesi = FM.fakeDESIspec()
         f_bgs = os.path.join(dir_dat, 
-                specfile.replace('sourceSpec', 'bgsSpec').replace('.hdf5', '.sample%i.seed%i.fits' % (iexp, seed)))
+                specfile.replace('sourceSpec', 'bgsSpec').replace('.hdf5', '%s.sample%i.seed%i.fits' % (str_flag, iexp, seed)))
         print(wave.shape)  
         print(flux.shape)  
         print(sky[iexp,:].shape) 
@@ -1148,6 +1150,7 @@ if __name__=="__main__":
     GALeg_bgsSpec(
             specfile='GALeg.g15.sourceSpec.3000.hdf5', 
             expfile='exposures_surveysim_fork_150sv0p5.fits', 
+            flag='v0p5', 
             seed=0)
     #zsuccess_surveysimExposures(
     #        specfile='GALeg.g15.sourceSpec.3000.hdf5', 
