@@ -390,7 +390,7 @@ def GALeg_bgsSpec(specfile='GALeg.g15.sourceSpec.3000.hdf5', expfile=None, seed=
     flux = fspec['flux'][...] 
 
     # read in sampled exposures
-    _fsample = os.path.join(dir_dat, expfile.replace('.fits', '.sample.seed%i.fits' % seed)) 
+    _fsample = os.path.join(dir_dat, expfile.replace('.fits', '.sample.seed%i.hdf5' % seed)) 
     fexps       = h5py.File(_fsample, 'r')
     texp        = fexps['texp_total'][...]
     airmass     = fexps['airmass'][...]
@@ -419,7 +419,10 @@ def GALeg_bgsSpec(specfile='GALeg.g15.sourceSpec.3000.hdf5', expfile=None, seed=
         fdesi = FM.fakeDESIspec()
         f_bgs = os.path.join(dir_dat, 
                 specfile.replace('sourceSpec', 'bgsSpec').replace('.hdf5', '.sample%i.seed%i.fits' % (iexp, seed)))
-
+        print(wave.shape)  
+        print(flux.shape)  
+        print(sky[iexp,:].shape) 
+        print(wave_sky.shape) 
         bgs = fdesi.simExposure(wave, flux, 
                 exptime=texp[iexp], 
                 airmass=airmass[iexp],
@@ -551,6 +554,48 @@ def GALeg_sourceSpec(nsub, validate=False):
     return None 
 
 
+def _GALeg_sourceSpec_fibermag_halpha(nsub): 
+    ''' plot the Halpha probed by (z - W1) - 3/2.5 (g - r) + 1.2  to fiber mag
+    for the source spectra
+
+
+    :param nsub: 
+        number of galaxies to randomly select from the GAMALegacy 
+        joint catalog 
+
+    :param spec_flag: (default: '') 
+        string that specifies what type of spectra options are
+        '',  '.lowHalpha', '.noEmline'
+
+    :param validate: (default: False) 
+        if True make some plots that validate the chosen spectra
+    '''
+    # read in source spectra data
+    fspec = os.path.join(dir_dat, 'GALeg.g15.sourceSpec.%i.hdf5' % nsub)
+    fmeta = h5py.File(fspec, 'r') 
+    # r-band fiber magnitude 
+    r_fibermag = fmeta['r_mag_apflux'][...]
+    
+    # halpha probe 
+    g_mag = UT.flux2mag(fmeta['legacy-photo']['flux_g'][...], method='log')
+    r_mag = UT.flux2mag(fmeta['legacy-photo']['flux_r'][...], method='log')
+    z_mag = UT.flux2mag(fmeta['legacy-photo']['flux_z'][...], method='log')
+    w1_mag = UT.flux2mag(fmeta['legacy-photo']['flux_w1'][...], method='log')
+    
+    _halpha = (z_mag - w1_mag) - 3./2.5 * (g_mag - r_mag) + 1.2 
+    fmeta.close()
+
+    fig = plt.figure(figsize=(6,6))
+    sub = fig.add_subplot(111)
+    sub.scatter(r_fibermag, _halpha, c='k', s=1) 
+    sub.set_xlabel('$r$-band fiber magnitude', fontsize=25) 
+    sub.set_xlim(18., 22.) 
+    sub.set_ylabel('$(z - W1) - 3/2.5 (g - r) + 1.2$', fontsize=25) 
+    sub.set_ylim(-1., 2.) 
+    fig.savefig(fspec.replace('.hdf5', '.fibermag_halpha.png'), bbox_inches='tight') 
+    return None 
+
+
 def sample_surveysimExposures(expfile, seed=0): 
     '''sample BGS exposures of the surveysim output to cover a wide set of parameter 
     combinations. We only selet tiles where SNR2FRAC is achieved with a single exposure
@@ -565,7 +610,7 @@ def sample_surveysimExposures(expfile, seed=0):
     cut = (exps['texp'] > 100) # bug when twilight=True
     
     # sample along moon ill, alt, and sun alt 
-    moonill_bins = [0.4, 0.7, 1.]
+    moonill_bins = [0.4, 0.75, 1.]
     moonalt_bins = [0.0, 40., 90.] 
     sun_alt_bins = [0.0, -20., -90.]
     
@@ -696,7 +741,7 @@ def sample_surveysimExposures(expfile, seed=0):
     sub.set_xlim([40., 180.])
     sub.set_ylabel('Sun Altitude', fontsize=20)
     sub.set_ylim([-90., 0.])
-    ffig = _fsample.replace('.fits', '.png')  
+    ffig = _fsample.replace('.hdf5', '.png')  
     fig.savefig(ffig, bbox_inches='tight')
 
     # plot some of the sky brightnesses
@@ -711,7 +756,7 @@ def sample_surveysimExposures(expfile, seed=0):
     bkgd.set_xlabel('wavelength [Angstrom]', fontsize=25) 
     bkgd.set_ylabel('sky brightness [$erg/s/cm^2/A/\mathrm{arcsec}^2$]', fontsize=25) 
 
-    ffig = _fsample.replace('.fits', '.sky.png')  
+    ffig = _fsample.replace('.hdf5', '.sky.png')  
     fig.savefig(ffig, bbox_inches='tight')
     return None 
 
@@ -1094,21 +1139,23 @@ def extractAll(fname, notwilight=True):
 
 
 if __name__=="__main__": 
-    #surveysim_BGS_texp('exposures_surveysim_fork_150sv0p4.fits')
-    #surveysim_BGS('exposures_surveysim_fork_150sv0p4.fits') 
+    #surveysim_BGS_texp('exposures_surveysim_fork_150sv0p5.fits')
+    #surveysim_BGS('exposures_surveysim_fork_150sv0p5.fits') 
     #surveysim_All('exposures_surveysim_fork_150sv0p4.fits') 
     #surveysim_Weird('exposures_surveysim_fork_150sv0p4.fits') 
 
-    #sample_surveysimExposures('exposures_surveysim_fork_150sv0p4.fits', seed=0)
-    #GALeg_bgsSpec(
-    #        specfile='GALeg.g15.sourceSpec.3000.hdf5', 
-    #        expfile='exposures_surveysim_fork_150sv0p4.fits', 
-    #        seed=0)
+    #sample_surveysimExposures('exposures_surveysim_fork_150sv0p5.fits', seed=0)
+    GALeg_bgsSpec(
+            specfile='GALeg.g15.sourceSpec.3000.hdf5', 
+            expfile='exposures_surveysim_fork_150sv0p5.fits', 
+            seed=0)
     #zsuccess_surveysimExposures(
     #        specfile='GALeg.g15.sourceSpec.3000.hdf5', 
     #        expfile='exposures_surveysim_fork_150sv0p4.fits', 
     #        seed=0, 
     #        min_deltachi2=40.)
     #exposure_factor_surveysim_BGS('exposures_surveysim_fork_150sv0p4.fits')
-    buildGP_bright_exposure_factor(expfile='exposures_surveysim_fork_150sv0p4.fits')
-    _test_loadGP() 
+    #buildGP_bright_exposure_factor(expfile='exposures_surveysim_fork_150sv0p4.fits')
+    #_test_loadGP() 
+
+    #_GALeg_sourceSpec_fibermag_halpha(3000)
