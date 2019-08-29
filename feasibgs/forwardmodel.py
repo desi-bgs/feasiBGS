@@ -473,112 +473,8 @@ class fakeDESIspec(object):
     def __init__(self): 
         pass
 
-    def skySurfBright(self, wave, obs_cond): 
-        ''' Given wavelength and observing conditions return sky surface brightness. 
-        The surface brightness is calculated by combining Parker's continuum fit with  
-        the UVES emission lines.
-        '''
-        sky = Sky.skySpec(obs_cond['ra'], obs_cond['dec'], obs_cond['obs_time']) 
-        
-        # Generate specsim config object for a given wavelength grid
-        config = desisim.simexp._specsim_config_for_wave(wave.to('Angstrom').value,
-                specsim_config_file='desi')
-            
-        sbright_unit = 1e-17 * u.erg / (u.arcsec**2 * u.Angstrom * u.s * u.cm ** 2 )
-        sbright = sky.surface_brightness(config.wavelength.value)
-        return np.clip(sbright, 0, None) * sbright_unit 
-
-    def skySurfBright_manual(self, wave, obs_cond): 
-        # airmass, ecliptic latitude, galactic latitude, galactic longitude, tai (obs time), 
-        # sun altitude, sun separation, moon phase, moon illumination, moon separation, moon altitude
-        sky = Sky.skySpec(
-                obs_cond['airmass'], 
-                obs_cond['ecl_lat'], 
-                obs_cond['gal_lat'], 
-                obs_cond['gal_long'], 
-                obs_cond['tai'], 
-                obs_cond['sun_alt'], 
-                obs_cond['sun_sep'], 
-                obs_cond['moon_phase'], 
-                obs_cond['moon_ill'], 
-                obs_cond['moon_sep'], 
-                obs_cond['moon_alt']) 
-        return sky.surface_brightness(wave)
-
-    def skySurfBright_KS(self, wave, obs_cond): 
-        from astropy.coordinates import SkyCoord, AltAz
-        from astropy.coordinates import EarthLocation, ICRS, GCRS, get_sun, get_moon, BaseRADecFrame
-        config = desisim.simexp._specsim_config_for_wave((wave).to('Angstrom').value, specsim_config_file='desi')
-        desi = SimulatorHacked(config, num_fibers=1, camera_output=True)
-
-        extinction_coefficient = config.load_table(config.atmosphere.extinction, 'extinction_coefficient')
-        # kpno
-        kpno = EarthLocation.of_site('kitt peak')
-        kpno_altaz = AltAz(obstime=obs_cond['obs_time'], location=kpno)
-        # moon at KPNO 
-        moon = get_moon(obs_cond['obs_time'])
-        moon_altaz = moon.transform_to(kpno_altaz)
-        moon_az = moon_altaz.az.deg 
-        moon_alt = moon_altaz.alt.deg
-
-        # coordinate 
-        coord = SkyCoord(ra=obs_cond['ra'] * u.deg, dec=obs_cond['dec'] * u.deg) 
-        coord_altaz = coord.transform_to(kpno_altaz)
-        
-        sun = get_sun(obs_cond['obs_time'])
-                
-        elongation = sun.separation(moon)
-        phase = np.arctan2(sun.distance * np.sin(elongation),
-                moon.distance - sun.distance*np.cos(elongation))
-        desi.atmosphere.moon.moon_phase = phase.value/np.pi #moon_phase/np.pi #np.arccos(2*moonfrac-1)/np.pi
-        desi.atmosphere.moon.moon_zenith = (90. - moon_alt) * u.deg
-        
-        sep = moon.separation(coord).deg 
-        desi.atmosphere.airmass = coord_altaz.secz 
-        desi.atmosphere.moon.separation_angle = sep * u.deg
-        
-        sbright_unit = u.erg / (u.arcsec**2 * u.Angstrom * u.s * u.cm ** 2 )
-        Bmoon = desi.atmosphere.moon.surface_brightness.value * sbright_unit # 1e17
-        print(Bmoon)
-        return Bmoon 
-
-    def _skySurfBright(self, wave, cond='bright'): 
-        ''' Older version of sky surface brightness calculation. This used
-        the UVES dark sky surface brightness as a base and then calculate 
-        bright sky surface brightness by taking the residual. 
-
-        given wavelengths return realistic surface brightnesses of the sky. 
-
-        notes
-        -----
-        * at the moment, surface brightness of the sky is determined 
-            by some crude fit of the surface brightness residual between 
-            a bright sky measured from BOSS and the DESI dark sky default
-            surface brightness. 
-        '''
-        # Generate specsim config object for a given wavelength grid
-        config = desisim.simexp._specsim_config_for_wave(wave.to('Angstrom').value,
-                specsim_config_file='desi')
-        # load surface brightness dictionary 
-        surface_brightness_dict = config.load_table(config.atmosphere.sky, 'surface_brightness', as_dict=True)
-    
-        # dark sky surface brightness 
-        dark_sbright = surface_brightness_dict['dark'] 
-        if cond == 'dark': 
-            # desi dark sky is pretty accurate? 
-            return dark_sbright 
-        elif cond == 'bright':  
-            # hacked together implementation of birght sky 
-            # (residual surface-brightness fit) + (dark sky surface brightness)
-            # see notebook.notes_sky_brightness.ipynb for details on how the 
-            # values are calculated
-            SBright_resid = lambda x: np.exp(-0.000488 * (x - 5071.) + 1.388)
-            sbright_unit = 1e-17 * u.erg / (u.arcsec**2 * u.Angstrom * u.s * u.cm ** 2 )
-            return dark_sbright + SBright_resid(config.wavelength.value) * sbright_unit
-
-    def simExposure(self, wave, flux, airmass=1.0, exptime=1000, 
-            moonalt=-60, moonsep=180, moonfrac=0.0, seeing=1.1, 
-            seed=1, skyerr=0.0, skycondition='bright', nonoise=False, filename=None): 
+    def simExposure(self, wave, flux, airmass=1.0, exptime=1000, seeing=1.1, 
+            seed=1, skyerr=0.0, Isky=None, nonoise=False, filename=None): 
         ''' simulate exposure for input source flux(wavelength). keyword arguments (airmass, seeing) 
         specify a number of observational conditions. These are used to calculate the extinction
         factor. The sky surface brightness is dictated by `skyconditions` kwarg. 
@@ -589,9 +485,6 @@ class fakeDESIspec(object):
         obvs_dict = dict(
                 AIRMASS=airmass, 
                 EXPTIME=exptime, # s 
-                MOONALT=moonalt, # deg
-                MOONFRAC=moonfrac,
-                MOONSEP=moonsep, # deg
                 SEEING=seeing)   # arc sec
 
         tileid  = 0
@@ -633,7 +526,7 @@ class fakeDESIspec(object):
         flux_unit = 1e-17 * u.erg / (u.Angstrom * u.s * u.cm ** 2 )
         flux = flux[:,wlim]*flux_unit
 
-        sim = self._simulate_spectra(wave, flux, fibermap=frame_fibermap, skycondition=skycondition, 
+        sim = self._simulate_spectra(wave, flux, fibermap=frame_fibermap, Isky=Isky, 
                 obsconditions=obvs_dict, redshift=None, seed=seed, psfconvolve=True)
 
         for table in sim.camera_output :
@@ -690,34 +583,40 @@ class fakeDESIspec(object):
             desispec.io.write_spectra(filename, specdata)
             return specdata  
 
-    def _simulate_spectra(self, wave, flux, fibermap=None, skycondition=None, obsconditions=None, 
+    def _simulate_spectra(self, wave, flux, fibermap=None, Isky=None, obsconditions=None, 
             redshift=None, dwave_out=None, seed=None, psfconvolve=True, specsim_config_file = "desi"):
-        '''
-        A more streamlined BGS version of the method `desisim.simexp.simulate_spectra`, which 
+        ''' A more streamlined BGS version of the method `desisim.simexp.simulate_spectra`, which 
         simulates an exposure 
 
-        Args:
-            wave (array): 1D wavelengths in Angstroms
-            flux (array): 2D[nspec,nwave] flux in 1e-17 erg/s/cm2/Angstrom
-                or astropy Quantity with flux units
+        :param wave: 
+            1D wavelengths in Angstroms
 
-        Optional:
-            fibermap: table from fiberassign or fibermap; uses X/YFOCAL_DESIGN, TARGETID, DESI_TARGET
+        :param flux: 
+            2D[nspec,nwave] flux in 1e-17 erg/s/cm2/Angstrom or astropy Quantity with flux units
 
-            skycondition: (str) 
-                specifies the sky condition. At the moment only supports 'bright' or 'dark'. 
-                Default is 'bright'
+        :param fibermap: (optional) 
+            table from fiberassign or fibermap; uses X/YFOCAL_DESIGN, TARGETID, DESI_TARGET
 
-            obsconditions: (dict-like) observation metadata including
-                SEEING (arcsec), EXPTIME (sec), AIRMASS,
-                MOONFRAC (0-1), MOONALT (deg), MOONSEP (deg)
-            redshift : list/array with each index being the redshifts for that target
-            seed: (int) random seed
-            psfconvolve: (bool) passed to simspec.simulator.Simulator camera_output.
-                if True, convolve with PSF and include per-camera outputs
-            specsim_config_file: (str) path to DESI instrument config file.
-                default is desi config in specsim package.
-        TODO: galsim support
+        :param Isky: (optional) 
+            2 element array [wave, Isky]  
+
+        :param obsconditions:
+            observation metadata including: 
+            SEEING (arcsec), EXPTIME (sec), AIRMASS, MOONFRAC (0-1), MOONALT (deg), MOONSEP (deg)
+
+        :param redshift: 
+            list/array with each index being the redshifts for that target
+
+        :param seed: 
+            random seed
+
+        :param psfconvolve: 
+            passed to simspec.simulator.Simulator camera_output.
+            If True, convolve with PSF and include per-camera outputs. (default: True) 
+
+        :param specsim_config_file:
+             path to DESI instrument config file.
+            default is desi config in specsim package.
 
         Returns a specsim.simulator.Simulator object
         '''
@@ -729,30 +628,19 @@ class fakeDESIspec(object):
 
         nspec, nwave = flux.shape
 
-        #- Convert to unit-ful quantities for specsim
-        #if not isinstance(flux, u.Quantity):
-        #    fluxunits = 1e-17 * u.erg / (u.Angstrom * u.s * u.cm**2)
-        #    flux = flux * fluxunits
-
-        #if not isinstance(wave, u.Quantity):
-        #    wave = wave * u.Angstrom
-
         # Generate specsim config object for a given wavelength grid
         config = desisim.simexp._specsim_config_for_wave(wave.to('Angstrom').value, 
                 dwave_out=dwave_out, specsim_config_file=specsim_config_file)
 
-        if isinstance(skycondition, str): 
-            # if not provided get sky surface brightness
-            sky_surface_brightness = self._skySurfBright(wave, cond=skycondition)
-        elif isinstance(skycondition, dict): 
-            if skycondition['name'] == 'parker':  
-                sky_surface_brightness = self.skySurfBright(wave, skycondition)
-            elif skycondition['name'] == 'ks': 
-                sky_surface_brightness = self.skySurfBright_KS(wave, skycondition)
-            elif skycondition['name'] == 'input': 
-                sbright = skycondition['sky']  
-                wave_sky = skycondition['wave'] 
-                sky_surface_brightness = np.interp(wave, wave_sky, sbright) * sbright.unit
+        # if no sky surface brightness is specified, use dark sky 
+        surface_brightness_dict = config.load_table(config.atmosphere.sky, 'surface_brightness', as_dict=True)
+        # dark sky surface brightness 
+        sky_surface_brightness = surface_brightness_dict['dark'] 
+
+        # sky surface brightness  
+        if Isky is not None: 
+            wave_sky, bright_sky = Isky[0], Isky[1] 
+            sky_surface_brightness = np.interp(wave, wave_sky, bright_sky) * sky_surface_brightness.unit
         
         #- Create simulator
         desi = SimulatorHacked(config, num_fibers=nspec, camera_output=psfconvolve)
@@ -762,9 +650,6 @@ class fakeDESIspec(object):
         desi.atmosphere.seeing_fwhm_ref = obsconditions['SEEING'] * u.arcsec
         desi.observation.exposure_time = obsconditions['EXPTIME'] * u.s
         desi.atmosphere.airmass = obsconditions['AIRMASS']
-        desi.atmosphere.moon.moon_phase = np.arccos(2*obsconditions['MOONFRAC']-1)/np.pi
-        desi.atmosphere.moon.moon_zenith = (90 - obsconditions['MOONALT']) * u.deg
-        desi.atmosphere.moon.separation_angle = obsconditions['MOONSEP'] * u.deg
 
         #- Set fiber locations from meta Table or default fiberpos
         fiberpos = desimodel.io.load_fiberpos()
@@ -789,60 +674,6 @@ class fakeDESIspec(object):
                 xy[unassigned,0] = np.asarray(fiberpos['X'][unassigned], dtype=xy.dtype) * u.mm
                 xy[unassigned,1] = np.asarray(fiberpos['Y'][unassigned], dtype=xy.dtype) * u.mm
             
-        #- Determine source types
-        #source_types = desisim.simexp.get_source_types(fibermap)
-        #if np.any(source_types != "bgs"): raise ValueError("source types are not all BGS!") 
-
-        #desi.instrument.fiberloss_method = 'fastsim'
-
-        #source_fraction=None
-        #source_half_light_radius=None
-
-        # BGS parameters based on SDSS main sample, in g-band
-        # see analysis from J. Moustakas in
-        # https://github.com/desihub/desitarget/blob/master/doc/nb/bgs-morphology-properties.ipynb 
-        # B/T (bulge-to-total ratio): 0.48 (0.36 - 0.59).
-        # Bulge Sersic n: 2.27 (1.12 - 3.60).
-        # log10 (Bulge Half-light radius): 0.11 (-0.077 - 0.307) arcsec
-        # log10 (Disk Half-light radius): 0.67 (0.54 - 0.82) arcsec
-        # This gives
-        # bulge_fraction = 0.48
-        # disk_fraction  = 0.52
-        # bulge_half_light_radius = 1.3 arcsec
-        # disk_half_light_radius  = 4.7 arcsec
-        # note we use De Vaucouleurs' law , which correspond to a Sersic index n=4
-        
-        # source_fraction[:,0] is DISK profile (exponential) fraction
-        # source_fraction[:,1] is BULGE profile (devaucouleurs) fraction
-        # 1 - np.sum(source_fraction,axis=1) is POINT source profile fraction
-        # see specsim.GalsimFiberlossCalculator.create_source routine
-        #source_fraction=np.zeros((nspec,2)) 
-        #source_fraction[:,0]=0.52 # disk comp in BGS
-        #source_fraction[:,1]=0.48 # bulge comp in BGS       
-
-        # source_half_light_radius[:,0] is the half light radius in arcsec for the DISK profile
-        # source_half_light_radius[:,1] is the half light radius in arcsec for the BULGE profile        
-        # see specsim.GalsimFiberlossCalculator.create_source routine
-        #source_half_light_radius=np.zeros((nspec,2))
-        
-        # 4.7 is angular size of z=0.1 disk, and 1.3 is angular size of z=0.1 bulge
-        #bgs_disk_z01 = 4.7  # in arcsec
-        #bgs_bulge_z01 = 1.3 # in arcsec
-        
-        # Convert to angular size of the objects in this sample with given redshifts
-        #if redshift is None:
-        #    angscales = np.ones(len(source_types))
-        #else:
-        #    # Avoid infinities
-        #    if np.any(redshift <= 0.):
-        #        bgs_redshifts[redshift <= 0.] = 0.0001
-        #    angscales = ( ang_diam_dist(0.1) / ang_diam_dist(redshift) ).value
-        #source_half_light_radius[:,0]= bgs_disk_z01 * angscales # disk comp in BGS, arcsec
-        #source_half_light_radius[:,1]= bgs_bulge_z01 * angscales  # bulge comp in BGS, arcsec
-            
-        #- Work around randomness in specsim quickfiberloss calculations
-        #- while not impacting global random state.
-        #- See https://github.com/desihub/specsim/issues/83
         randstate = np.random.get_state()
         np.random.seed(seed)
         desi.simulate(sky_surface_brightness, source_fluxes=flux, focal_positions=xy)
@@ -852,7 +683,7 @@ class fakeDESIspec(object):
 
 class SimulatorHacked(Simulator): 
     def __init__(self, config, num_fibers=2, camera_output=True, verbose=False):
-        super(SimulatorHacked, self).__init__(config, num_fibers=num_fibers, camera_output=camera_output, 
+        super().__init__(config, num_fibers=num_fibers, camera_output=camera_output, 
                 verbose=verbose) 
 
     def simulate(self, sky_surface_brightness, sky_positions=None, focal_positions=None,
@@ -1059,19 +890,19 @@ class SimulatorHacked(Simulator):
             # Apply resolution to the source and sky detected electrons on
             # the high-resolution grid.
             num_source_electrons[:] = camera.apply_resolution(
-                num_source_electrons.T).T
+                num_source_electrons)
             num_sky_electrons[:] = camera.apply_resolution(
-                num_sky_electrons.T).T
+                num_sky_electrons)
 
             # Calculate the corresponding downsampled output quantities.
             output['num_source_electrons'][:] = (
-                camera.downsample(num_source_electrons.T)).T
+                camera.downsample(num_source_electrons))
             output['num_sky_electrons'][:] = (
-                camera.downsample(num_sky_electrons.T)).T
+                camera.downsample(num_sky_electrons))
             output['num_dark_electrons'][:] = (
-                camera.downsample(num_dark_electrons.T)).T
+                camera.downsample(num_dark_electrons))
             output['read_noise_electrons'][:] = np.sqrt(
-                camera.downsample(read_noise_electrons.T ** 2)).T
+                camera.downsample(read_noise_electrons ** 2))
             output['variance_electrons'][:] = (
                 output['num_source_electrons'] +
                 output['num_sky_electrons'] +
@@ -1089,7 +920,7 @@ class SimulatorHacked(Simulator):
             # source flux above the atmosphere, downsampled to output pixels.
             output['flux_calibration'][:] = 1.0 / camera.downsample(
                 camera.apply_resolution(
-                    source_flux_to_photons.T * camera.throughput)).T
+                    source_flux_to_photons * camera.throughput.reshape(-1, 1)))
 
             # Calculate the calibrated flux in this camera.
             output['observed_flux'][:] = (

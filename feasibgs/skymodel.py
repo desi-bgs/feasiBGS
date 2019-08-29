@@ -7,330 +7,197 @@ import pandas as pd
 from scipy.interpolate import interp1d
 # -- astropy --
 import astropy.units as u
-from astropy.time import Time, TimeDelta
-from astropy.coordinates import SkyCoord, EarthLocation, AltAz, get_sun, get_moon
-from astropy.coordinates import CartesianRepresentation, HeliocentricTrueEcliptic
-# -- speclite -- 
-import speclite 
+from astropy.time import Time
+# -- astroplan -- 
+from astroplan import Observer
+from astroplan import download_IERS_A
 # -- specsim -- 
 import specsim
 from specsim.atmosphere import Moon 
 # -- feasibgs -- 
 from . import util as UT 
 
-# -- astroplan -- 
-from astroplan import Observer
-from astroplan import download_IERS_A
-#try: 
-#    download_IERS_A()
-#except: 
-#    pass 
 
+def Isky_newKS_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep):
+    ''' Sky surface brightness as a function of airmass, moon parameters, and sun parameters.
+    The sky surface brightness uses the KS model scaling with coefficients re-fit to match
+    BOSS sky data and includes a twilight contribution from Parker's thesis. 
 
-class skySpec(object): 
-    def __init__(self, ra, dec, obs_time, location=None, airmass=None, ecl_lat=None, sun_alt=None, sun_sep=None, moon_phase=None, moon_sep=None, moon_alt=None):
-        ''' Given airmass, ra (deg), dec (deg), and observed time (UTC datetime) 
-        '''
-        download_IERS_A()
-        # target coordinates 
-        coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg) 
-        # observed time (UTC)          
-        utc_time = Time(obs_time)
-        # kitt peak  
-        if location is None: 
-            kpno = EarthLocation.of_site('kitt peak')
-        else: 
-            kpno = location 
-        kpno_altaz = AltAz(obstime=utc_time, location=kpno) 
-        coord_altaz = coord.transform_to(kpno_altaz)
-        self.objalt = coord_altaz.alt.deg
-        if self.objalt < 0.: 
-            raise ValueError('object is below the horizon') 
-
-        if airmass is None: 
-            self.X = coord_altaz.secz
-        else: 
-            self.X = airmass    # air mass 
-        
-        if ecl_lat is None: # ecliptic latitude ( used for zodiacal light contribution ) 
-            self.beta = coord.barycentrictrueecliptic.lat.deg
-        else: 
-            self.beta = ecl_lat 
-        self.l = coord.galactic.l.deg   # galactic latitude ( used for ISL contribution ) 
-        self.b = coord.galactic.b.deg   # galactic longitude ( used for ISL contribution ) 
-
-        #obs_time = tai/86400.       # used to calculate mjd 
-        self.mjd = utc_time.mjd   # mjd ( used for solar flux contribution ) 
-        # fractional months ( used for seasonal contribution) 
-        self.month_frac = utc_time.datetime.month + utc_time.datetime.day/30. 
-        
-        # fractional hour ( used for hourly contribution) 
-        self.site = Observer(kpno, timezone='UTC')
-        sun_rise = self.site.sun_rise_time(utc_time, which='next')
-        sun_set = self.site.sun_set_time(utc_time, which='previous')
-        hour = ((utc_time - sun_set).sec)/3600.
-        self.hour_frac = hour/((Time(sun_rise, format='mjd') - Time(sun_set,format = 'mjd')).sec/3600.)
-
-        # sun altitude (degrees)
-        sun = get_sun(utc_time) 
-        if sun_alt is None:
-            sun_altaz = sun.transform_to(kpno_altaz) 
-            self.alpha = sun_altaz.alt.deg
-        else: 
-            self.alpha = sun_alt
-        if self.alpha > -13.: raise ValueError("sun is higher than BGS limit") 
-        # sun separation
-        if sun_sep is None: 
-            self.delta = sun.separation(coord).deg
-        else: 
-            self.delta = sun_sep           
-        
-        # used for scattered moonlight
-        moon = get_moon(utc_time)
-        if moon_alt is None: 
-            moon_altaz = moon.transform_to(kpno_altaz) 
-            self.altm = moon_altaz.alt.deg 
-        else: 
-            self.altm = moon_alt 
-
-        if moon_sep is None: 
-            self.delm = moon.separation(coord).deg #coord.separation(self.moon).deg
-        else: 
-            self.delm = moon_sep
+    :param airmass: 
+        airmass 
     
-        if moon_phase is None:  
-            #from https://astroplan.readthedocs.io/en/latest/_modules/astroplan/moon.html
-            elongation = sun.separation(moon)
-            phase = np.arctan2(sun.distance * np.sin(elongation),
-                    moon.distance - sun.distance*np.cos(elongation))
-            self.g = phase.value    # in radians 
-            self.illm = (1. + np.cos(phase))/2.
-        else: 
-            self.g = moon_phase     # moon phase angle 
-            self.illm = (1. + np.cos(moon_phase))/2.
-        
-        self._readCoeffs()
-
-    def surface_brightness(self, wave): 
-        ''' return the surface brightness of the sky 
-        '''
-        # read in sky emission from the UVES continuum subtraction
-        w_uves, S_uves = np.loadtxt(''.join([UT.code_dir(), 'dat/sky/UVES_sky_emission.dat']), 
-                unpack=True, usecols=[0,1]) 
-        # interpolate 
-        f_uves = interp1d(w_uves, S_uves, bounds_error=False, fill_value='extrapolate')
-        S_emission = f_uves(wave)
-
-        flux_continuum = self.Icont(wave) 
-        S_continuum = flux_continuum / np.pi  # BOSS has 2 arcsec diameter
-        return S_continuum + S_emission 
-
-    def Icont(self, w): 
-        ''' interpolate 
-        '''
-        wave, Icont = self.get_Icontinuum() 
-        f_Icont = interp1d(wave, Icont, bounds_error=False, fill_value='extrapolate')
-        return f_Icont(w) 
-
-    def get_Icontinuum(self): 
-        ''' calculate the continuum of the sky (Fragelius thesis Eq. 4.23)
-        '''
-        self._Iairmass = self.coeffs['c_am'] * self.X  
+    :param moonill:  
+        moon illumination fraction: 0 - 1 
     
-        self._Izodiacal = self.coeffs['c_zodi'] * self.I_zodi(self.beta)
-
-        self._Iisl = self.coeffs['c_isl'] * self.I_isl(self.l, self.b) 
-
-        self._Isolar_flux = self.coeffs['sol'] * self.I_sf(self.mjd - self.coeffs['I']) 
-
-        self._Iseasonal = self.cI_seas(self.month_frac) 
-
-        self._Ihourly = self.cI_hour(self.hour_frac)
-
-        self._dT = self.deltaT(self.X) 
-        
-        self._Itwilight = self.cI_twi_exp(self.alpha, self.delta, self.X) 
+    :param moonalt:  
+        moon altitude: 0 - 90 deg 
     
-        self._Imoon = self.cI_moon_exp(self.altm, self.illm, self.delm, self.g, self.X)
-
-        self._Iadd_continuum = self.coeffs['c0']
+    :param moonsep:  
+        moon separation angle: 0 - 180 deg 
     
-        # I_continuum(lambda)
-        Icont = (self._Iairmass + self._Izodiacal + self._Iisl + self._Isolar_flux + self._Iseasonal + self._Ihourly + self._Iadd_continuum) * self._dT + self._Itwilight + self._Imoon
-        return 10*self.coeffs['wl'], np.array(Icont)
-
-    def cI_moon_exp(self, altm, illm, deltam, g, airmass): 
-        # light from the moon that is scattered into our field of view 
-        # (Fragelius thesis Eq. 4.28, 4.29)
-        Alambda = self._albedo(g) # albedo factor 
-
-        moon = (
-                self.coeffs['m0'] * altm**2 + 
-                self.coeffs['m1'] * altm + 
-                self.coeffs['m2'] * illm**2 + 
-                self.coeffs['m3'] * illm + 
-                self.coeffs['m4'] * deltam**2 + 
-                self.coeffs['m5'] * deltam 
-                ) * Alambda * np.exp(-self.coeffs['m6'] * airmass) 
-        return moon
-
-    def _albedo(self, g): 
-        # albedo (i.e. reflectivity of the moon)
-        # g is the lunar phase (g = 0 for full moon and 180 for new moon)
-        # (Fragelius thesis Eq. 4.28)
-        albedo_table = pd.read_csv(''.join([UT.code_dir(), 'dat/sky/albedo_constants.csv']), 
-                delim_whitespace=True) 
-        albedo_constants = {}
-        for col in list(albedo_table):
-            line = interp1d(albedo_table['WAVELENGTH'], albedo_table[col], 
-                    bounds_error=False, fill_value=0)
-            albedo_constants[col] = line 
-
-        p1 = 4.06054
-        p2 = 12.8802
-        p3 = -30.5858
-        p4 = 16.7498
-        A = []
-        for i in range(4):
-            A.append(albedo_constants['a%d'%i](self.coeffs['wl'])*(g**i))
-        A.append(albedo_constants['d1'](self.coeffs['wl']) * np.exp(-g/p1))
-        A.append(albedo_constants['d2'](self.coeffs['wl']) * np.exp(-g/p2))
-        A.append(albedo_constants['d3'](self.coeffs['wl']) * np.cos((g - p3)/p4))
-        lnA = np.sum(A, axis=0)
-        Al = np.exp(lnA)
-        return Al
-
-    def cI_twi_exp(self, alpha, delta, airmass): 
-        # When the sun is above -20 altitude, some of its light will back-scatter 
-        # off the atmosphere into the field of view. (Fragelius thesis Eq. 4.27)
-        # no observations are made when sun is above -14 altitude.
-        if alpha > -20.: 
-            twi = (
-                    self.coeffs['t0'] * np.abs(alpha) + # CT2
-                    self.coeffs['t1'] * alpha**2 +      # CT1
-                    self.coeffs['t2'] * delta**2 +      # CT3
-                    self.coeffs['t3'] * delta           # CT4
-                    ) * np.exp(-self.coeffs['t4'] * airmass)
-        else: 
-            twi = np.zeros(len(self.coeffs['t0'])) 
-        return twi
-
-    def deltaT(self, airmass): 
-        # effective transmission curve that accounts for the additional extinction 
-        # for observing at higher airmass (Fragelius thesis Eq. 4.24)
-        zen_ext = np.loadtxt(''.join([UT.code_dir(), 'dat/sky/ZenithExtinction-KPNO.dat']))
-        zen_wave = zen_ext[:,0]/10.
-        ext = zen_ext[:,1]
-        zext = interp1d(zen_wave, ext, bounds_error=False, fill_value='extrapolate')
-        k = zext(self.coeffs['wl'])
-        return 1 - (10**(-0.4*k) - 10**(-0.4*k*airmass))
+    :param sunalt:
+        sun altitude: 0 - 90 deg 
     
-    def cI_hour(self, hour_frac): 
-        # Fragelius thesis Eq. 4.26
-        levels = np.linspace(0,1,7)
-        idx = np.argmin(np.abs(levels - hour_frac))
+    :param sunsep: 
+        sun separation: 0 - 90 deg 
 
-        _hours = np.zeros(6)
-        _hours[idx] = 1
-
-        for i in range(1,6): 
-            if i == 1: 
-                hours = self.coeffs['c'+str(i+1)] * _hours[i]
-            else: 
-                hours += self.coeffs['c'+str(i+1)] * _hours[i]
-        return hours 
-
-    def cI_seas(self, month_frac): 
-        # Fragelius thesis Eq. 4.25 
-        mm = np.rint(month_frac)
-        if mm == 13: mm = 1
-        
-        _months = np.zeros(12) 
-        _months[int(mm-1)] = 1
-        
-        month_names = ['feb', 'mar', 'apr', 'may', 'jun', 'jul', 'sep', 'oct', 'nov', 'dec']
+    :return specsim_wave, Isky: 
+        returns wavelength [Angstrom] and sky surface brightness [$10^{-17} erg/cm^{2}/s/\AA/arcsec^2$]
+    '''
+    # initialize atmosphere model using hacked version of specsim.atmosphere.initialize 
+    specsim_sky     = _specsim_initialize('desi')
+    specsim_wave    = specsim_sky._wavelength # Ang
+    specsim_sky.airmass = airmass
+    specsim_sky.moon.moon_phase = np.arccos(2.*moonill - 1)/np.pi
+    specsim_sky.moon.moon_zenith = (90. - moonalt) * u.deg
+    specsim_sky.moon.separation_angle = moonsep * u.deg
     
-        for i, mon in zip(range(1,12),  month_names): 
-            if i == 1: 
-                months = self.coeffs[mon] * _months[i]
-            else: 
-                months += self.coeffs[mon] * _months[i]
-        return months 
+    # updated KS coefficients 
+    specsim_sky.moon.KS_CR = 458173.535128
+    specsim_sky.moon.KS_CM0 = 5.540103
+    specsim_sky.moon.KS_CM1 = 178.141045
 
-    def I_sf(self, mjd): 
-        # solar flux as a function of MJD 
-        solar_data = np.load(''.join([UT.code_dir(), 'dat/sky/solar_flux.npy'])) 
-        solar_flux = interp1d(solar_data['MJD'], solar_data['fluxobsflux'], bounds_error=False, fill_value=0)
-        return solar_flux(mjd) 
+    _sky = specsim_sky._surface_brightness_dict['dark'].copy()
+    _sky *= specsim_sky.extinction
 
-    def I_isl(self, gal_lat, gal_long): 
-        # returns float 
-        isl_data = pickle.load(open(''.join([UT.code_dir(), 'dat/sky/isl_map.p']),'rb'))
-        return isl_data(gal_long, gal_lat)[0]
-
-    def I_zodi(self, ecl_lat): 
-        zodi_data = pickle.load(open(''.join([UT.code_dir(), 'dat/sky/s10_zodi.p']),'rb'))
-        return zodi_data(np.abs(ecl_lat))
-
-    def _readCoeffs(self): 
-        ''' read the coefficients of the model 
-        '''
-        f = ''.join([UT.code_dir(), 'dat/sky/MoonResults.csv']) 
-
-        coeffs = pd.DataFrame.from_csv(f)
-        coeffs.columns = [
-                'wl', 'model', 'data_var', 'unexplained_var',' X2', 'rX2', 
-                'c0', 'c_am', 'tau', 'tau2', 'c_zodi', 'c_isl', 'sol', 'I', 
-                't0', 't1', 't2', 't3', 't4', 'm0', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 
-                'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 
-                'c2', 'c3', 'c4', 'c5', 'c6'
-                ]
-        # keep moon models
-        self.coeffs = coeffs[coeffs['model'] == 'moon']
-
-        # order based on wavelengths for convenience
-        self.wave_sort = np.argsort(np.array(self.coeffs['wl']))  
-        
-        for k in self.coeffs.keys(): 
-            self.coeffs[k] = np.array(self.coeffs[k])[self.wave_sort]
-
-        return None 
+    I_ks_rescale = specsim_sky.surface_brightness
+    Isky = I_ks_rescale.value
+    
+    # twilight contribution 
+    if sunalt > -20.: 
+        w_twi, I_twi = _cI_twi(sunalt, sunsep, airmass)
+        I_twi /= np.pi
+        I_twi_interp = interp1d(10. * w_twi, I_twi, fill_value='extrapolate')
+        Isky += np.clip(I_twi_interp(specsim_wave), 0, None) 
+    return specsim_wave, Isky
 
 
-class skySpec_manual(skySpec): 
-    def __init__(self, airmass, ecl_lat, gal_lat, gal_lon, tai, sun_alt, sun_sep, moon_phase, moon_ill, moon_sep, moon_alt):
-        # prase the input parameters 
-        self.X = airmass    # air mass 
-        self.beta = ecl_lat # ecliptic latitude ( used for zodiacal light contribution ) 
-        self.l = gal_lat    # galactic latitude ( used for ISL contribution ) 
-        self.b = gal_lon    # galactic longitude ( used for ISL contribution ) 
-        obs_time = tai/86400.       # used to calculate mjd 
-        _kpno = EarthLocation.of_site('kitt peak')
-        start_time = Time(obs_time, scale='tai', format='mjd', location=_kpno)
-        self.obs_time = start_time
-        self.mjd = start_time.mjd   # mjd ( used for solar flux contribution ) 
-        # fractional months ( used for seasonal contribution) 
-        self.month_frac = start_time.datetime.month + start_time.datetime.day/30. 
-        
-        # fractional hour ( used for hourly contribution) 
-        self.kpno = Observer(_kpno)
-        sun_rise = self.kpno.sun_rise_time(start_time, which='next')
-        sun_set = self.kpno.sun_set_time(start_time, which='previous')
-        hour = ((start_time - sun_set).sec)/3600.
-        self.hour_frac = hour/((Time(sun_rise, format='mjd') - Time(sun_set,format = 'mjd')).sec/3600.)
+def Isky_parker(airmass, ecl_lat, gal_lat, gal_lon, tai, sun_alt, sun_sep, moon_phase, moon_ill, moon_alt, moon_sep): 
+    ''' Parker's sky model, which is a function of: 
 
-        self.alpha = sun_alt    # sun altitude
-        self.delta = sun_sep    # sun separation (separation between the target and the sun's location)
-        
-        # used for scattered moonlight
-        self.g = moon_phase     # moon phase 
-        self.altm = moon_alt
-        self.illm = moon_ill
-        self.delm = moon_sep
-        self._readCoeffs()
+    :param airmass: 
+        airmass
+
+    :param ecl_lat: 
+        ecliptic latitude (used for zodiacal light contribution) 
+
+    :param gal_lat: 
+        galactic latitude (used for ISL contribution) 
+    
+    :param gal_lon: 
+        galactic longitude (used for ISL contribution) 
+
+    :param tai: 
+        time in seconds 
+    
+    :param sunalt:
+        sun altitude: 0 - 90 deg 
+    
+    :param sunsep: 
+        sun separation: 0 - 90 deg 
+    
+    :param moonill:  
+        moon illumination fraction: 0 - 1 
+    
+    :param moonalt:  
+        moon altitude: 0 - 90 deg 
+    
+    :param moonsep:  
+        moon separation angle: 0 - 180 deg 
+    
+    '''
+    from astropy.coordinates import EarthLocation
+    X = airmass    # air mass 
+    beta = ecl_lat # ecliptic latitude ( used for zodiacal light contribution ) 
+    l = gal_lat    # galactic latitude ( used for ISL contribution ) 
+    b = gal_lon    # galactic longitude ( used for ISL contribution ) 
+
+    _kpno = EarthLocation.of_site('kitt peak')
+    obs_time = Time(tai/86400., scale='tai', format='mjd', location=_kpno)
+    mjd = obs_time.mjd
+
+    # fractional months ( used for seasonal contribution) 
+    month_frac = obs_time.datetime.month + obs_time.datetime.day/30. 
+    
+    # fractional hour ( used for hourly contribution) 
+    kpno = Observer(_kpno)
+    sun_rise    = kpno.sun_rise_time(obs_time, which='next')
+    sun_set     = kpno.sun_set_time(obs_time, which='previous')
+    hour        = ((obs_time - sun_set).sec)/3600.
+    hour_frac   = hour/((Time(sun_rise, format='mjd') - Time(sun_set,format = 'mjd')).sec/3600.)
+
+    alpha = sun_alt    # sun altitude
+    delta = sun_sep    # sun separation (separation between the target and the sun's location)
+    
+    # used for scattered moonlight
+    g = moon_phase     # moon phase 
+    altm = moon_alt
+    illm = moon_ill
+    delm = moon_sep
+    
+    # get coefficients 
+    coeffs = _read_parkerCoeffs()
+
+    # sky continuum 
+    _w, _Icont = _parker_Icontinuum(coeffs, X, beta, l, b, mjd, month_frac, hour_frac, alpha, delta, altm, illm, delm, g)
+    S_continuum = _Icont / np.pi  # BOSS has 2 arcsec diameter
+
+    # sky emission from the UVES continuum subtraction
+    w_uves, S_uves = np.loadtxt(''.join([UT.code_dir(), 'dat/sky/UVES_sky_emission.dat']), 
+            unpack=True, usecols=[0,1]) 
+    f_uves = interp1d(w_uves, S_uves, bounds_error=False, fill_value='extrapolate')
+    S_emission = f_uves(_w)
+
+    return _w, S_continuum + S_emission 
 
 
-def specsim_initialize(config): 
+def Isky_parker_radecobs(ra, dec, obs_time): 
+    ''' wrapper for Isky_parker, where the input parameters are calculated based
+    on RA, Dec, and obs_time 
+    '''
+    from astropy.coordinates import EarthLocation, SkyCoord, AltAz, get_sun, get_moon
+ 
+    download_IERS_A()
+    # target coordinates 
+    coord = SkyCoord(ra=ra * u.deg, dec=dec * u.deg) 
+    # observed time (UTC)          
+    utc_time = Time(obs_time)
+    kpno = EarthLocation.of_site('kitt peak')
+
+    kpno_altaz = AltAz(obstime=utc_time, location=kpno) 
+    coord_altaz = coord.transform_to(kpno_altaz)
+
+    airmass = coord_altaz.secz
+    elc_lat = coord.barycentrictrueecliptic.lat.deg
+    gal_lat = coord.galactic.l.deg   # galactic latitude ( used for ISL contribution ) 
+    gal_lon = coord.galactic.b.deg   # galactic longitude ( used for ISL contribution ) 
+
+    tai = utc_time.tai   
+
+    # sun altitude (degrees)
+    sun = get_sun(utc_time) 
+    sun_altaz   = sun.transform_to(kpno_altaz) 
+    sunalt      = sun_altaz.alt.deg
+    # sun separation
+    sunsep      = sun.separation(coord).deg
+
+    # used for scattered moonlight
+    moon = get_moon(utc_time)
+    moon_altaz = moon.transform_to(kpno_altaz) 
+    moon_alt = moon_altaz.alt.deg 
+    moon_sep = moon.separation(coord).deg #coord.separation(self.moon).deg
+            
+    elongation  = sun.separation(moon)
+    phase       = np.arctan2(sun.distance * np.sin(elongation), moon.distance - sun.distance*np.cos(elongation))
+    moon_phase  = phase.value
+    moon_ill    = (1. + np.cos(phase))/2.
+    return Isky_parker(airmass, ecl_lat, gal_lat, gal_lon, tai, sun_alt, sun_sep, moon_phase, moon_ill, moon_alt, moon_sep)
+
+
+def _specsim_initialize(config): 
+    ''' hacked version of specsim.atmosphere.initialize, which initializes the 
+    atmosphere model from configuration parameters.
+    '''
     if specsim.config.is_string(config):
         config = specsim.config.load_config(config)
 
@@ -358,7 +225,7 @@ def specsim_initialize(config):
         moon_spectrum = config.load_table(moon_config, 'flux')
         c = config.get_constants(moon_config,
             ['moon_zenith', 'separation_angle', 'moon_phase'])
-        moon = specsimMoon(
+        moon = _Moon(
             config.wavelength, moon_spectrum, extinction_coefficient,
             atm_config.airmass, c['moon_zenith'], c['separation_angle'],
             c['moon_phase'])
@@ -386,29 +253,17 @@ def specsim_initialize(config):
     return atmosphere
 
 
-class specsimMoon(Moon): 
+class _Moon(Moon): 
     ''' specimsim.atmosphere.Moon object hacked to work with a Krisciunas & Schaefer (1991)
     model with extra free parameters
     '''
     def __init__(self, wavelength, moon_spectrum, extinction_coefficient,
             airmass, moon_zenith, separation_angle, moon_phase):
-        self._wavelength = wavelength
-        self._moon_spectrum = moon_spectrum
-        self._extinction_coefficient = extinction_coefficient
+        # initialize via super function 
+        super().__init__(wavelength, moon_spectrum, extinction_coefficient,
+                airmass, moon_zenith, separation_angle, moon_phase)
 
-        # Calculate the V-band extinction of the moon spectrum.
-        self._vband = speclite.filters.load_filter('bessell-V')
-        V = self._vband.get_ab_magnitude(moon_spectrum, wavelength)
-        extinction = 10 ** (-extinction_coefficient / 2.5)
-        Vstar = self._vband.get_ab_magnitude(
-            moon_spectrum * extinction, wavelength)
-        self._vband_extinction = Vstar - V
-
-        # Initialize the model parameters.
-        self.airmass = airmass
-        self.moon_zenith = moon_zenith
-        self.separation_angle = separation_angle
-        self.moon_phase = moon_phase
+        # default KS coefficients 
         self.KS_CR = 10**5.36 # proportionality constant in the Rayleigh scattering function 
         # constants for the Mie scattering function term 
         self.KS_CM0 = 6.15 
@@ -439,6 +294,7 @@ class specsimMoon(Moon):
         area = 1 * u.arcsec ** 2
         self._surface_brightness *= 10 ** (
             -(self._scattered_V * area - raw_V) / (2.5 * u.mag)) / area
+
     @property
     def KS_CR(self):
         return self._KS_CR
@@ -465,70 +321,6 @@ class specsimMoon(Moon):
     def KS_CM1(self, ks_cm1):
         self._KS_CM1 = ks_cm1 
         self._update_required = True
-
-
-def _Isky(airmass, moonill, moonalt, moonsep): 
-    ''' sky surface brightness. stream-lined verison of specsim.atmosphere.Atmosphere surface brightness
-    calculation. 
-    '''
-    # translate moon parameter inputs 
-    moon_phase = np.arccos(2.*moonill - 1)/np.pi
-    moon_zenith = (90. - moonalt) * u.deg
-    separation_angle = moonsep * u.deg
-
-    # load supporting data  
-    skydata = pickle.load(open(os.path.join(UT.dat_dir(), 'data4skymodel.p'), 'rb')) 
-    wavelength              = skydata['wavelength'] 
-    Idark                   = skydata['darksky_surface_brightness'] # nominal dark sky surface brightness
-    extinction_coefficient  = skydata['extinction_coefficient']         
-    seeing                  = skydata['seeing'] 
-    moon_spectrum           = skydata['moon_spectrum'] 
-
-    extinction = 10 ** (-extinction_coefficient * airmass / 2.5)
-
-    _Imoon = Imoon(wavelength, moon_spectrum, extinction_coefficient,
-            airmass, moon_zenith, separation_angle, moon_phase)
-
-    sky = extinction * Idark + _Imoon
-    return wavelength.value, sky
-
-
-def Imoon(wavelength, moon_spectrum, extinction_coefficient, airmass, moon_zenith, separation_angle, moon_phase): 
-    ''' moon surface brightness. stream-lined verison of specsim.atmosphere.Atmosphere surface brightness
-    calculation. 
-    '''
-    KS_CR = 458173.535128
-    KS_CM0 = 5.540103
-    KS_CM1 = 178.141045
-
-    obs_zenith = np.arcsin(np.sqrt((1 - airmass ** -2) / 0.96)) * u.rad
-
-    _vband = speclite.filters.load_filter('bessell-V')
-    V = _vband.get_ab_magnitude(moon_spectrum, wavelength)
-
-    extinction = 10 ** (-extinction_coefficient / 2.5)
-
-    Vstar = _vband.get_ab_magnitude(moon_spectrum * extinction, wavelength)
-    vband_extinction = Vstar - V
-
-    # Calculate the V-band surface brightness of scattered moonlight.
-    scattered_V = krisciunas_schaefer_free(
-        obs_zenith, moon_zenith, separation_angle,
-        moon_phase, vband_extinction, KS_CR, KS_CM0, KS_CM1)
-
-    # Calculate the wavelength-dependent extinction of moonlight
-    # scattered once into the observed field of view.
-    scattering_airmass = (1 - 0.96 * np.sin(moon_zenith) ** 2) ** (-0.5)
-    extinction = (
-        10 ** (-extinction_coefficient * scattering_airmass / 2.5) *
-        (1 - 10 ** (-extinction_coefficient * airmass / 2.5)))
-    surface_brightness = moon_spectrum * extinction
-
-    # Renormalized the extincted spectrum to the correct V-band magnitude.
-    raw_V = _vband.get_ab_magnitude(surface_brightness, wavelength) * u.mag
-    area = 1 * u.arcsec ** 2
-    surface_brightness *= 10 ** ( -(scattered_V * area - raw_V) / (2.5 * u.mag)) / area
-    return surface_brightness
 
 
 def krisciunas_schaefer_free(obs_zenith, moon_zenith, separation_angle, moon_phase,
@@ -605,38 +397,6 @@ def krisciunas_schaefer_free(obs_zenith, moon_zenith, separation_angle, moon_pha
             u.mag / (u.arcsec ** 2))
 
 
-def sky_KSrescaled_twi(airmass, moonill, moonalt, moonsep, sun_alt, sun_sep):
-    ''' calculate sky brightness using rescaled KS coefficients plus a twilight
-    factor from Parker. 
-
-    :return specsim_wave, Isky: 
-        returns wavelength [Angstrom] and sky surface brightness [$10^{-17} erg/cm^{2}/s/\AA/arcsec^2$]
-    '''
-    specsim_sky = specsim_initialize('desi')
-    specsim_wave = specsim_sky._wavelength # Ang
-    specsim_sky.airmass = airmass
-    specsim_sky.moon.moon_phase = np.arccos(2.*moonill - 1)/np.pi
-    specsim_sky.moon.moon_zenith = (90. - moonalt) * u.deg
-    specsim_sky.moon.separation_angle = moonsep * u.deg
-    
-    # updated KS coefficients 
-    specsim_sky.moon.KS_CR = 458173.535128
-    specsim_sky.moon.KS_CM0 = 5.540103
-    specsim_sky.moon.KS_CM1 = 178.141045
-
-    _sky = specsim_sky._surface_brightness_dict['dark'].copy()
-    _sky *= specsim_sky.extinction
-
-    I_ks_rescale = specsim_sky.surface_brightness
-    Isky = I_ks_rescale.value
-    if sun_alt > -20.: # adding in twilight
-        w_twi, I_twi = _cI_twi(sun_alt, sun_sep, airmass)
-        I_twi /= np.pi
-        I_twi_interp = interp1d(10. * w_twi, I_twi, fill_value='extrapolate')
-        Isky += np.clip(I_twi_interp(specsim_wave), 0, None) 
-    return specsim_wave, Isky
-
-
 def _cI_twi(alpha, delta, airmass):
     ''' twilight contribution
 
@@ -645,6 +405,8 @@ def _cI_twi(alpha, delta, airmass):
     :param delta: 
 
     :param airmass: 
+    
+    :retrun wave: 
 
     :return twi: 
 
@@ -663,7 +425,6 @@ def _cI_twi(alpha, delta, airmass):
 def _twilight_coeffs(): 
     ''' save twilight coefficients from Parker
     '''
-    import pandas as pd
     f = os.path.join(UT.code_dir(), 'dat', 'sky', 'MoonResults.csv')
 
     coeffs = pd.DataFrame.from_csv(f)
@@ -688,4 +449,256 @@ def _twilight_coeffs():
     ftwi = os.path.join(UT.dat_dir(), 'sky', 'twilight_coeffs.p')
     pickle.dump(twi, open(ftwi, 'wb'))
     return None 
+
+
+##########################################################################
+# contributions to parker's sky surface brightness model  
+##########################################################################
+def _read_parkerCoeffs(): 
+    ''' read the coefficients of parker's model 
+    '''
+    f = ''.join([UT.code_dir(), 'dat/sky/MoonResults.csv']) 
+
+    _coeffs = pd.DataFrame.from_csv(f)
+    _coeffs.columns = [
+            'wl', 'model', 'data_var', 'unexplained_var',' X2', 'rX2', 
+            'c0', 'c_am', 'tau', 'tau2', 'c_zodi', 'c_isl', 'sol', 'I', 
+            't0', 't1', 't2', 't3', 't4', 'm0', 'm1', 'm2', 'm3', 'm4', 'm5', 'm6', 
+            'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec', 
+            'c2', 'c3', 'c4', 'c5', 'c6'
+            ]
+    # keep moon models
+    coeffs = _coeffs[coeffs['model'] == 'moon']
+
+    # order based on wavelengths for convenience
+    wave_sort = np.argsort(np.array(coeffs['wl']))  
+    
+    for k in coeffs.keys(): 
+        coeffs[k] = np.array(coeffs[k])[wave_sort]
+
+    return coeffs
+
+
+def _parker_Icontinuum(coeffs, X, beta, l, b, mjd, month_frac, hour_frac, alpha, delta, altm, illm, delm, g): 
+    ''' sky continuum (Fragelius thesis Eq. 4.23)
+    '''
+    # airmass contrib.  
+    _Iairmass = coeffs['c_am'] * X  
+
+    # zodiacal contrib. (func. of ecliptic latitude) 
+    _Izodiacal = coeffs['c_zodi'] * _parker_Izodi(beta)
+    
+    _Iisl = coeffs['c_isl'] * _parker_Iisl(l, b) 
+
+    _Isolar_flux = coeffs['sol'] * _parker_Isf(mjd - coeffs['I']) 
+
+    _Iseasonal = _parker_cI_seas(month_frac, coeffs) 
+
+    _Ihourly = _parker_cI_hour(hour_frac, coeffs)
+
+    _dT = _parker_deltaT(X, coeffs) 
+    
+    # When the sun is above -20 altitude, some of its light will back-scatter 
+    # off the atmosphere into the field of view. (Fragelius thesis Eq. 4.27)
+    _Itwilight = _parker_cI_twi_exp(alpha, delta, X, coeffs) 
+
+    # light from the moon that is scattered into our field of view (Fragelius thesis Eq. 4.28, 4.29)
+    _Imoon = _parker_cI_moon_exp(altm, illm, delm, g, X, coeffs)
+
+    _Iadd_continuum = coeffs['c0']
+
+    # I_continuum(lambda)
+    Icont = (_Iairmass + _Izodiacal + _Iisl + _Isolar_flux + _Iseasonal + _Ihourly + _Iadd_continuum) * _dT + _Itwilight + _Imoon
+
+    return 10*coeffs['wl'], np.array(Icont)
+
+
+def _parker_cI_moon_exp(altm, illm, deltam, g, airmass, coeffs): 
+    ''' light from the moon that is scattered into our field of view (Fragelius thesis Eq. 4.28, 4.29)
+    '''
+    Alambda = _parker_albedo(g, coeffs) # albedo factor 
+
+    moon = (coeffs['m0'] * altm**2 + 
+            coeffs['m1'] * altm + 
+            coeffs['m2'] * illm**2 + 
+            coeffs['m3'] * illm + 
+            coeffs['m4'] * deltam**2 + 
+            coeffs['m5'] * deltam 
+            ) * Alambda * np.exp(-coeffs['m6'] * airmass) 
+    return moon
+
+
+def _parker_albedo(g, coeffs): 
+    ''' albedo, i.e. reflectivity of the moon (Fragelius thesis Eq. 4.28)
+    g is the lunar phase (g = 0 for full moon and 180 for new moon) 
+    '''
+    albedo_table = pd.read_csv(''.join([UT.code_dir(), 'dat/sky/albedo_constants.csv']), 
+            delim_whitespace=True) 
+    albedo_constants = {}
+    for col in list(albedo_table):
+        line = interp1d(albedo_table['WAVELENGTH'], albedo_table[col], 
+                bounds_error=False, fill_value=0)
+        albedo_constants[col] = line 
+
+    p1 = 4.06054
+    p2 = 12.8802
+    p3 = -30.5858
+    p4 = 16.7498
+    A = []
+    for i in range(4):
+        A.append(albedo_constants['a%d'%i](coeffs['wl'])*(g**i))
+    A.append(albedo_constants['d1'](coeffs['wl']) * np.exp(-g/p1))
+    A.append(albedo_constants['d2'](coeffs['wl']) * np.exp(-g/p2))
+    A.append(albedo_constants['d3'](coeffs['wl']) * np.cos((g - p3)/p4))
+    lnA = np.sum(A, axis=0)
+    Al  = np.exp(lnA)
+    return Al
+
+
+def _parker_cI_twi_exp(alpha, delta, airmass, coeffs): 
+    ''' When the sun is above -20 altitude, some of its light will back-scatter 
+    off the atmosphere into the field of view. (Fragelius thesis Eq. 4.27)
+    no observations are made when sun is above -14 altitude.
+    '''
+    if alpha > -20.: 
+        twi = (
+                coeffs['t0'] * np.abs(alpha) + # CT2
+                coeffs['t1'] * alpha**2 +      # CT1
+                coeffs['t2'] * delta**2 +      # CT3
+                coeffs['t3'] * delta           # CT4
+                ) * np.exp(-coeffs['t4'] * airmass)
+    else: 
+        twi = np.zeros(len(coeffs['t0'])) 
+    return twi
+
+
+def _parker_deltaT(airmass, coeffs): 
+    '''effective transmission curve that accounts for the additional extinction 
+    for observing at higher airmass (Fragelius thesis Eq. 4.24)
+    '''
+    zen_ext = np.loadtxt(''.join([UT.code_dir(), 'dat/sky/ZenithExtinction-KPNO.dat']))
+    zen_wave = zen_ext[:,0]/10.
+    ext = zen_ext[:,1]
+    zext = interp1d(zen_wave, ext, bounds_error=False, fill_value='extrapolate')
+    k = zext(coeffs['wl'])
+    return 1 - (10**(-0.4*k) - 10**(-0.4*k*airmass))
+
+
+def _parker_cI_hour(hour_frac, coeffs): 
+    ''' Fragelius thesis Eq. 4.26
+    '''
+    levels = np.linspace(0,1,7)
+    idx = np.argmin(np.abs(levels - hour_frac))
+
+    _hours = np.zeros(6)
+    _hours[idx] = 1
+
+    for i in range(1,6): 
+        if i == 1: 
+            hours = coeffs['c'+str(i+1)] * _hours[i]
+        else: 
+            hours += coeffs['c'+str(i+1)] * _hours[i]
+    return hours 
+
+
+def _parker_cI_seas(month_frac, coeffs): 
+    # Fragelius thesis Eq. 4.25 
+    mm = np.rint(month_frac)
+    if mm == 13: mm = 1
+    
+    _months = np.zeros(12) 
+    _months[int(mm-1)] = 1
+    
+    month_names = ['feb', 'mar', 'apr', 'may', 'jun', 'jul', 'sep', 'oct', 'nov', 'dec']
+
+    for i, mon in zip(range(1,12),  month_names): 
+        if i == 1: 
+            months = coeffs[mon] * _months[i]
+        else: 
+            months += coeffs[mon] * _months[i]
+    return months 
+
+
+def _parker_Isf(mjd): 
+    # solar flux as a function of MJD 
+    solar_data = np.load(''.join([UT.code_dir(), 'dat/sky/solar_flux.npy'])) 
+    solar_flux = interp1d(solar_data['MJD'], solar_data['fluxobsflux'], bounds_error=False, fill_value=0)
+    return solar_flux(mjd) 
+
+
+def _parker_Iisl(gal_lat, gal_long): 
+    # returns float 
+    isl_data = pickle.load(open(''.join([UT.code_dir(), 'dat/sky/isl_map.p']),'rb'))
+    return isl_data(gal_long, gal_lat)[0]
+
+
+def _parker_Izodi(ecl_lat): 
+    zodi_data = pickle.load(open(''.join([UT.code_dir(), 'dat/sky/s10_zodi.p']),'rb'))
+    return zodi_data(np.abs(ecl_lat))
+
+
+"""
+    def Isky_notwi(airmass, moonill, moonalt, moonsep): 
+        ''' sky surface brightness given airmass, moon illumination, moon altitude, and moon separation. 
+        stream-lined verison of specsim.atmosphere.Atmosphere surface brightness calculation. 
+        '''
+        # translate moon parameter inputs 
+        moon_phase = np.arccos(2.*moonill - 1)/np.pi
+        moon_zenith = (90. - moonalt) * u.deg
+        separation_angle = moonsep * u.deg
+
+        # load supporting data  
+        skydata = pickle.load(open(os.path.join(UT.dat_dir(), 'data4skymodel.p'), 'rb')) 
+        wavelength              = skydata['wavelength'] 
+        Idark                   = skydata['darksky_surface_brightness'] # nominal dark sky surface brightness
+        extinction_coefficient  = skydata['extinction_coefficient']         
+        seeing                  = skydata['seeing'] 
+        moon_spectrum           = skydata['moon_spectrum'] 
+
+        extinction = 10 ** (-extinction_coefficient * airmass / 2.5)
+
+        _Imoon = Imoon(wavelength, moon_spectrum, extinction_coefficient,
+                airmass, moon_zenith, separation_angle, moon_phase)
+
+        sky = extinction * Idark + _Imoon
+        return wavelength.value, sky
+
+
+    def Imoon(wavelength, moon_spectrum, extinction_coefficient, airmass, moon_zenith, separation_angle, moon_phase): 
+        ''' moon surface brightness. stream-lined verison of specsim.atmosphere.Atmosphere surface brightness
+        calculation. 
+        '''
+        KS_CR = 458173.535128
+        KS_CM0 = 5.540103
+        KS_CM1 = 178.141045
+
+        obs_zenith = np.arcsin(np.sqrt((1 - airmass ** -2) / 0.96)) * u.rad
+
+        _vband = speclite.filters.load_filter('bessell-V')
+        V = _vband.get_ab_magnitude(moon_spectrum, wavelength)
+
+        extinction = 10 ** (-extinction_coefficient / 2.5)
+
+        Vstar = _vband.get_ab_magnitude(moon_spectrum * extinction, wavelength)
+        vband_extinction = Vstar - V
+
+        # Calculate the V-band surface brightness of scattered moonlight.
+        scattered_V = krisciunas_schaefer_free(
+            obs_zenith, moon_zenith, separation_angle,
+            moon_phase, vband_extinction, KS_CR, KS_CM0, KS_CM1)
+
+        # Calculate the wavelength-dependent extinction of moonlight
+        # scattered once into the observed field of view.
+        scattering_airmass = (1 - 0.96 * np.sin(moon_zenith) ** 2) ** (-0.5)
+        extinction = (
+            10 ** (-extinction_coefficient * scattering_airmass / 2.5) *
+            (1 - 10 ** (-extinction_coefficient * airmass / 2.5)))
+        surface_brightness = moon_spectrum * extinction
+
+        # Renormalized the extincted spectrum to the correct V-band magnitude.
+        raw_V = _vband.get_ab_magnitude(surface_brightness, wavelength) * u.mag
+        area = 1 * u.arcsec ** 2
+        surface_brightness *= 10 ** ( -(scattered_V * area - raw_V) / (2.5 * u.mag)) / area
+        return surface_brightness
+"""
 
