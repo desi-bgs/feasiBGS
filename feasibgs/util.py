@@ -7,6 +7,7 @@ import os
 import sys
 import subprocess
 import numpy as np
+from astropy.io import fits 
 
 
 def check_env(): 
@@ -77,6 +78,25 @@ def paper_dir():
     ''' directory for paper related stuff 
     '''
     return fig_dir().split('fig')[0]+'paper/'
+
+
+def readDESIspec(ffits): 
+    ''' read DESI spectra fits file
+
+    :params ffits: 
+        name of fits file  
+    
+    :returns spec:
+        dictionary of spectra
+    '''
+    fitobj = fits.open(ffits)
+    
+    spec = {} 
+    for i_k, k in enumerate(['wave', 'flux', 'ivar']): 
+        spec[k+'_b'] = fitobj[2+i_k].data
+        spec[k+'_r'] = fitobj[7+i_k].data
+        spec[k+'_z'] = fitobj[12+i_k].data
+    return spec 
 
 
 def nersc_submit_job(fjob): 

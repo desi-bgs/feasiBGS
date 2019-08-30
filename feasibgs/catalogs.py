@@ -71,7 +71,7 @@ class GAMA(Catalog):
         for dkey, grp in zip(['photo', 'spec', 'kcorr_z0.0', 'kcorr_z0.1'], [grp_p, grp_s, grp_k0, grp_k1]): 
             data[dkey] = {} 
             for key in grp.keys():
-                data[dkey][key] = grp[key].value 
+                data[dkey][key] = grp[key][...]
         return data 
     
     def _File(self, field, data_release=3): 
@@ -175,21 +175,21 @@ class GAMA(Catalog):
         # store photometry data in photometry group 
         grp_p = f.create_group('photo') 
         for key in gama_p.names:
-            grp_p.create_dataset(key.lower(), data=gama_p[key][sample_cut]) 
+            self._h5py_create_dataset(grp_p, key, gama_p[key][sample_cut])
 
         # store spectroscopic data in spectroscopic group 
         grp_s = f.create_group('spec') 
         for key in gama_s.names:
-            grp_s.create_dataset(key.lower(), data=gama_s[key][s_match]) 
+            self._h5py_create_dataset(grp_s, key, gama_s[key][s_match])
 
         # store kcorrect data in kcorrect groups
         grp_k0 = f.create_group('kcorr_z0.0') 
         for key in gama_k0.names: 
-            grp_k0.create_dataset(key.lower(), data=gama_k0[key][k_match]) 
+            self._h5py_create_dataset(grp_k0, key, gama_k0[key][k_match])
 
         grp_k1 = f.create_group('kcorr_z0.1') 
         for key in gama_k1.names:
-            grp_k1.create_dataset(key.lower(), data=gama_k1[key][k_match]) 
+            self._h5py_create_dataset(grp_k1, key, gama_k1[key][k_match])
         f.close() 
         return None 
 
@@ -225,6 +225,21 @@ class GAMA(Catalog):
         f = fits.open(fitsfile)
         f.verify('fix') 
         return f[1].data
+
+    def _h5py_create_dataset(self, grp, key, data): 
+        ''' the arrays from the fits files do not play well with the new h5py 
+        and python3
+        '''
+        if isinstance(data, np.chararray): 
+            _chararray = np.array(data, dtype=h5py.special_dtype(vlen=str))
+            grp.create_dataset(key.lower(), data=_chararray) 
+        elif isinstance(data[0], np.bool_): 
+            _bool = np.zeros(len(data)).astype(bool) 
+            _bool[data] = True
+            grp.create_dataset(key.lower(), data=_bool)
+        else: 
+            grp.create_dataset(key.lower(), data=data)
+        return None 
 
 
 class GamaLegacy(Catalog): 
