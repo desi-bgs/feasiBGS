@@ -21,6 +21,21 @@ class Catalog(object):
     '''
     def __init__(self): 
         self.catalog = None 
+    
+    def _h5py_create_dataset(self, grp, key, data): 
+        ''' the arrays from the fits files do not play well with the new h5py 
+        and python3
+        '''
+        if isinstance(data, np.chararray) or isinstance(data[0], np.str_): 
+            _chararray = np.array(data, dtype=h5py.special_dtype(vlen=str))
+            grp.create_dataset(key.lower(), data=_chararray) 
+        elif isinstance(data[0], np.bool_): 
+            _bool = np.zeros(len(data)).astype(bool) 
+            _bool[data] = True
+            grp.create_dataset(key.lower(), data=_bool)
+        else: 
+            grp.create_dataset(key.lower(), data=data)
+        return None 
 
 
 class GAMA(Catalog):
@@ -64,7 +79,7 @@ class GAMA(Catalog):
             print('colums in GAMA kcorrects')
             print(sorted(grp_k0.keys()))
             print('========================')
-            print('%i objects' % len(grp_p['ra'].value)) 
+            print('%i objects' % len(grp_p['ra'][...])) 
             print('========================')
 
         data = {} 
@@ -226,21 +241,6 @@ class GAMA(Catalog):
         f.verify('fix') 
         return f[1].data
 
-    def _h5py_create_dataset(self, grp, key, data): 
-        ''' the arrays from the fits files do not play well with the new h5py 
-        and python3
-        '''
-        if isinstance(data, np.chararray): 
-            _chararray = np.array(data, dtype=h5py.special_dtype(vlen=str))
-            grp.create_dataset(key.lower(), data=_chararray) 
-        elif isinstance(data[0], np.bool_): 
-            _bool = np.zeros(len(data)).astype(bool) 
-            _bool[data] = True
-            grp.create_dataset(key.lower(), data=_bool)
-        else: 
-            grp.create_dataset(key.lower(), data=data)
-        return None 
-
 
 class GamaLegacy(Catalog): 
     ''' class to append imaging data from the Legacy survey DR7 for the objects 
@@ -305,14 +305,14 @@ class GamaLegacy(Catalog):
             print('colums in Legacy Data:') 
             print(sorted(grp_lp.keys()))
             print('========================')
-            print('%i objects' % len(grp_gp['ra'].value)) 
+            print('%i objects' % len(grp_gp['ra'][...])) 
 
         data = {} 
         for dk, grp in zip(['gama-photo', 'gama-spec', 'gama-kcorr-z0.0', 'gama-kcorr-z0.1', 'legacy-photo'], 
                 [grp_gp, grp_gs, grp_k0, grp_k1, grp_lp]):
             data[dk] = {} 
             for key in grp.keys():
-                data[dk][key] = grp[key].value 
+                data[dk][key] = grp[key][...]
         self.catalog = data.copy() 
         return data 
 
@@ -377,8 +377,8 @@ class GamaLegacy(Catalog):
         # loop through the files and only keep ones that spherematch with GAMA objects
         for i_f, f in enumerate(sweep_files): 
             # read in sweep object 
-            sweep = fits.open(''.join([sweep_dir, f]))[1].data
-            if not silent: print('matching %s' % ''.join([sweep_dir, f])) 
+            sweep = fits.open(os.path.join(sweep_dir, f.decode('unicode_escape')))[1].data
+            if not silent: print('matching %s' % os.path.join(sweep_dir, f.decode('unicode_escape'))) 
         
             # spherematch the sweep objects with GAMA objects 
             if len(sweep['ra']) > len(gama_data['photo']['ra']):
@@ -447,9 +447,9 @@ class GamaLegacy(Catalog):
         grp_lp = f.create_group('legacy-photo') 
     
         for key in sweep_dict.keys():
-            grp_lp.create_dataset(key, data=sweep_dict[key]) 
+            self._h5py_create_dataset(grp_lp, key, sweep_dict[key]) 
         for key in apflux_dict.keys(): # additional apflux data. 
-            grp_lp.create_dataset(key, data=apflux_dict[key]) 
+            self._h5py_create_dataset(grp_lp, key, apflux_dict[key]) 
         for key in gama_photo_dict.keys(): 
             grp_gp.create_dataset(key, data=gama_photo_dict[key]) 
         for key in gama_spec_dict.keys(): 

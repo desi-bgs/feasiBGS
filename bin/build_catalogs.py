@@ -15,7 +15,7 @@ def build_GAMA():
 
 
 def build_GamaLegacy():
-    galega = GamaLegacy()
+    galega = Cat.GamaLegacy()
     for field in ['g09', 'g12', 'g15']: 
         galega._Build(field, dr_gama=3, dr_legacy=7, sweep_dir=None, silent=False)
     return None 

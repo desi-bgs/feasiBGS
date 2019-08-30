@@ -38,7 +38,6 @@ from desisim import pixelsplines as pxs
 from desispec.spectra import Spectra
 from desispec.resolution import Resolution
 from desispec.interpolation import resample_flux
-from desitarget.cuts import isBGS_bright, isBGS_faint
 
 # -- local -- 
 from feasibgs import catalogs as Cat 
