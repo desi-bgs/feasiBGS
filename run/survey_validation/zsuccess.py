@@ -209,3 +209,68 @@ def zsuccess_fibermag_halpha(specfile='GALeg.g15.sourceSpec.3000.hdf5', expfile=
                 'GALeg.g15%s.zsuccess.min_deltachi2_%.f.fibermag_halpha.png' % (expfile.replace('.fits', '.sample%i.seed%i' % (iexp, seed)), min_deltachi2))
         fig.savefig(ffig, bbox_inches='tight') 
     return None 
+
+
+def zsuccess_TSreview(specfile, min_deltachi2=40.):
+    ''' redshift success rate from redrock for 3 different observing conditions and 
+    different exposure times 
+    '''
+    # read in noiseless spectra (for true redshift and r-band magnitude) 
+    _fspec = os.path.join(dir_dat, specfile)
+    fspec           = h5py.File(_fspec, 'r') 
+    ztrue           = fspec['gama-spec']['z'].value # true redshift 
+
+    r_mag_gama      = fspec['r_mag_gama'][...]
+    r_fibermag      = fspec['r_mag_apflux'][...]
+    r_mag_legacy    = UT.flux2mag(fspec['legacy-photo']['flux_r'].value, method='log')
+    
+    fig = plt.figure(figsize=(12, 4))
+    
+    texps = 60. * np.array([3, 5, 8, 12, 15]) # 3 to 15 min 
+
+    for iexp in range(3): 
+        sub = fig.add_subplot(1,3,iexp+1)
+        sub.plot([15., 22.], [1., 1.], c='k', ls='--', lw=2)
+
+        for itexp, texp in enumerate(texps): 
+            # read in redrock output  
+            frr = _fspec.replace('sourceSpec', 'bgsSpec').replace('.hdf5', '.TSreview.exp%i.texp_%.f.rr.fits' % (iexp, texp))
+            rr      = fits.open(frr)[1].data
+            zrr     = rr['Z']
+            dchi2   = rr['DELTACHI2']
+            zwarn   = rr['ZWARN']
+
+            # redshift success 
+            zsuccess_exp = UT.zsuccess(zrr, ztrue, zwarn, deltachi2=dchi2, min_deltachi2=min_deltachi2) 
+            wmean, rate, err_rate = UT.zsuccess_rate(r_mag_gama, zsuccess_exp, range=[15, 22], nbins=28, bin_min=10) 
+            sub.errorbar(wmean, rate, err_rate, fmt='.C%i' % itexp, elinewidth=2, markersize=10, 
+                    label=r'$t_{\rm exp} = %.fs$' % texp)
+            sub.plot(wmean, rate, color='C%i' % itexp)
+            #sub.fill_between(wmean, rate - err_rate, rate + err_rate, color='C%i' % itexp, linewidth=0, alpha=0.75)
+            #if iexp == 0: sub.fill_between([],[],[], color='C%i' % itexp, alpha=0.75, label=r'$t_{\rm exp} = %.fs$' % texp) 
+
+        sub.set_xlim([18.3, 20.]) 
+        sub.set_ylim([0.6, 1.1])
+        sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
+        if iexp != 0: sub.set_yticklabels([]) 
+        if iexp == 0: sub.text(0.95, 0.95, 'faint moon', ha='right', va='top', transform=sub.transAxes, fontsize=20)
+        if iexp == 1: sub.text(0.95, 0.95, 'bright moon', ha='right', va='top', transform=sub.transAxes, fontsize=20)
+        if iexp == 2: sub.text(0.95, 0.95, 'twilight', ha='right', va='top', transform=sub.transAxes, fontsize=20)
+        
+        if iexp == 0: sub.legend(loc='lower left', handletextpad=0.2, fontsize=12) 
+
+    bkgd = fig.add_subplot(111, frameon=False)
+    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    bkgd.set_xlabel(r'$r_{\rm GAMA}$ magnitude', labelpad=10, fontsize=25)
+    bkgd.set_ylabel(r'$z$ success rate', labelpad=10, fontsize=25)
+
+    fig.subplots_adjust(wspace=0.1)
+    ffig = os.path.join(dir_dat, 'GALeg.zsuccess.TSreview.png')
+    fig.savefig(ffig, bbox_inches='tight') 
+    ffig = os.path.join(dir_dat, 'GALeg_zsuccess_TSreview.pdf')
+    fig.savefig(ffig, bbox_inches='tight') 
+    return None 
+
+
+if __name__=="__main__": 
+    zsuccess_TSreview('GALeg.g15.sourceSpec.5000.hdf5', min_deltachi2=40.)

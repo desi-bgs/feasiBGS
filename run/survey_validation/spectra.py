@@ -48,7 +48,7 @@ def GALeg_sourceSpec(nsub, flag=None):
     redshift        = gleg['gama-spec']['z']
     absmag_ugriz    = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1
     r_mag_apflux    = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1]) # aperture flux
-    r_mag_gama      = gleg['gama-photo']['r_model'] # r-band magnitude from GAMA (SDSS) photometry
+    r_mag_gama      = gleg['gama-photo']['r_petro'] # r-band magnitude from GAMA (SDSS) photometry
     ha_gama         = gleg['gama-spec']['ha_flux'] # halpha line flux
 
     ngal = len(redshift) # number of galaxies
@@ -268,6 +268,11 @@ def GALeg_noisySpec_TSreview(specfile):
             Isky = Sky.Isky_newKS_twi(airmass[exp], moon_ill[exp], moon_alt[exp], moon_sep[exp], sun_alt[exp], sun_sep[exp])
             bgs = GALeg_noisySpec(specfile, texp, airmass[exp], Isky, filename=_fexp)
 
+            # read in noiseless source spectra
+            fspec = h5py.File(specfile, 'r') 
+            wave = fspec['wave'][...]
+            flux = fspec['flux'][...] 
+
             fig = plt.figure(figsize=(10,20))
             sub = fig.add_subplot(411) 
             sub.plot(Isky[0], Isky[1], c='C1') 
@@ -282,7 +287,7 @@ def GALeg_noisySpec_TSreview(specfile):
             for i in range(3): 
                 sub = fig.add_subplot(4,1,i+2)
                 for band in ['b', 'r', 'z']: 
-                    sub.plot(bgs['wave_%s' % band], bgs['flux_%s' % band][i], c='C1') 
+                    sub.plot(bgs.wave[band], bgs.flux[band][i], c='C1') 
                 sub.plot(wave, flux[i], c='k', ls=':', lw=1, label='no noise')
                 if i == 0: sub.legend(loc='upper right', fontsize=20)
                 sub.set_xlim([3e3, 1e4]) 
@@ -297,4 +302,4 @@ def GALeg_noisySpec_TSreview(specfile):
 
 if __name__=='__main__': 
     #GALeg_sourceSpec(5000)
-    #GALeg_noisySpec_TSreview(os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.hdf5')) 
+    GALeg_noisySpec_TSreview(os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.hdf5')) 
