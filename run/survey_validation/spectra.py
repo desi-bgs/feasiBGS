@@ -4,6 +4,7 @@ script for generating spectra (noiseless, BGS-like, etc) for SV prep work
 import os 
 import h5py 
 import numpy as np 
+import astropy.units as u 
 # -- feasibgs -- 
 from feasibgs import util as UT
 from feasibgs import skymodel as Sky 
@@ -139,13 +140,8 @@ def GALeg_noisySpec(specfile, exptime, airmass, Isky, filename=None):
 
 
 def GALeg_noisySpec_surveysim(specfile, expfile): 
-    ''' 
-    ***FIX THIS UP***
-    ***FIX THIS UP***
-    ***FIX THIS UP***
-    ***FIX THIS UP***
-    Given noiseless spectra, simulate DESI BGS noise based on observing
-    conditions provided by iexp of nexp sampled observing conditions 
+    ''' Simulate DESI BGS spectra using noiseless source spectra and based on the 
+    observing conditions sampled from surveysim output exposures.  
     '''
     # read in no noise spectra
     fspec = h5py.File(specfile, 'r') 
@@ -153,8 +149,7 @@ def GALeg_noisySpec_surveysim(specfile, expfile):
     flux = fspec['flux'][...] 
 
     # read in sampled exposures
-    _fsample = os.path.join(dir_dat, expfile) 
-    fexps       = h5py.File(_fsample, 'r')
+    fexps       = h5py.File(expfile, 'r')
     texp        = fexps['texp_total'][...]
     airmass     = fexps['airmass'][...]
     moon_ill    = fexps['moon_ill'][...]
@@ -168,7 +163,7 @@ def GALeg_noisySpec_surveysim(specfile, expfile):
     # sky brightness 
     wave_sky    = fexps['wave'][...]
     u_sb        = 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
-    sky         = fexps['sky'][...]
+    sky_sbright = fexps['sky'][...]
 
     print('--- simulate exposures with sky model ---') 
     for iexp in range(n_sample): 
@@ -178,23 +173,18 @@ def GALeg_noisySpec_surveysim(specfile, expfile):
         print('sun alt=%.f, sep=%.f' % (sun_alt[iexp], sun_sep[iexp]))
         print('seeing=%.2f, transp=%.2f' % (seeing[iexp], transp[iexp]))
 
+        Isky = [wave_sky, sky_sbright[iexp]]
+        
+        _fexp = specfile.replace('sourceSpec', 'bgsSpec').replace('.hdf5', '.%s' % os.path.basename(expfile).replace('.hdf5', '.exp%i.fits' % iexp))
+        print('constructing...')
+        print(_fexp) 
+
         # simulate the exposures 
-        fdesi = FM.fakeDESIspec()
-        f_bgs = os.path.join(dir_dat, 
-                specfile.replace('sourceSpec', 'bgsSpec').replace('.hdf5', '%s.sample%i.seed%i.fits' % (str_flag, iexp, seed)))
-        print(wave.shape)  
-        print(flux.shape)  
-        print(sky[iexp,:].shape) 
-        print(wave_sky.shape) 
-        bgs = fdesi.simExposure(wave, flux, 
-                exptime=texp[iexp], 
-                airmass=airmass[iexp],
-                skycondition={'name': 'input', 'sky': np.clip(sky[iexp,:], 0, None) * u_sb, 'wave': wave_sky}, 
-                filename=f_bgs)
+        bgs = GALeg_noisySpec(specfile, texp[iexp], airmass[iexp], Isky, filename=_fexp)
 
         fig = plt.figure(figsize=(10,20))
         sub = fig.add_subplot(411) 
-        sub.plot(wave_sky, sky[iexp], c='C1') 
+        sub.plot(wave_sky, sky_sbright[iexp], c='C1') 
         sub.text(0.05, 0.95, 
                 'texp=%.f, airmass=%.2f\nmoon ill=%.2f, alt=%.f, sep=%.f\nsun alt=%.f, sep=%.f\nseeing=%.1f, transp=%.1f' % 
                 (texp[iexp], airmass[iexp], moon_ill[iexp], moon_alt[iexp], moon_sep[iexp], 
@@ -215,7 +205,7 @@ def GALeg_noisySpec_surveysim(specfile, expfile):
         bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
         bkgd.set_xlabel('rest-frame wavelength [Angstrom]', labelpad=10, fontsize=25) 
         bkgd.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', labelpad=10, fontsize=25) 
-        fig.savefig(f_bgs.replace('.fits', '.png'), bbox_inches='tight') 
+        fig.savefig(_fexp.replace('.fits', '.png'), bbox_inches='tight') 
     return None 
 
 
@@ -302,4 +292,7 @@ def GALeg_noisySpec_TSreview(specfile):
 
 if __name__=='__main__': 
     #GALeg_sourceSpec(5000)
-    GALeg_noisySpec_TSreview(os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.hdf5')) 
+    #GALeg_noisySpec_TSreview(os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.hdf5')) 
+    GALeg_noisySpec_surveysim(
+            os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.hdf5'), 
+            os.path.join(dir_dat, 'exposures_surveysim_fork_150sv0p5.sample.seed0.hdf5'))
