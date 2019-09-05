@@ -91,7 +91,10 @@ def zsuccess_surveysim(specfile, expfile, min_deltachi2=40.):
             sub = fig.add_subplot(nrow, ncol, iexp+1)
             sub.plot([15., 22.], [1., 1.], c='k', ls='--', lw=2)
             sub.errorbar(wmean, rate, err_rate, fmt='.C0', elinewidth=2, markersize=10)
-            sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
+            if rname in ['r_mag', 'r_mag_legacy']: 
+                sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
+            else: 
+                sub.vlines(21., 0., 1.2, color='k', linestyle=':', linewidth=1)
             if rname == 'r_mag': 
                 sub.set_xlim([16.5, 20.]) 
             elif rname == 'r_mag_legacy': 
@@ -136,7 +139,7 @@ def zsuccess_surveysim(specfile, expfile, min_deltachi2=40.):
     return None 
 
 
-def zsuccess_fibermag_halpha(specfile='GALeg.g15.sourceSpec.3000.hdf5', expfile=None, seed=0, min_deltachi2=40.):
+def zsuccess_fibermag_halpha(specfile, expfile, min_deltachi2=40.):
     ''' plot the compiled redshift success rate for the redrock output 
     of BGS-like spectra for the nexp observing conditions
 
@@ -144,54 +147,91 @@ def zsuccess_fibermag_halpha(specfile='GALeg.g15.sourceSpec.3000.hdf5', expfile=
         noiseless source spectra file. (default: 'GALeg.g15.sourceSpec.3000.hdf5') 
     '''
     # read in noiseless spectra (for true redshift and r-band magnitude) 
-    _fspec = os.path.join(dir_dat, specfile)
-    fspec = h5py.File(_fspec, 'r') 
-    ztrue = fspec['gama-spec']['z'][...]
-    r_mag_legacy = UT.flux2mag(fspec['legacy-photo']['flux_r'].value)
+    fspec = h5py.File(specfile, 'r') 
+    ztrue   = fspec['gama-spec']['z'][...]
+
+    g_mag   = UT.flux2mag(fspec['legacy-photo']['flux_g'][...], method='log')
+    r_mag   = UT.flux2mag(fspec['legacy-photo']['flux_r'][...], method='log')
+    z_mag   = UT.flux2mag(fspec['legacy-photo']['flux_z'][...], method='log')
+    w1_mag  = UT.flux2mag(fspec['legacy-photo']['flux_w1'][...], method='log')
     
     # r-band fiber magnitude 
     r_fibermag = fspec['r_mag_apflux'][...]
     
     # halpha probe 
-    g_mag = UT.flux2mag(fspec['legacy-photo']['flux_g'][...], method='log')
-    r_mag = UT.flux2mag(fspec['legacy-photo']['flux_r'][...], method='log')
-    z_mag = UT.flux2mag(fspec['legacy-photo']['flux_z'][...], method='log')
-    w1_mag = UT.flux2mag(fspec['legacy-photo']['flux_w1'][...], method='log')
-    
     _halpha = (z_mag - w1_mag) - 3./2.5 * (g_mag - r_mag) + 1.2 
 
     # read in sampled exposures
-    _fexp = os.path.join(dir_dat, expfile)
-    fexps = h5py.File(_fexp.replace('.fits', '.sample.seed%i.hdf5' % seed), 'r') 
-    nexps = len(fexps['airmass'][...]) 
-    
-    for iexp in range(nexps): 
-        print('--- exposure %i ---' % iexp) 
-        print('%s' % ', '.join(['%s = %.2f' % (k, fexps[k][iexp]) 
-            for k in ['texp_total', 'airmass', 'moon_alt', 'moon_ill', 'moon_sep', 'sun_alt', 'sun_sep']]))
+    fexps = h5py.File(expfile, 'r') 
+    iexp = 0 # only the first exposrue
+
+    print('%s' % ', '.join(['%s = %.2f' % (k, fexps[k][iexp]) 
+        for k in ['texp_total', 'airmass', 'moon_alt', 'moon_ill', 'moon_sep', 'sun_alt', 'sun_sep']]))
             
-        # read in redrock outputs
-        f_bgs   = _fspec.replace('sourceSpec', 'bgsSpec').replace('.hdf5', '.sample%i.seed%i.rr.fits' % (iexp, seed))
-        rr      = fits.open(f_bgs)[1].data
-        zrr     = rr['Z']
-        dchi2   = rr['DELTACHI2']
-        zwarn   = rr['ZWARN']
+    # read in redrock outputs
+    f_bgs = specfile.replace('sourceSpec', 'bgsSpec').replace('.hdf5', '.%s' % os.path.basename(expfile).replace('.hdf5', '.exp%i.rr.fits' % iexp))
+    rr      = fits.open(f_bgs)[1].data
+    zrr     = rr['Z']
+    dchi2   = rr['DELTACHI2']
+    zwarn   = rr['ZWARN']
 
-        # redshift success 
-        zsuccess_exp = UT.zsuccess(zrr, ztrue, zwarn, deltachi2=dchi2, min_deltachi2=min_deltachi2) 
-        
-        fig = plt.figure(figsize=(5,5))
-        sub = fig.add_subplot(111)
-        sub.scatter(r_fibermag[zsuccess_exp], _halpha[zsuccess_exp], c='C0', s=2, label='$z$ success') 
-        sub.scatter(r_fibermag[~zsuccess_exp], _halpha[~zsuccess_exp], c='C1', s=2, label='$z$ fail') 
-        sub.set_xlabel('$r$-band fiber magnitude', fontsize=25) 
-        sub.set_xlim(18., 22.) 
-        sub.set_ylabel('$(z - W1) - 3/2.5 (g - r) + 1.2$', fontsize=25) 
-        sub.set_ylim(-1., 2.) 
+    # redshift success 
+    zsuccess_exp = UT.zsuccess(zrr, ztrue, zwarn, deltachi2=dchi2, min_deltachi2=min_deltachi2) 
 
-        ffig = os.path.join(dir_dat, 
-                'GALeg.g15%s.zsuccess.min_deltachi2_%.f.fibermag_halpha.png' % (expfile.replace('.fits', '.sample%i.seed%i' % (iexp, seed)), min_deltachi2))
-        fig.savefig(ffig, bbox_inches='tight') 
+    redherring = (r_mag < 18.5) 
+
+    high_sbright = (r_fibermag < 21.) 
+
+    fig = plt.figure(figsize=(16,5))
+
+    sub = fig.add_subplot(131)
+    sub.plot([15., 22.], [1., 1.], c='k', ls='--', lw=2)
+
+    wmean, rate, err_rate = UT.zsuccess_rate(r_mag, zsuccess_exp, range=[15, 22], nbins=28, bin_min=10) 
+    sub.errorbar(wmean, rate, err_rate, fmt='.k', elinewidth=2, markersize=10)
+    
+    zsuccess_exp_high_sbright = UT.zsuccess(
+            zrr[high_sbright], ztrue[high_sbright], zwarn[high_sbright], deltachi2=dchi2[high_sbright], min_deltachi2=min_deltachi2) 
+    wmean, rate, err_rate = UT.zsuccess_rate(r_mag[high_sbright], zsuccess_exp_high_sbright, range=[15, 22], nbins=28, bin_min=10) 
+    sub.errorbar(wmean, rate, err_rate, fmt='.C0', elinewidth=2, markersize=10, label=r'$r_{\rm fiber} < 21.$')
+
+    zsuccess_exp_low_sbright = UT.zsuccess(
+            zrr[~high_sbright], ztrue[~high_sbright], zwarn[~high_sbright], deltachi2=dchi2[~high_sbright], min_deltachi2=min_deltachi2) 
+    wmean, rate, err_rate = UT.zsuccess_rate(r_mag[~high_sbright], zsuccess_exp_low_sbright, range=[15, 22], nbins=28, bin_min=10) 
+    sub.errorbar(wmean, rate, err_rate, fmt='.C1', elinewidth=2, markersize=10, label=r'$r_{\rm fiber} > 21.$')
+
+    sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
+    sub.set_xlabel(r'$r$ magnitude', fontsize=25)
+    sub.set_xlim([16.5, 21.]) 
+    sub.set_ylabel(r'$z$ success rate', fontsize=25)
+    sub.set_ylim([0.6, 1.1])
+    sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
+    sub.legend(loc='lower left', frameon=True, handletextpad=0.1, fontsize=15)
+
+    sub = fig.add_subplot(132)
+    sub.scatter(r_mag[zsuccess_exp], r_fibermag[zsuccess_exp], c='C0', s=2, label='$z$ success') 
+    sub.scatter(r_mag[~zsuccess_exp], r_fibermag[~zsuccess_exp], c='C1', s=2, label='$z$ fail') 
+    sub.plot([18, 23], [18, 23], c='k', ls='--') 
+    sub.set_xlabel('$r$ magnitude', fontsize=25) 
+    sub.set_xlim(18., 23.) 
+    sub.set_ylabel('$r$ fiber magnitude', fontsize=25) 
+    sub.set_ylim(18., 23.) 
+    sub.legend(loc='lower right', handletextpad=0.1, markerscale=5, fontsize=15, frameon=True)
+
+    sub = fig.add_subplot(133)
+    sub.scatter(r_fibermag[zsuccess_exp], _halpha[zsuccess_exp], c='C0', s=2, label='$z$ success') 
+    sub.scatter(r_fibermag[~zsuccess_exp], _halpha[~zsuccess_exp], c='C1', s=2, label='$z$ fail') 
+    sub.scatter(r_fibermag[~zsuccess_exp & ~redherring], _halpha[~zsuccess_exp & ~redherring], c='C3', s=3, label='$z$ fail + $r > 18.5$') 
+    sub.vlines(21, -1., 2., color='k', linestyle='--', linewidth=1)
+    sub.set_xlabel('$r$ fiber magnitude', fontsize=25) 
+    sub.set_xlim(18., 23.) 
+    sub.set_ylabel('$(z - W1) - 3/2.5 (g - r) + 1.2$', fontsize=20) 
+    sub.set_ylim(-1., 2.) 
+    sub.legend(loc='upper left', handletextpad=0.1, markerscale=5, fontsize=15, frameon=True)
+    
+    fig.subplots_adjust(wspace=0.3) 
+    ffig = specfile.replace('sourceSpec', 'zsuccess.fibermag_halpha').replace('.hdf5', '.%s' % os.path.basename(expfile).replace('.hdf5', '.deltachi2_%.f.png' % min_deltachi2))
+    fig.savefig(ffig, bbox_inches='tight') 
     return None 
 
 
@@ -258,7 +298,11 @@ def zsuccess_TSreview(specfile, min_deltachi2=40.):
 
 if __name__=="__main__": 
     #zsuccess_TSreview('GALeg.g15.sourceSpec.5000.hdf5', min_deltachi2=40.)
-    zsuccess_surveysim(
+    #zsuccess_surveysim(
+    #        os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.hdf5'), 
+    #        os.path.join(dir_dat, 'exposures_surveysim_fork_150sv0p5.sample.seed0.hdf5'),
+    #        min_deltachi2=40.)
+    zsuccess_fibermag_halpha(
             os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.hdf5'), 
             os.path.join(dir_dat, 'exposures_surveysim_fork_150sv0p5.sample.seed0.hdf5'),
             min_deltachi2=40.)

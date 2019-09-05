@@ -29,6 +29,166 @@ mpl.rcParams['legend.frameon'] = False
 dir_dat = os.path.join(UT.dat_dir(), 'survey_validation')
 
 
+def GALeg_G15_sourceSpec(): 
+    '''generate noiseless simulated spectra for all GAMAlegacy 
+    galaxies in the G15 fields. The output hdf5 file will also 
+    contain all the galaxy properties 
+    '''
+    # read in GAMA-Legacy catalog with galaxies in both GAMA and Legacy surveys
+    cata = Cat.GamaLegacy()
+    gleg = cata.Read('g15', dr_gama=3, dr_legacy=7, silent=True)  
+    
+    # extract meta-data of galaxies 
+    redshift        = gleg['gama-spec']['z']
+    absmag_ugriz    = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1
+    r_mag_apflux    = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1]) # aperture flux
+    r_mag_gama      = gleg['gama-photo']['r_petro'] # r-band magnitude from GAMA (SDSS) photometry
+    ha_gama         = gleg['gama-spec']['ha_flux'] # halpha line flux
+
+    ngal = len(redshift) # number of galaxies
+    vdisp = np.repeat(100.0, ngal) # velocity dispersions [km/s]
+
+    # match GAMA galaxies to templates 
+    bgs3 = FM.BGStree()
+    match = bgs3._GamaLegacy(gleg)
+    assert np.sum(match != -999) == ngal 
+
+    for isub in range(12, 13): # ~5000 galaxy subsamples 
+        if isub == 0:
+            subsamp = np.arange(ngal)[(np.arange(ngal) <= 5000)]
+        elif isub < 12: 
+            subsamp = np.arange(ngal)[(np.arange(ngal) > isub * 5000) & (np.arange(ngal) <= (isub+1) * 5000)]
+        else: 
+            subsamp = np.arange(ngal)[np.arange(ngal) > isub * 5000]
+        print('')
+        print('--- %i of 13 subsamples ---' % (isub+1)) 
+        print('')
+    
+        # generate noiseless spectra for these galaxies 
+        s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=15000) 
+        # emission line fluxes from GAMA data  
+        emline_flux = s_bgs.EmissionLineFlux(gleg, index=subsamp, dr_gama=3, silent=True) # emission lines from GAMA 
+        print(emline_flux.shape) 
+        flux, wave, _, magnorm_flag = s_bgs.Spectra(
+                r_mag_apflux[subsamp], 
+                redshift[subsamp],
+                vdisp[subsamp], 
+                seed=1, 
+                templateid=match[subsamp], 
+                emflux=emline_flux, 
+                mag_em=r_mag_gama[subsamp], 
+                silent=True)
+        print('%i of %i pass magnorm_flag' % (np.sum(magnorm_flag), len(subsamp)))
+        print('----------------------------------') 
+        # only keep nsub galaxies
+        subsamp = subsamp[magnorm_flag]
+        # save to file  
+        fspec = os.path.join(dir_dat, 'GALeg.g15.sourceSpec.%iof13.hdf5' % (isub+1))
+        fsub = h5py.File(fspec, 'w') 
+        fsub.create_dataset('zred', data=redshift[subsamp])
+        fsub.create_dataset('absmag_ugriz', data=absmag_ugriz[:,subsamp]) 
+        fsub.create_dataset('r_mag_apflux', data=r_mag_apflux[subsamp]) 
+        fsub.create_dataset('r_mag_gama', data=r_mag_gama[subsamp]) 
+        for grp in gleg.keys(): 
+            group = fsub.create_group(grp) 
+            for key in gleg[grp].keys(): 
+                group.create_dataset(key, data=gleg[grp][key][subsamp])
+        fsub.create_dataset('flux', data=flux[magnorm_flag, :])
+        fsub.create_dataset('wave', data=wave)
+        fsub.close()
+
+        fig = plt.figure(figsize=(10,8))
+        sub = fig.add_subplot(111)
+        for i in range(10): #np.random.choice(isubsamp, 10, replace=False): 
+            wave_rest = wave / (1.+redshift[subsamp][i])
+            sub.plot(wave_rest, flux[magnorm_flag,:][i]) 
+        emline_keys = ['oiib', 'oiir', 'hb',  'oiiib', 'oiiir', 'ha', 'siib', 'siir']
+        emline_lambda = [3727.092, 3729.874, 4862.683, 4960.295, 5008.239, 6564.613, 6718.294, 6732.673]
+        for k, l in zip(emline_keys, emline_lambda): 
+            if k == 'ha': 
+                sub.vlines(l, 0., 20, color='k', linestyle='--', linewidth=1)
+            else: 
+                sub.vlines(l, 0., 20, color='k', linestyle=':', linewidth=0.5)
+        sub.set_xlabel('rest-frame wavelength [Angstrom]', fontsize=25) 
+        sub.set_xlim([3e3, 1e4]) 
+        sub.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', fontsize=25) 
+        sub.set_ylim([0., 20.]) 
+        fig.savefig(fspec.replace('.hdf5', '.png'), bbox_inches='tight') 
+    return None 
+
+
+def GALeg_G15_noisySpec(): 
+    ''' Simulate DESI BGS spectra using noiseless source spectra and based on the 
+    observing conditions sampled from surveysim output exposures.  
+    '''
+    # read in sampled exposures
+    fexps       = h5py.File(os.path.join(dir_dat, 'exposures_surveysim_fork_150sv0p5.sample.seed0.hdf5'), 'r')
+    texp        = fexps['texp_total'][...]
+    airmass     = fexps['airmass'][...]
+    moon_ill    = fexps['moon_ill'][...]
+    moon_alt    = fexps['moon_alt'][...]
+    moon_sep    = fexps['moon_sep'][...]
+    sun_alt     = fexps['sun_alt'][...]
+    sun_sep     = fexps['sun_sep'][...]
+    seeing      = fexps['seeing'][...]
+    transp      = fexps['transp'][...]
+    n_sample    = len(texp) 
+    # sky brightness 
+    wave_sky    = fexps['wave'][...]
+    u_sb        = 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
+    sky_sbright = fexps['sky'][...]
+
+    iexp = 0 
+    print('t_exp=%.f' % texp[iexp])
+    print('airmass=%.2f' % airmass[iexp])
+    print('moon ill=%.2f alt=%.f, sep=%.f' % (moon_ill[iexp], moon_alt[iexp], moon_sep[iexp]))
+    print('sun alt=%.f, sep=%.f' % (sun_alt[iexp], sun_sep[iexp]))
+    print('seeing=%.2f, transp=%.2f' % (seeing[iexp], transp[iexp]))
+
+    print('--- simulate exposures with sky model ---') 
+    for isub in range(13): 
+        # read in noiseless spectra
+        specfile = os.path.join(dir_dat, 'GALeg.g15.sourceSpec.%iof13.hdf5' % (isub+1))
+        fspec = h5py.File(specfile, 'r') 
+        wave = fspec['wave'][...]
+        flux = fspec['flux'][...] 
+
+        Isky = [wave_sky, sky_sbright[iexp]]
+        
+        _fexp = specfile.replace('sourceSpec', 'bgsSpec').replace('.hdf5', '.default_exp.fits')
+        print('constructing...')
+        print(_fexp) 
+
+        # simulate the exposures 
+        bgs = GALeg_noisySpec(specfile, texp[iexp], airmass[iexp], Isky, filename=_fexp)
+
+        fig = plt.figure(figsize=(10,20))
+        sub = fig.add_subplot(411) 
+        sub.plot(wave_sky, sky_sbright[iexp], c='C1') 
+        sub.text(0.05, 0.95, 
+                'texp=%.f, airmass=%.2f\nmoon ill=%.2f, alt=%.f, sep=%.f\nsun alt=%.f, sep=%.f\nseeing=%.1f, transp=%.1f' % 
+                (texp[iexp], airmass[iexp], moon_ill[iexp], moon_alt[iexp], moon_sep[iexp], 
+                    sun_alt[iexp], sun_sep[iexp], seeing[iexp], transp[iexp]), 
+                ha='left', va='top', transform=sub.transAxes, fontsize=15)
+        sub.legend(loc='upper right', frameon=True, fontsize=20) 
+        sub.set_xlim([3e3, 1e4]) 
+        sub.set_ylim([0., 20.]) 
+        for i in range(3): 
+            sub = fig.add_subplot(4,1,i+2)
+            for band in ['b', 'r', 'z']: 
+                sub.plot(bgs.wave[band], bgs.flux[band][i], c='C1') 
+            sub.plot(wave, flux[i], c='k', ls=':', lw=1, label='no noise')
+            if i == 0: sub.legend(loc='upper right', fontsize=20)
+            sub.set_xlim([3e3, 1e4]) 
+            sub.set_ylim([0., 15.]) 
+        bkgd = fig.add_subplot(111, frameon=False) 
+        bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+        bkgd.set_xlabel('rest-frame wavelength [Angstrom]', labelpad=10, fontsize=25) 
+        bkgd.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', labelpad=10, fontsize=25) 
+        fig.savefig(_fexp.replace('.fits', '.png'), bbox_inches='tight') 
+    return None 
+
+
 def GALeg_sourceSpec(nsub, flag=None): 
     '''generate noiseless simulated spectra for a subset of GAMAlegacy 
     galaxies. The output hdf5 file will also contain all the galaxy
@@ -291,8 +451,10 @@ def GALeg_noisySpec_TSreview(specfile):
 
 
 if __name__=='__main__': 
+    #GALeg_G15_sourceSpec()
+    GALeg_G15_noisySpec()
     #GALeg_sourceSpec(5000)
     #GALeg_noisySpec_TSreview(os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.hdf5')) 
-    GALeg_noisySpec_surveysim(
-            os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.hdf5'), 
-            os.path.join(dir_dat, 'exposures_surveysim_fork_150sv0p5.sample.seed0.hdf5'))
+    #GALeg_noisySpec_surveysim(
+    #        os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.hdf5'), 
+    #        os.path.join(dir_dat, 'exposures_surveysim_fork_150sv0p5.sample.seed0.hdf5'))
