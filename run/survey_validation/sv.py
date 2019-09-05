@@ -52,6 +52,8 @@ def G15_rmag_rfibermag():
     r_fiber_mag = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1], method='log') # aperture flux
     r_mag_gama  = gleg['gama-photo']['r_petro'] # r-band magnitude from GAMA (SDSS) photometry
 
+
+    # r-mag selection 
     fig = plt.figure(figsize=(10, 4))
     sub = fig.add_subplot(121) 
     sub.scatter(r_mag_gama, r_fiber_mag, s=1, c='k', 
@@ -82,6 +84,7 @@ def G15_rmag_rfibermag():
     ffig = os.path.join(dir_dat, 'G15_rmag_rfibermag.png') 
     fig.savefig(ffig, bbox_inches='tight') 
     
+    # r fiber mag selection 
     fig = plt.figure(figsize=(10, 4))
     sub = fig.add_subplot(121) 
     sub.scatter(r_mag_gama, r_fiber_mag, s=1, c='k') 
@@ -109,6 +112,34 @@ def G15_rmag_rfibermag():
 
     fig.subplots_adjust(wspace=0.4)
     ffig = os.path.join(dir_dat, 'G15_rfibermag_rmag.png') 
+    fig.savefig(ffig, bbox_inches='tight') 
+    
+    # r fiber mag + emline selection 
+    selection = ~(_emline < 1.5*(r_fiber_mag - 20.75))
+    fig = plt.figure(figsize=(10, 4))
+    sub = fig.add_subplot(121) 
+    sub.scatter(r_mag_gama, r_fiber_mag, s=1, c='k') 
+    sub.scatter(r_mag_gama[selection], r_fiber_mag[selection], s=1, c='C1', 
+            label=r'$(%.f/{\rm deg}^2)$' % (float(np.sum(selection))/60.)) 
+    sub.vlines(19.5, 16., 23., color='k', linestyle='--', linewidth=1)
+    sub.plot([16, 23], [16, 23], c='k', ls='--') 
+    sub.set_xlabel('$r$ magnitude', fontsize=25) 
+    sub.set_xlim(16., 23.) 
+    sub.set_ylabel('$r$ fiber magnitude', fontsize=25) 
+    sub.set_ylim(16., 23.) 
+    sub.legend(loc='lower right', handletextpad=0., markerscale=5, fontsize=15) 
+
+    sub = fig.add_subplot(122) 
+    sub.scatter(r_fiber_mag, _emline, c='k', s=1)
+    sub.scatter(r_fiber_mag[selection], _emline[selection], s=1, c='C1')
+    sub.vlines(21, -1., 2., color='k', linestyle='--', linewidth=1)
+    sub.set_xlabel('$r$ fiber magnitude', fontsize=25) 
+    sub.set_xlim(18., 23.) 
+    sub.set_ylabel('$(z - W1) - 3/2.5 (g - r) + 1.2$', fontsize=20) 
+    sub.set_ylim(-1., 2.) 
+
+    fig.subplots_adjust(wspace=0.4)
+    ffig = os.path.join(dir_dat, 'G15_rmag_rfibermag.color_sbright.png') 
     fig.savefig(ffig, bbox_inches='tight') 
     return None 
 
