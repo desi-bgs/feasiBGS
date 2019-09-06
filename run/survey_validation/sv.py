@@ -8,6 +8,7 @@ import pickle
 import numpy as np 
 # --- desi --- 
 import astropy.units as u
+from astropy.io import fits
 # -- feasibgs -- 
 from feasibgs import util as UT
 from feasibgs import skymodel as Sky 
@@ -144,5 +145,78 @@ def G15_rmag_rfibermag():
     return None 
 
 
+def G15_zsuccess(): 
+    ''' calculations using G15 galaxies 
+    '''
+    # compile all the G15 meta-data and redshift success 
+    keys = ['gama-spec/z', 'legacy-photo/flux_g', 'legacy-photo/flux_r', 'legacy-photo/flux_z', 'legacy-photo/flux_w1', 'legacy-photo/apflux_r', 'gama-photo/r_petro']
+    data, redrock = [], [] 
+    for iexp in range(1,14): 
+        # meta data 
+        fexp = h5py.File(os.path.join(dir_dat, 'GALeg.g15.sourceSpec.%iof13.hdf5' % iexp), 'r') 
+        datum = [] 
+        for k in keys: 
+            if 'apflux_r' in k: 
+                datum.append(fexp[k][...][:,1]) 
+            else: 
+                datum.append(fexp[k][...]) 
+        data.append(np.array(datum))
+
+        # redrock outputs 
+        rr = fits.open(os.path.join(dir_dat, 'GALeg.g15.bgsSpec.%iof13.default_exp.rr.fits' % iexp))[1].data
+        redrock.append(np.array([rr['Z'], rr['DELTACHI2'], rr['ZWARN']]))
+    data = np.concatenate(data, axis=1)
+    redrock = np.concatenate(redrock, axis=1) 
+    
+    # unpack values 
+    redshift = data[0]
+
+    g_mag   = UT.flux2mag(data[1], method='log')
+    r_mag   = UT.flux2mag(data[2], method='log')
+    z_mag   = UT.flux2mag(data[3], method='log')
+    w1_mag  = UT.flux2mag(data[4], method='log')
+    
+    r_fiber_mag = UT.flux2mag(data[5], method='log') # aperture flux
+    r_mag_gama  = data[6]  # r-band magnitude from GAMA (SDSS) photometry
+
+    # color probe of emission line galaxies based on WISE and opitcal colors 
+    _emline = (z_mag - w1_mag) - 3./2.5 * (g_mag - r_mag) + 1.2 
+
+    z_rr    = redrock[0] 
+    dchi2   = redrock[1]
+    zwarn   = redrock[2]
+    
+    # calculate redshift success
+    zsuccess = UT.zsuccess(z_rr, redshift, zwarn, deltachi2=dchi2, min_deltachi2=40.) 
+
+    # r-mag selection 
+    fig = plt.figure(figsize=(10, 4))
+    sub = fig.add_subplot(121) 
+    sub.scatter(r_mag_gama, r_fiber_mag, s=1, c='k')
+    sub.scatter(r_mag_gama[~zsuccess], r_fiber_mag[~zsuccess], s=1, c='C1')
+    sub.plot([16, 23], [16, 23], c='k', ls='--') 
+    sub.set_xlabel('$r$ magnitude', fontsize=25) 
+    sub.set_xlim(16., 23.) 
+    sub.set_ylabel('$r$ fiber magnitude', fontsize=25) 
+    sub.set_ylim(16., 23.) 
+    sub.legend(loc='lower right', handletextpad=0., markerscale=5, fontsize=15) 
+
+    sub = fig.add_subplot(122) 
+    sub.scatter(r_fiber_mag, _emline, c='k', s=1)
+    sub.scatter(r_fiber_mag[~zsuccess], _emline[~zsuccess], c='C1', s=1)
+    sub.vlines(21, -1., 2., color='k', linestyle='--', linewidth=1)
+    sub.set_xlabel('$r$ fiber magnitude', fontsize=25) 
+    sub.set_xlim(18., 23.) 
+    sub.set_ylabel('$(z - W1) - 3/2.5 (g - r) + 1.2$', fontsize=20) 
+    sub.set_ylim(-1., 2.) 
+
+    fig.subplots_adjust(wspace=0.4)
+    ffig = os.path.join(dir_dat, 'G15.zsuccess.png') 
+    fig.savefig(ffig, bbox_inches='tight') 
+    return None 
+    
+
+
 if __name__=='__main__': 
-    G15_rmag_rfibermag()
+    #G15_rmag_rfibermag()
+    G15_zsuccess()

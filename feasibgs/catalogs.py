@@ -541,6 +541,23 @@ class GamaLegacy(Catalog):
         return apflux_dict
 
 
+def _collect_Legacy_sweeps(dr=8): 
+    ''' 
+    '''
+    import glob 
+    if dr != 8: raise NotImplementedError
+
+    dir_legacy = '/project/projectdirs/cosmo/data/legacysurvey/'
+    dir_north = os.path.join(dir_legacy, 'dr8/north/sweep/8.0')
+    dir_south = os.path.join(dir_legacy, 'dr8/south/sweep/8.0')
+    
+    fsweeps_N = glob.glob('%s/*.fits' % dir_north) 
+    print('%i North sweep files' % len(fsweeps_N))
+    fsweeps_S = glob.glob('%s/*.fits' % dir_south) 
+    print('%i South sweep files' % len(fsweeps_S))
+    return None 
+
+
 def _GamaLegacy_TractorAPFLUX(): 
     ''' Retroactively add apflux columns from the tractor catalogs 
     to the GamaLegacy catalog constructed and saved to file. This is a 
