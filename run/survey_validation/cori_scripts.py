@@ -3,7 +3,50 @@ import numpy as np
 import subprocess
 
 
-def redrock_scripts(i, flag='v0p5'): 
+def redrock_scripts_G15(i): 
+    ''' generate scripts for running redrock 
+    '''
+    # job name 
+    fjob = os.path.join('cori_RR_G15_%i.slurm' % i)
+
+    queue = 'regular'
+    constraint = 'knl'
+    
+    jb = '\n'.join([ 
+        '#!/bin/bash',
+        '#SBATCH --qos=%s' % queue, 
+        '#SBATCH --time=02:30:00', 
+        '#SBATCH --constraint=%s' % constraint,
+        '#SBATCH -N 1',
+        '#SBATCH -J g15_redrock%i' % i, 
+        '#SBATCH -o _g15_redrock%i.o' % i, 
+        '#SBATCH -L SCRATCH,project', 
+        '', 
+        'now=$(date +"%T")', 
+        'echo "start time ... $now"', 
+        '', 
+        'source /project/projectdirs/desi/software/desi_environment.sh 19.2',
+        '',
+        'export OMP_NUM_THREADS=1', 
+        '', 
+        'dir_spec=$CSCRATCH"/feasibgs/survey_validation/"', 
+        '',
+        'f_str="GALeg.g15.bgsSpec.%iof13.default_exp"' % i,
+        'f_spec=$dir_spec$f_str".fits"', 
+        'f_redr=$dir_spec$f_str".rr.fits"', 
+        'f_zout=$dir_spec$f_str".rr.h5"', 
+        'rrdesi --mp 68 --zbest $f_redr --output $f_zout $f_spec', 
+        '', 
+        'now=$(date +"%T")', 
+        'echo "end time ... $now"']) 
+
+    job = open(fjob, 'w') 
+    job.write(jb) 
+    job.close() 
+    return fjob 
+
+
+def redrock_scripts(i): 
     ''' generate scripts for running redrock 
     '''
     # job name 
@@ -15,7 +58,7 @@ def redrock_scripts(i, flag='v0p5'):
     jb = '\n'.join([ 
         '#!/bin/bash',
         '#SBATCH --qos=%s' % queue, 
-        '#SBATCH --time=01:30:00', 
+        '#SBATCH --time=02:30:00', 
         '#SBATCH --constraint=%s' % constraint,
         '#SBATCH -N 1',
         '#SBATCH -J sv_redrock%i' % i, 
@@ -31,7 +74,7 @@ def redrock_scripts(i, flag='v0p5'):
         '', 
         'dir_spec=$CSCRATCH"/feasibgs/survey_validation/"', 
         '',
-        'f_str="GALeg.g15.bgsSpec.3000.%s.sample%i.seed0"' % (flag, i), 
+        'f_str="GALeg.g15.bgsSpec.5000.exposures_surveysim_fork_150sv0p5.sample.seed0.exp%i"' % i,
         'f_spec=$dir_spec$f_str".fits"', 
         'f_redr=$dir_spec$f_str".rr.fits"', 
         'f_zout=$dir_spec$f_str".rr.h5"', 
@@ -98,12 +141,18 @@ def submit_job(fjob):
 
 
 if __name__=="__main__": 
+    for i in range(1,10): 
+        fjob = redrock_scripts_G15(i) 
+        submit_job(fjob)
+
     #for i in range(8): 
-    #    fjob = redrock_scripts(i, flag='v0p5') 
+    #    fjob = redrock_scripts(i) 
     #    submit_job(fjob)
-    texps = 60. * np.array([3, 5, 8, 12, 15]) # 3 to 15 min 
+
+    # TS review
+    #texps = 60. * np.array([3, 5, 8, 12, 15]) # 3 to 15 min 
  
-    for iexp in range(3): 
-        for texp in texps: 
-            fjob = redrock_scripts_TSreview(iexp, texp)
-            submit_job(fjob)
+    #for iexp in range(3): 
+    #    for texp in texps: 
+    #        fjob = redrock_scripts_TSreview(iexp, texp)
+    #        submit_job(fjob)
