@@ -37,6 +37,9 @@ class Catalog(object):
             grp.create_dataset(key.lower(), data=data)
         return None 
 
+    def flux_to_mag(self, flux): 
+        return 22.5 - 2.5*np.log10(flux)
+
 
 class GAMA(Catalog):
     '''  class to build/read in photometric and spectroscopic overlap 
@@ -541,21 +544,224 @@ class GamaLegacy(Catalog):
         return apflux_dict
 
 
-def _collect_Legacy_sweeps(dr=8): 
-    ''' 
-    '''
-    import glob 
-    if dr != 8: raise NotImplementedError
+class Legacy(Catalog): 
 
-    dir_legacy = '/project/projectdirs/cosmo/data/legacysurvey/'
-    dir_north = os.path.join(dir_legacy, 'dr8/north/sweep/8.0')
-    dir_south = os.path.join(dir_legacy, 'dr8/south/sweep/8.0')
+    def _1400deg2_test(self, dr=8, rlimit=None): 
+        '''
+        '''
+        # hardcoded patch of sky 
+        ra_min, ra_max      = 160., 230.
+        dec_min, dec_max    = -2., 18.
+
+        area = (np.radians(ra_max) - np.radians(ra_min))*(np.sin(np.radians(dec_max)) - np.sin(np.radians(dec_min))) 
+        area *= (180/np.pi)**2
+        print('%.f deg^2 test region' % area) 
+        
+        # read legacy sweeps data in 1400 deg^2 region 
+        if rlimit is None:  
+            _fsweep = os.path.join(UT.dat_dir(), 'survey_validation', 'legacy_sweeps.1400deg2.hdf5')
+        else: 
+            _fsweep = os.path.join(UT.dat_dir(), 'survey_validation', 'legacy_sweeps.1400deg2.rlim%.1f.hdf5' % rlimit)
+        fsweep = h5py.File(_fsweep, 'r') 
+        sweep = {} 
+        for k in fsweep.keys(): sweep[k] = fsweep[k][...]
+        print('%i sweep objects' % len(sweep['flux_r']))
+
+        # spatial masking 
+        _spatial_mask = self.spatial_mask(sweep['maskbits'], [sweep['nobs_g'], sweep['nobs_r'], sweep['nobs_z']])
+        print('%i spatial mask' % np.sum(_spatial_mask))
+        
+        # star-galaxy separation 
+        _star_galaxy = self.star_galaxy(sweep['gaia_phot_g_mean_mag'], sweep['flux_r'])
+        print('%i star-galaxy separation' % np.sum(_star_galaxy))
+
+        # quality cut 
+        gmag = self.flux_to_mag(sweep['flux_g']/sweep['mw_transmission_g']) 
+        rmag = self.flux_to_mag(sweep['flux_r']/sweep['mw_transmission_r'])
+        zmag = self.flux_to_mag(sweep['flux_z']/sweep['mw_transmission_z'])
+        _quality_cut = self.quality_cut(
+                np.array([sweep['fracflux_g'], sweep['fracflux_r'], sweep['fracflux_z']]), 
+                np.array([sweep['fracmasked_g'], sweep['fracmasked_r'], sweep['fracmasked_z']]),
+                np.array([sweep['fracin_g'], sweep['fracin_r'], sweep['fracin_z']]), 
+                gmag - rmag, 
+                rmag - zmag) 
+        print('%i quality cut' % np.sum(_quality_cut))
+        return None 
+
+    def quality_cut(self, frac_flux, fracmasked, fracin, g_r, r_z):
+        ''' apply baseline quality cut  
+
+        * frac_flux_[g,r,z]<5 Not overwhelmed by neighbouring source (any band)
+        * fracmasked_[g,r,z]<0.4 Model not dominated by masked pixels in any band
+        * fracin_[g,r,z]>0.3 Most of the model flux not outside the region of the data used to fit the model
+        * -1< g-r < 4 Not an absolutely bizarre colour
+        * -1< r-z < 4 Not an absolutely bizarre colour
+        '''
+        assert frac_flux.shape[0] == 3
+        assert fracmasked.shape[0] == 3
+        assert fraction.shape[0] == 3
     
-    fsweeps_N = glob.glob('%s/*.fits' % dir_north) 
-    print('%i North sweep files' % len(fsweeps_N))
-    fsweeps_S = glob.glob('%s/*.fits' % dir_south) 
-    print('%i South sweep files' % len(fsweeps_S))
-    return None 
+        # Not overwhelmed by neighbouring source (any band)
+        _frac_flux = ((frac_flux[0] < 5.) & (frac_flux[1] < 5.) & (frac_flux[2] < 5.)) 
+        # Model not dominated by masked pixels in any band
+        _fracmasked = ((fracmasked[0] < 0.4) & (fracmasked[1] < 0.4) & (fracmasked[2] < 0.4)) 
+        # Most of the model flux not outside the region of the data used to fit the model
+        _fracin = ((fracin[0] > 0.3) & (fracin[1] > 0.3) & (fracin[2] > 0.3)) 
+        # color cut
+        _colorcut = ((g_r > -1.) & (g_r < 4.) & (r_z > -1.) & (r_z < 4.)) 
+
+        cut = (_frac_flux & _fracmasked & _fracin & _colorcut) 
+        return cut 
+
+    def star_galaxy(self, gaia_G, r_flux): 
+        ''' star-galaxy separation using GAIA and tractor photometry 
+        (gaia G mag) - (raw r mag) > 0.6 or (gaia G mag) == 0 
+        '''
+        G_rr = gaia_G - self.flux_to_mag(r_flux)
+        isgalaxy = (G_rr > 0.6) | (gaia_G == 0) 
+        return isgalaxy 
+
+    def spatial_mask(self, maskbits, nobs): 
+        ''' spatial masking around 
+
+        * bright stars
+        * medium bright stars 
+        * clusters 
+        * large galaxies 
+        '''
+        nobs_g, nobs_r, nobs_z = nobs 
+        BS = (np.uint64(maskbits) & np.uint64(2**1))!=0    # bright stars
+        MS = (np.uint64(maskbits) & np.uint64(2**11))!=0   # medium bright stars 
+        GC = (np.uint64(maskbits) & np.uint64(2**13))!=0   # clusters 
+        LG = (np.uint64(maskbits) & np.uint64(2**12))!=0   # large galaxies 
+        allmask = ((maskbits & 2**6) != 0) | ((maskbits & 2**5) != 0) | ((maskbits & 2**7) != 0)
+        nobs = ((nobs_g < 1) | (nobs_r < 1) | (nobs_z < 1)) 
+        mask = ~(BS | MS | GC | LG | allmask | nobs) 
+        return mask
+
+    def _collect_1400deg2_test(self, dr=8, rlimit=None): 
+        ''' collect sweeps data within the same 1400 deg2 test region that Omar used for dr7 
+        and save to file. 
+        '''
+        import glob 
+        if dr != 8: raise NotImplementedError
+        if os.environ['NERSC_HOST'] != 'cori': raise ValueError('this script is meant to run on cori only') 
+    
+        # hardcoded patch of sky 
+        ra_min, ra_max      = 160., 230.
+        dec_min, dec_max    = -2., 18.
+
+        dir_legacy = '/project/projectdirs/cosmo/data/legacysurvey/'
+        dir_north = os.path.join(dir_legacy, 'dr8/north/sweep/8.0')
+        dir_south = os.path.join(dir_legacy, 'dr8/south/sweep/8.0')
+        
+        fsweeps_N = glob.glob('%s/*.fits' % dir_north) 
+        print('%i North sweep files' % len(fsweeps_N))
+        fsweeps_S = glob.glob('%s/*.fits' % dir_south) 
+        print('%i South sweep files' % len(fsweeps_S))
+        fsweeps = sorted([os.path.join(dir_north, _fs) for _fs in fsweeps_N] + [os.path.join(dir_south, _fs) for _fs in fsweeps_S])
+    
+        sweeps = {} 
+        for _fsweep in fsweeps: 
+            # get sweep RA and Dec range 
+            sweep_ra_min, sweep_ra_max, sweep_dec_min, sweep_dec_max = self._parse_brickname(_fsweep) 
+    
+            # check whether it's in the region or not 
+            not_in_region = (
+                    (sweep_ra_max < ra_min) | 
+                    (sweep_ra_min > ra_max) | 
+                    (sweep_dec_max < dec_min) | 
+                    (sweep_dec_min > dec_max)
+                    ) 
+            if not_in_region: continue 
+    
+            # read sweep file 
+            sweep = fits.open(_fsweep)[1].data
+            
+            # area that's within the test region 
+            mask_region = (
+                (sweep['RA'] >= ra_min) & 
+                (sweep['RA'] <= ra_max) & 
+                (sweep['DEC'] >= dec_min) & 
+                (sweep['DEC'] <= dec_max))  
+            if np.sum(mask_region) == 0: continue 
+
+            if rlimit is None: 
+                rcut = np.ones(sweep['RA']).astype(bool) 
+            else: 
+                rflux = sweep['FLUX_R'] / sweep['MW_TRANSMISSION_R'] 
+                rcut = (rflux > 10**((22.5-rlimit)/2.5)) 
+            
+            print('%i obj in %s' % (np.sum(mask_region), os.path.basename(_fsweep)))
+
+            if len(sweeps.keys()) == 0: 
+                for k in sweep.names: 
+                    sweeps[k] = sweep[k][mask_region & rcut]
+            else: 
+                for k in sweep.names: 
+                    sweeps[k] = np.concatenate([sweeps[k], sweep[k][mask_region & rcut]], axis=0) 
+
+        if rlimit is None:  
+            fout = os.path.join(UT.dat_dir(), 'survey_validation', 'legacy_sweeps.1400deg2.hdf5')
+        else: 
+            fout = os.path.join(UT.dat_dir(), 'survey_validation', 'legacy_sweeps.1400deg2.rlim%.1f.hdf5' % rlimit)
+        f = h5py.File(fout, 'w') 
+        for k in sweeps.keys(): 
+            self._h5py_create_dataset(f, k, sweeps[k])
+        f.close() 
+        return None 
+       
+    def _parse_brickname(self, brickname): 
+        ''' parse ra and dec range from brick name 
+        '''
+        name = os.path.basename(brickname).replace('.fits', '') # get rid of directory and ext 
+        radec1 = name.split('-')[1]
+        radec2 = name.split('-')[2] 
+        
+        if 'p' in radec1: _c = 'p'
+        elif 'm' in radec1: _c = 'm' 
+        ra_min = float(radec1.split(_c)[0]) 
+        dec_min = float(radec1.split(_c)[1]) 
+
+        if 'p' in radec2: _c = 'p'
+        elif 'm' in radec2: _c = 'm' 
+        ra_max = float(radec2.split(_c)[0]) 
+        dec_max = float(radec2.split(_c)[1]) 
+
+        return ra_min, ra_max, dec_min, dec_max
+    
+    def _Tycho(self, ra_lim=None, dec_lim=None): 
+        ''' read in tycho2 catalog within RA and Dec range 
+        '''
+        _tycho = fits.open(os.path.join(UT.dat_dir(), 'survey_validation', 'tycho2.fits'))[1].data
+        
+        mask_region = np.ones(len(_tycho['RA'])).astype(bool) 
+        if ra_lim is not None: 
+            mask_region = mask_region & (_tycho['RA'] >= ra_lim[0]) & (_tycho['RA'] <= ra_lim[1])
+        if dec_lim is not None: 
+            mask_region = mask_region & (_tycho['DEC'] >= dec_lim[0]) & (_tycho['DEC'] <= dec_lim[1])
+
+        tycho = {} 
+        for k in _tycho.names: 
+            tycho[k] = _tycho[k][mask_region] 
+        return tycho
+
+    def _LSLGA(self, ra_lim=None, dec_lim=None):
+        ''' read in Legacy Survey Large Galaxy Atlas 
+        '''
+        _lslga = fits.open(os.path.join(UT.dat_dir(), 'survey_validation', 'LSLGA-v2.0.fits'))[1].data
+
+        mask_region = np.ones(len(_lslga['RA'])).astype(bool) 
+        if ra_lim is not None: 
+            mask_region = mask_region & (_lslga['RA'] >= ra_lim[0]) & (_lslga['RA'] <= ra_lim[1])
+        if dec_lim is not None: 
+            mask_region = mask_region & (_lslga['DEC'] >= dec_lim[0]) & (_lslga['DEC'] <= dec_lim[1])
+
+        lslga = {} 
+        for k in _lslga.names: 
+            lslga[k] = _lslga[k][mask_region] 
+        return lslga
+
 
 
 def _GamaLegacy_TractorAPFLUX(): 
