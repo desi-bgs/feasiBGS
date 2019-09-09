@@ -545,6 +545,8 @@ class GamaLegacy(Catalog):
 
 
 class Legacy(Catalog): 
+    '''
+    '''
 
     def _1400deg2_test(self, dr=8, rlimit=None): 
         '''
@@ -586,6 +588,16 @@ class Legacy(Catalog):
                 gmag - rmag, 
                 rmag - zmag) 
         print('%i quality cut' % np.sum(_quality_cut))
+
+        sample_select = (_spatial_mask & _star_galaxy & _quality_cut) 
+
+        print('%i (spatial mask) & (star-galaxy sep.) & (quality cut)' % (np.sum(sample_select)))
+        fout = os.path.join(UT.dat_dir(), 'survey_validation', 'bgs.1400deg2.rlim%.1f.hdf5' % rlimit)
+        f = h5py.File(fout, 'w') 
+        for k in sweep.keys(): 
+            self._h5py_create_dataset(f, k, sweep[k][sample_select])
+        f.close() 
+        return None 
         return None 
 
     def quality_cut(self, frac_flux, fracmasked, fracin, g_r, r_z):
@@ -599,7 +611,7 @@ class Legacy(Catalog):
         '''
         assert frac_flux.shape[0] == 3
         assert fracmasked.shape[0] == 3
-        assert fraction.shape[0] == 3
+        assert fracin.shape[0] == 3
     
         # Not overwhelmed by neighbouring source (any band)
         _frac_flux = ((frac_flux[0] < 5.) & (frac_flux[1] < 5.) & (frac_flux[2] < 5.)) 

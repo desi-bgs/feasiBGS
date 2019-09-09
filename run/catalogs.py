@@ -9,6 +9,9 @@ def legacy_1400deg2_test_region(rlimit=21.):
     leg = Cat.Legacy() 
     #leg._collect_1400deg2_test()
     leg._1400deg2_test(rlimit=rlimit)
+    tycho = leg._Tycho(ra_lim=[160., 230.], dec_lim=[-2., 18.]) 
+    print(tycho['RA'])
+    print(tycho['DEC'])
     return None
 
 
