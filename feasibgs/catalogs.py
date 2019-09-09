@@ -775,7 +775,6 @@ class Legacy(Catalog):
         return lslga
 
 
-
 def _GamaLegacy_TractorAPFLUX(): 
     ''' Retroactively add apflux columns from the tractor catalogs 
     to the GamaLegacy catalog constructed and saved to file. This is a 
