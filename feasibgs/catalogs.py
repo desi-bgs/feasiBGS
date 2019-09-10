@@ -547,17 +547,14 @@ class GamaLegacy(Catalog):
 class Legacy(Catalog): 
     '''
     '''
-
     def _1400deg2_test(self, dr=8, rlimit=None): 
         '''
         '''
         # hardcoded patch of sky 
         ra_min, ra_max      = 160., 230.
         dec_min, dec_max    = -2., 18.
-
-        area = (np.radians(ra_max) - np.radians(ra_min))*(np.sin(np.radians(dec_max)) - np.sin(np.radians(dec_min))) 
-        area *= (180/np.pi)**2
-        print('%.f deg^2 test region' % area) 
+    
+        area = self._1400deg2_area() 
         
         # read legacy sweeps data in 1400 deg^2 region 
         if rlimit is None:  
@@ -599,6 +596,18 @@ class Legacy(Catalog):
         f.close() 
         return None 
         return None 
+
+    def _1400deg2_area(self): 
+        ''' area of 1400 deg^2 test region  
+        '''
+        # hardcoded patch of sky 
+        ra_min, ra_max      = 160., 230.
+        dec_min, dec_max    = -2., 18.
+
+        area = (np.radians(ra_max) - np.radians(ra_min))*(np.sin(np.radians(dec_max)) - np.sin(np.radians(dec_min))) 
+        area *= (180/np.pi)**2
+        print('%.f deg^2 test region' % area) 
+        return area
 
     def quality_cut(self, frac_flux, fracmasked, fracin, g_r, r_z):
         ''' apply baseline quality cut  

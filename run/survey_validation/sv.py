@@ -216,7 +216,6 @@ def G15_zsuccess():
     return None 
     
 
-
 if __name__=='__main__': 
     #G15_rmag_rfibermag()
     G15_zsuccess()
