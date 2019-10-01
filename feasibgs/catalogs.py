@@ -547,17 +547,14 @@ class GamaLegacy(Catalog):
 class Legacy(Catalog): 
     '''
     '''
-
     def _1400deg2_test(self, dr=8, rlimit=None): 
         '''
         '''
         # hardcoded patch of sky 
         ra_min, ra_max      = 160., 230.
         dec_min, dec_max    = -2., 18.
-
-        area = (np.radians(ra_max) - np.radians(ra_min))*(np.sin(np.radians(dec_max)) - np.sin(np.radians(dec_min))) 
-        area *= (180/np.pi)**2
-        print('%.f deg^2 test region' % area) 
+    
+        area = self._1400deg2_area() 
         
         # read legacy sweeps data in 1400 deg^2 region 
         if rlimit is None:  
@@ -600,51 +597,17 @@ class Legacy(Catalog):
         return None 
         return None 
 
-
-    def _1400deg2_test_random(self, dr=8, rlimit=None): 
-        '''
+    def _1400deg2_area(self): 
+        ''' area of 1400 deg^2 test region  
         '''
         # hardcoded patch of sky 
         ra_min, ra_max      = 160., 230.
         dec_min, dec_max    = -2., 18.
 
-        # read random data in the 14000 deg^2 region made by Omar
-        _frand = os.path.join(UT.dat_dir(), 'survey_validation', 'dr8-south_random_160_230_-2_18_N_3.npy')
-        rand = np.load(_frand)
-        sweep = {} 
-        for k in fsweep.keys(): sweep[k] = fsweep[k][...]
-        print('%i sweep objects' % len(sweep['flux_r']))
-
-        # spatial masking 
-        _spatial_mask = self.spatial_mask(sweep['maskbits'], [sweep['nobs_g'], sweep['nobs_r'], sweep['nobs_z']])
-        print('%i spatial mask' % np.sum(_spatial_mask))
-        
-        # star-galaxy separation 
-        _star_galaxy = self.star_galaxy(sweep['gaia_phot_g_mean_mag'], sweep['flux_r'])
-        print('%i star-galaxy separation' % np.sum(_star_galaxy))
-
-        # quality cut 
-        gmag = self.flux_to_mag(sweep['flux_g']/sweep['mw_transmission_g']) 
-        rmag = self.flux_to_mag(sweep['flux_r']/sweep['mw_transmission_r'])
-        zmag = self.flux_to_mag(sweep['flux_z']/sweep['mw_transmission_z'])
-        _quality_cut = self.quality_cut(
-                np.array([sweep['fracflux_g'], sweep['fracflux_r'], sweep['fracflux_z']]), 
-                np.array([sweep['fracmasked_g'], sweep['fracmasked_r'], sweep['fracmasked_z']]),
-                np.array([sweep['fracin_g'], sweep['fracin_r'], sweep['fracin_z']]), 
-                gmag - rmag, 
-                rmag - zmag) 
-        print('%i quality cut' % np.sum(_quality_cut))
-
-        sample_select = (_spatial_mask & _star_galaxy & _quality_cut) 
-
-        print('%i (spatial mask) & (star-galaxy sep.) & (quality cut)' % (np.sum(sample_select)))
-        fout = os.path.join(UT.dat_dir(), 'survey_validation', 'bgs.1400deg2.rlim%.1f.hdf5' % rlimit)
-        f = h5py.File(fout, 'w') 
-        for k in sweep.keys(): 
-            self._h5py_create_dataset(f, k, sweep[k][sample_select])
-        f.close() 
-        return None 
-        return None 
+        area = (np.radians(ra_max) - np.radians(ra_min))*(np.sin(np.radians(dec_max)) - np.sin(np.radians(dec_min))) 
+        area *= (180/np.pi)**2
+        print('%.f deg^2 test region' % area) 
+        return area
 
     def quality_cut(self, frac_flux, fracmasked, fracin, g_r, r_z):
         ''' apply baseline quality cut  
