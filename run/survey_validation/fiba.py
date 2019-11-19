@@ -31,11 +31,11 @@ mpl.rcParams['legend.frameon'] = False
 dir_dat = os.path.join(UT.dat_dir(), 'survey_validation')
 
 
-def testFA_singletile(): 
+def testFA_singletile(itile): 
     ''' examine the different target classes for a single tile 
     '''
     # read in tile
-    ftile = fits.open(os.path.join(dir_dat, 'fiberassign-074000.fits'))
+    ftile = fits.open(os.path.join(dir_dat, 'fiberassign-0740%s.fits' % str(itile).zfill(2)))
     tile = ftile[1].data 
 
     # bgs bitmasks
@@ -51,6 +51,8 @@ def testFA_singletile():
     #218 Fib.Mag.
     #67 Low Q.
     n_bgs = np.float(np.sum(bitmask_bgs.astype(bool)))
+    print(tile.shape) 
+    print(n_bgs)
     
     fig = plt.figure(figsize=(10,10))
     sub = fig.add_subplot(111)
@@ -76,13 +78,13 @@ def testFA_singletile():
     sub.set_xlim(235.5, 239.9) 
     sub.set_ylabel('Dec', fontsize=20)
     sub.set_ylim(22., 26) 
-    fig.savefig(os.path.join(dir_dat, 'fiberassign-074000.png'), bbox_inches='tight')  
+    fig.savefig(os.path.join(dir_dat, 'fiberassign-0740%s.png' % str(itile).zfill(2)), bbox_inches='tight')  
     return None 
 
 
 def testFA_tiles(): 
-    
-    for i in range(30): 
+    n_zero = 0
+    for i in range(60): 
         # read in tile
         ftile_i = fits.open(os.path.join(dir_dat, 'fiberassign-0740%s.fits' % str(i).zfill(2)))
         tile_i = ftile_i[1].data 
@@ -91,23 +93,39 @@ def testFA_tiles():
         else: 
             tile = np.concatenate([tile, tile_i]) 
 
-    # bgs bitmasks
-    bitmask_bgs     = tile['SV1_BGS_TARGET']
-    bgs_bright      = (bitmask_bgs & bgs_mask.mask('BGS_BRIGHT')).astype(bool)
-    bgs_faint       = (bitmask_bgs & bgs_mask.mask('BGS_FAINT')).astype(bool)
-    bgs_extfaint    = (bitmask_bgs & bgs_mask.mask('BGS_FAINT_EXT')).astype(bool) # extended faint
-    bgs_fibmag      = (bitmask_bgs & bgs_mask.mask('BGS_FIBMAG')).astype(bool) # fiber magnitude limited
-    bgs_lowq        = (bitmask_bgs & bgs_mask.mask('BGS_LOWQ')).astype(bool) # low quality
-    n_bgs = np.float(np.sum(bitmask_bgs.astype(bool))) 
+        _n_bgs, _n_bgs_bright, _n_bgs_faint, _n_bgs_extfaint, _n_bgs_fibmag, _n_bgs_lowq = \
+                bgs_targetclass(tile_i['SV1_BGS_TARGET'])
+        print('field %i, n_bgs = %f' % (i, _n_bgs))
+        print('BGS Bright %.3f' % (_n_bgs_bright/_n_bgs))
+        print('BGS Faint %.3f' % (_n_bgs_faint/_n_bgs))
+        print('BGS Ext.Faint %.3f' % (_n_bgs_extfaint/_n_bgs))
+        print('BGS Fib.Mag %.3f' % (_n_bgs_fibmag/_n_bgs))
+        print('BGS Low Q. %.3f' % (_n_bgs_lowq/_n_bgs))
+        if _n_bgs == 0: n_zero += 1
 
-    print('BGS Bright %.3f' % (np.sum(bgs_bright)/n_bgs))
-    print('BGS Faint %.3f' % (np.sum(bgs_faint)/n_bgs))
-    print('BGS Ext.Faint %.3f' % (np.sum(bgs_extfaint)/n_bgs))
-    print('BGS Fib.Mag %.3f' % (np.sum(bgs_fibmag)/n_bgs))
-    print('BGS Low Q. %.3f' % (np.sum(bgs_lowq)/n_bgs))
+    n_bgs, n_bgs_bright, n_bgs_faint, n_bgs_extfaint, n_bgs_fibmag, n_bgs_lowq = \
+            bgs_targetclass(tile['SV1_BGS_TARGET'])
+
+    print('---------------------------------')
+    print('total n_bgs = %i' % n_bgs)
+    print('BGS Bright %.3f' % (n_bgs_bright/n_bgs))
+    print('BGS Faint %.3f' % (n_bgs_faint/n_bgs))
+    print('BGS Ext.Faint %.3f' % (n_bgs_extfaint/n_bgs))
+    print('BGS Fib.Mag %.3f' % (n_bgs_fibmag/n_bgs))
+    print('BGS Low Q. %.3f' % (n_bgs_lowq/n_bgs))
     return None 
 
 
+def bgs_targetclass(bitmask_bgs): 
+    n_bgs = np.float(np.sum(bitmask_bgs.astype(bool))) 
+    n_bgs_bright    = np.sum((bitmask_bgs & bgs_mask.mask('BGS_BRIGHT')).astype(bool))
+    n_bgs_faint     = np.sum((bitmask_bgs & bgs_mask.mask('BGS_FAINT')).astype(bool))
+    n_bgs_extfaint  = np.sum((bitmask_bgs & bgs_mask.mask('BGS_FAINT_EXT')).astype(bool)) # extended faint
+    n_bgs_fibmag    = np.sum((bitmask_bgs & bgs_mask.mask('BGS_FIBMAG')).astype(bool)) # fiber magnitude limited
+    n_bgs_lowq      = np.sum((bitmask_bgs & bgs_mask.mask('BGS_LOWQ')).astype(bool)) # low quality
+    return n_bgs, n_bgs_bright, n_bgs_faint, n_bgs_extfaint, n_bgs_fibmag, n_bgs_lowq
+
+
 if __name__=="__main__": 
-    #testFA_singletile()
+    #testFA_singletile(1)
     testFA_tiles()
