@@ -170,7 +170,8 @@ if __name__=="__main__":
     
     # full MTL 
     #compile_SV_targets()
-    targets = fitsio.read(os.path.join(dir_dat, 'desitarget.dr8.0.34.0.bgs_sv.hp_comb.fits'))
+    #targets = fitsio.read(os.path.join(dir_dat, 'desitarget.dr8.0.34.0.bgs_sv.hp_comb.fits'))
+    targets = fitsio.read(os.path.join(dir_dat, 'sv1-targets-dr8-hp-24.fits'))
     mtl = make_mtl(targets)
-    mtl.write(os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp_comb.fits'), format='fits') 
+    mtl.write(os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-24.fits'), format='fits') 
 
