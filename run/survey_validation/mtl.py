@@ -13,6 +13,8 @@ from desitarget.sv1.sv1_targetmask import bgs_mask
 
 
 dir_dat = '/global/cscratch1/sd/chahah/feasibgs/survey_validation/'
+if not os.path.isdir(dir_dat): 
+    dir_dat = '/Users/ChangHoon/data/feasiBGS/survey_validation/'
 
 
 def make_mtl(targets):
@@ -132,6 +134,33 @@ def test_mtl(mtl):
     return None 
 
 
+def SV_healpixels(): 
+    '''
+    '''
+    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
+    ra = sv['RA']
+    dec =  sv['DEC']
+    phi = np.deg2rad(ra)
+    theta = 0.5 * np.pi - np.deg2rad(dec)
+    ipixs = hp.ang2pix(2, theta, phi, nest=True)#hp.ang2pix(2, dec, ra, nest=True, lonlat=True)
+    hp_pixs, cnts = np.unique(hp.ang2pix(2, theta, phi, nest=True), return_counts=True) 
+    print(hp_pixs)
+    print(cnts)
+    import matplotlib.pyplot as plt
+    fig = plt.figure()
+    sub = fig.add_subplot(111)
+    
+    for i in [2, 24, 35]: 
+        sv = fitsio.read(os.path.join(dir_dat, 'sv1-targets-dr8-hp-%i.fits' % i)) 
+        sub.scatter(sv['RA'][::100], sv['DEC'][::100], s=1, c='C0')
+    sub.scatter(ra, dec, c=ipixs, s=5)
+    for i in range(len(ra)): 
+        sub.text(ra[i], dec[i], '%i' % ipixs[i])
+
+    fig.savefig('sv_healpix.png', bbox_inches='tight') 
+    return None 
+
+
 def compile_SV_targets(): 
     '''
     '''
@@ -168,6 +197,8 @@ if __name__=="__main__":
     #mtl = fitsio.read('/global/cscratch1/sd/chahah/feasibgs/survey_validation/bright/mtl-1400deg2.fits')
     #test_mtl(mtl)
     
+    SV_healpixels()
+    raise ValueError
     # full MTL 
     #compile_SV_targets()
     targets = fitsio.read(os.path.join(dir_dat, 'desitarget.dr8.0.34.0.bgs_sv.hp_comb.fits'))
