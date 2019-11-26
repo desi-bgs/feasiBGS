@@ -31,12 +31,11 @@ mpl.rcParams['legend.frameon'] = False
 dir_dat = os.path.join(UT.dat_dir(), 'survey_validation')
 
 
-def testFA_singletile(itile): 
+def testFA_singletile(ftile): 
     ''' examine the different target classes for a single tile 
     '''
     # read in tile
-    ftile = fits.open(os.path.join(dir_dat, 'fiberassign-0740%s.fits' % str(itile).zfill(2)))
-    tile = ftile[1].data 
+    tile = fits.open(ftile)[1].data
 
     # bgs bitmasks
     bitmask_bgs     = tile['SV1_BGS_TARGET']
@@ -78,7 +77,7 @@ def testFA_singletile(itile):
     sub.set_xlim(235.5, 239.9) 
     sub.set_ylabel('Dec', fontsize=20)
     sub.set_ylim(22., 26) 
-    fig.savefig(os.path.join(dir_dat, 'fiberassign-0740%s.png' % str(itile).zfill(2)), bbox_inches='tight')  
+    fig.savefig(os.path.join(dir_dat, ftile.replace('.fits', '.png')), bbox_inches='tight')  
     return None 
 
 
@@ -127,5 +126,5 @@ def bgs_targetclass(bitmask_bgs):
 
 
 if __name__=="__main__": 
-    #testFA_singletile(1)
-    testFA_tiles()
+    testFA_singletile(os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-4', 'fiberassign-074010.fits'))
+    #testFA_tiles()
