@@ -134,59 +134,54 @@ def test_mtl(mtl):
     return None 
 
 
-def SV_healpixels(): 
-    '''
+def mtl_SV_healpy(): 
+    ''' generate MTLs from targets in healpixels with SV tiles 
     '''
     sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
-    ra = sv['RA']
-    dec =  sv['DEC']
-    phi = np.deg2rad(ra)
-    theta = 0.5 * np.pi - np.deg2rad(dec)
-    ipixs = hp.ang2pix(2, theta, phi, nest=True)#hp.ang2pix(2, dec, ra, nest=True, lonlat=True)
-    hp_pixs, cnts = np.unique(hp.ang2pix(2, theta, phi, nest=True), return_counts=True) 
-    print(hp_pixs)
-    print(cnts)
-    import matplotlib.pyplot as plt
-    fig = plt.figure()
-    sub = fig.add_subplot(111)
-    
-    for i in [2, 24, 35]: 
-        sv = fitsio.read(os.path.join(dir_dat, 'sv1-targets-dr8-hp-%i.fits' % i)) 
-        sub.scatter(sv['RA'][::100], sv['DEC'][::100], s=1, c='C0')
-    sub.scatter(ra, dec, c=ipixs, s=5)
-    for i in range(len(ra)): 
-        sub.text(ra[i], dec[i], '%i' % ipixs[i])
+    phi = np.deg2rad(sv['RA'])
+    theta = 0.5 * np.pi - np.deg2rad(sv['DEC'])
 
-    fig.savefig('sv_healpix.png', bbox_inches='tight') 
+    ipixs = np.unique(hp.ang2pix(2, theta, phi, nest=True)) 
+    
+    dir_sv = '/project/projectdirs/desi/target/catalogs/dr8/0.34.0/targets/sv/resolve/bright/'
+    for i in ipixs: 
+        print('--- %i pixel ---' % i) 
+        targets = fitsio.read(os.path.join(dir_sv, 'sv1-targets-dr8-hp-%i.fits' % i))
+        mtl = make_mtl(targets)
+        mtl.write(os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-%i.fits' % i), format='fits') 
     return None 
 
 
-def compile_SV_targets(): 
+def master_truth_table(): 
+    ''' compile master list of brickid, objid, ra, dec, north or south, name of survey of
+    spectroscopic truth tables 
     '''
-    '''
-    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
-    ra, dec = sv['RA'], sv['DEC']
+    import h5py 
+    import glob 
+    brickid, objid, ra, dec, nors, survey = [], [], [], [], [], []
+    for ns in ['north', 'south']: 
+        dir_match = '/project/projectdirs/desi/target/analysis/truth/dr8.0/%s/matched/' % ns
+        ftabs = glob.glob(dir_match+'ls-dr8.0*') 
+        for ftab in ftabs: 
+            tab = fitsio.read(ftab)
+            print('%i objects in %s' % (tab.shape[0], os.path.basename(ftab)))
 
-    hp_pixs = np.unique(hp.pixelfunc.ang2pix(2, np.radians(90. - dec), np.radians(360. - ra))) 
+            brickid.append(tab['BRICKID'])
+            objid.append(tab['OBJID'])
+            ra.append(tab['RA'])
+            dec.append(tab['DEC'])
+            nors.append(np.repeat(ns, tab.shape[0]))
+            survey.append(np.repeat(os.path.basename(ftab), tab.shape[0]))
     
-    dir_targ = '/project/projectdirs/desi/target/catalogs/dr8/0.34.0/targets/sv/resolve/bright/'
-   
-    ftargs = [os.path.join(dir_targ, 'sv1-targets-dr8-hp-%i.fits' % ipix) for ipix in hp_pixs]
-    print(1e-9*np.sum([os.path.getsize(ftarg) for ftarg in ftargs]))
-    
-    for itarg, ftarg in enumerate(ftargs):
-        targ = fitsio.read(ftarg)
-        if itarg == 0: 
-            targ_comb = targ 
-        else: 
-            targ_comb = np.concatenate([targ_comb, targ]) 
-        print('%i pixel' % itarg) 
-        print('targ', targ.shape) 
-        print('comb', targ_comb.shape) 
-    
-    fcomb = os.path.join(dir_dat, 'desitarget.dr8.0.34.0.bgs_sv.hp_comb.fits') 
-    fitsio.write(fcomb, targ_comb) 
-    return None 
+    fmaster = h5py.File(os.path.join(dir_dat, 'master_truth_table.hdf5'), 'w') 
+    fmaster.create_dataset('BRICKID', data=np.concatenate(brickid))
+    fmaster.create_dataset('OBJID', data=np.concatenate(objid))
+    fmaster.create_dataset('RA', data=np.concatenate(ra))
+    fmaster.create_dataset('DEC', data=np.concatenate(dec))
+    fmaster.create_dataset('NORS', data=np.concatenate(nors).astype('S'))
+    fmaster.create_dataset('SURVEY', data=np.concatenate(survey).astype('S'))
+    fmaster.close() 
+    return None  
 
 
 if __name__=="__main__": 
@@ -197,12 +192,6 @@ if __name__=="__main__":
     #mtl = fitsio.read('/global/cscratch1/sd/chahah/feasibgs/survey_validation/bright/mtl-1400deg2.fits')
     #test_mtl(mtl)
     
-    SV_healpixels()
-    raise ValueError
     # full MTL 
-    #compile_SV_targets()
-    #targets = fitsio.read(os.path.join(dir_dat, 'desitarget.dr8.0.34.0.bgs_sv.hp_comb.fits'))
-    targets = fitsio.read(os.path.join(dir_dat, 'sv1-targets-dr8-hp-24.fits'))
-    mtl = make_mtl(targets)
-    mtl.write(os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-24.fits'), format='fits') 
-
+    #mtl_SV_healpy()
+    master_truth_table()
