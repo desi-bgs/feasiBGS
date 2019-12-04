@@ -228,7 +228,7 @@ def bgs_targetclass(bitmask_bgs):
     return n_bgs, n_bgs_bright, n_bgs_faint, n_bgs_extfaint, n_bgs_fibmag, n_bgs_lowq
 
 
-'''
+"""
     def _make_mtl(targets, test=0):
         '''
         '''
@@ -387,7 +387,7 @@ def bgs_targetclass(bitmask_bgs):
         #mtl.write(os.path.join(dir_dat, 'subpriority_test', 'mtl.dr8.0.34.0.bgs_sv.hp-0.test1.fits'),
         #        format='fits', overwrite=True) 
         return None 
-'''
+"""
 
 if __name__=="__main__": 
     #targets = fitsio.read('/global/cscratch1/sd/chahah/feasibgs/survey_validation/bright/desitarget-targets-1400deg2.fits') 
