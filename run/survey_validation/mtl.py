@@ -333,8 +333,47 @@ def mtl_SV_healpy():
     return None 
 
 
+def test_mtl_SV_healpy(): 
+    ''' test the MTLs by plotting the SV BGS target fractions in each of healpix 
+    '''
+    fig = plt.figure(figsize=(20,20))
+    gs = mpl.gridspec.GridSpec(3,2, figure=fig)
+
+    classes = ['BGS_BRIGHT', 'BGS_FAINT', 'BGS_FAINT_EXT', 'BGS_FIBMAG', 'BGS_LOWQ', 'IN_SPECTRUTH']
+    subs = [plt.subplot(gs[i], projection='mollweide') for i in range(6)]
+
+    for cl, sub in zip(classes, subs):  
+        print(cl) 
+        fclass_pixs = np.zeros(hp.nside2npix(2))
+
+        for fmtl in glob.glob(os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-*.fits')): 
+            # read MTL 
+            mtl = fitsio.read(fmtl)
+
+            # bgs bitmask
+            bitmask_bgs = mtl['SV1_BGS_TARGET'] 
+            n_bgs = float(np.sum((bitmask_bgs).astype(bool))) 
+            
+            if cl != 'IN_SPECTRUTH': 
+                bgs_class = (bitmask_bgs & bgs_mask.mask(cl)).astype(bool)
+            else:
+                # fraction of galaxies in spectroscopic truth tables 
+                bgs_class = (bitmask_bgs.astype(bool) & mtl['IN_SPECTRUTH'])
+
+            # calculate target fraction in healpix 
+            ipix = int(os.path.basename(fmtl).split('-')[-1].replace('.fits', ''))
+            fclass_pixs[ipix] = float(np.sum(bgs_class)) / n_bgs
+
+        plt.axes(sub) 
+        hp.mollview(fclass_pixs, nest=True, rot=180., hold=True, title=cl) 
+
+    fig.savefig(os.path.join(dir_dat, 'mtl_healpix_targetclass.png'), bbox_inches='tight') 
+    return None 
+
+
 def match2spec_SV_healpy(): 
-    ''' generate MTLs from targets in healpixels with SV tiles 
+    ''' append desitarget SV output files with column specifying spectroscopic 
+    truth tables. 
     '''
     sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
     phi = np.deg2rad(sv['RA'])
@@ -389,24 +428,31 @@ def match2spectruth(targets):
     return targets
 
 
-def test_mtl_SV_healpy(): 
+def test_match2spec_SV_healpy(): 
+    ''' plot where the spectroscopic truth table SV targets lie
     '''
-    '''
-    for fmtl in glob.glob(os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-*.fits')): 
-        mtl = fitsio.read(fmtl)
-        # bgs bitmask
-        bitmask_bgs = mtl['SV1_BGS_TARGET']
-        bgs_bright      = (bitmask_bgs & bgs_mask.mask('BGS_BRIGHT')).astype(bool)
-        bgs_faint       = (bitmask_bgs & bgs_mask.mask('BGS_FAINT')).astype(bool)
-        bgs_extfaint    = (bitmask_bgs & bgs_mask.mask('BGS_FAINT_EXT')).astype(bool) # extended faint
-        bgs_fibmag      = (bitmask_bgs & bgs_mask.mask('BGS_FIBMAG')).astype(bool) # fiber magnitude limited
-        bgs_lowq        = (bitmask_bgs & bgs_mask.mask('BGS_LOWQ')).astype(bool) # low quality
+    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
+    phi_sv = np.deg2rad(sv['RA'])
+    theta_sv = 0.5 * np.pi - np.deg2rad(sv['DEC'])
 
-        for name, bgs_class in zip(['bgs_bright', 'bgs_faint', 'bgs_extfaint', 'bgs_fibmag', 'bgs_lowq'],
-                [bgs_bright, bgs_faint, bgs_extfaint, bgs_fibmag, bgs_lowq]): 
-            print('--- %s ---' % name) 
-            print('PRIORITY: %.2f - %.2f' % (mtl['PRIORITY'][bgs_class].min(), mtl['PRIORITY'][bgs_class].max()))
-            print('SUBPRIORITY: %.2f - %.2f' % (mtl['SUBPRIORITY'][bgs_class].min(), mtl['SUBPRIORITY'][bgs_class].max()))
+    pixs = np.zeros(hp.nside2npix(2))
+    ipixs = np.unique(hp.ang2pix(2, theta_sv, phi_sv, nest=True)) 
+    
+    dir_sv = '/project/projectdirs/desi/target/catalogs/dr8/0.34.0/targets/sv/resolve/bright/'
+    for i in ipixs: pixs[i] = 1.
+    hp.mollview(pixs, nest=True, rot=180.) 
+
+    for i in ipixs: 
+        targ = fitsio.read(os.path.join(dir_dat, 'sv1-targets-dr8-hp-%i.spec_truth.fits' % i))
+        targ_spectrue = targ[targ['IN_SPECTRUTH']] 
+
+        phi = np.deg2rad(targ_spectrue['RA'])
+        theta = 0.5 * np.pi - np.deg2rad(targ_spectrue['DEC'])
+
+        hp.projscatter(theta[::10], phi[::10], c='C1', s=1)
+    hp.projscatter(theta_sv, phi_sv, c='C0', s=20)
+
+    plt.savefig(os.path.join(dir_dat, 'match2spec_SV_healpix.png'), bbox_inches='tight') 
     return None 
 
 
@@ -488,6 +534,18 @@ def bgs_truth_table():
     fmaster.create_dataset('SURVEY', data=np.concatenate(survey).astype('S'))
     fmaster.close() 
     return None  
+
+
+def target_densities(): 
+    ''' Examine the target class densities for the different healpixels to
+    see the variation in the targeting 
+    '''
+    dir_sv = '/project/projectdirs/desi/target/catalogs/dr8/0.34.0/targets/sv/resolve/bright/'
+    for i in ipixs: 
+        print('--- %i pixel ---' % i) 
+        targets = fitsio.read(os.path.join(dir_sv, 'sv1-targets-dr8-hp-%i.fits' % i))
+        mtl = make_mtl(targets)
+        mtl.write(os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-%i.fits' % i), format='fits') 
 
 
 def master_truth_table(): 
@@ -700,8 +758,11 @@ if __name__=="__main__":
     #bgs_truth_table()
 
     # full MTL 
-    match2spec_SV_healpy()
+    #match2spec_SV_healpy()
+    #test_match2spec_SV_healpy()
     #mtl_SV_healpy()
+    test_mtl_SV_healpy()
+
     #for _class in ['bright', 'faint', 'extfaint', 'fibmag', 'lowq']:
     #    target_healpix(target_class=_class)
     #master_truth_table()
