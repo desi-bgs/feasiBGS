@@ -2,6 +2,7 @@
 script for making the mtl file from desitarget output 
 '''
 import os 
+import glob
 import numpy as np 
 
 import fitsio
@@ -150,6 +151,20 @@ def mtl_SV_healpy():
         mtl = make_mtl(targets)
         mtl.write(os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-%i.fits' % i), format='fits') 
     return None 
+
+
+def target_densities(): 
+    ''' Examine the target class densities for the different healpixels to
+    see the variation in the targeting 
+    '''
+    dir_sv = '/project/projectdirs/desi/target/catalogs/dr8/0.34.0/targets/sv/resolve/bright/'
+    for 
+
+    for i in ipixs: 
+        print('--- %i pixel ---' % i) 
+        targets = fitsio.read(os.path.join(dir_sv, 'sv1-targets-dr8-hp-%i.fits' % i))
+        mtl = make_mtl(targets)
+        mtl.write(os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-%i.fits' % i), format='fits') 
 
 
 def master_truth_table(): 
