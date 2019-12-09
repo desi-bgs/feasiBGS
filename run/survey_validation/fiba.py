@@ -93,7 +93,10 @@ def testFA_singletile(ftile):
 
 
 def testFA_tiles(): 
+    '''
+    '''
     n_zero = 0
+    _flags = [] 
     for i, f in enumerate(glob.glob(os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb', 'fiberassign*.fits'))): 
         # read in tile
         tile_i = fits.open(f)[1].data 
@@ -104,25 +107,95 @@ def testFA_tiles():
 
         _n_bgs, _n_bgs_bright, _n_bgs_faint, _n_bgs_extfaint, _n_bgs_fibmag, _n_bgs_lowq = \
                 bgs_targetclass(tile_i['SV1_BGS_TARGET'])
+        print('---------------------------------')
         print('field %i, n_bgs = %f' % (i, _n_bgs))
-        print('BGS Bright %.3f' % (_n_bgs_bright/_n_bgs))
-        print('BGS Faint %.3f' % (_n_bgs_faint/_n_bgs))
-        print('BGS Ext.Faint %.3f' % (_n_bgs_extfaint/_n_bgs))
-        print('BGS Fib.Mag %.3f' % (_n_bgs_fibmag/_n_bgs))
-        print('BGS Low Q. %.3f' % (_n_bgs_lowq/_n_bgs))
+        print('BGS Bright %.3f (0.45)' % (_n_bgs_bright/_n_bgs))
+        print('BGS Faint %.3f (0.25)' % (_n_bgs_faint/_n_bgs))
+        print('BGS Ext.Faint %.3f (0.125)' % (_n_bgs_extfaint/_n_bgs))
+        print('BGS Fib.Mag %.3f (0.125)' % (_n_bgs_fibmag/_n_bgs))
+        print('BGS Low Q. %.3f (0.05)' % (_n_bgs_lowq/_n_bgs))
         if _n_bgs == 0: n_zero += 1
+
+        # high LOW Q
+        if _n_bgs_lowq/_n_bgs > 0.1: 
+            _flags.append(np.ones(len(tile_i['TARGET_RA'])))
+        else: 
+            _flags.append(np.zeros(len(tile_i['TARGET_RA'])))
+    _flags = np.concatenate(_flags).astype(bool)
 
     n_bgs, n_bgs_bright, n_bgs_faint, n_bgs_extfaint, n_bgs_fibmag, n_bgs_lowq = \
             bgs_targetclass(tile['SV1_BGS_TARGET'])
-
+    print('---------------------------------')
+    print('%i tiles with zero BGS targets' % n_zero)
     print('---------------------------------')
     print('total n_bgs = %i' % n_bgs)
-    print('%i' % (n_bgs_bright + n_bgs_faint + n_bgs_extfaint + n_bgs_fibmag + n_bgs_lowq))
-    print('BGS Bright %.3f' % (n_bgs_bright/n_bgs))
-    print('BGS Faint %.3f' % (n_bgs_faint/n_bgs))
-    print('BGS Ext.Faint %.3f' % (n_bgs_extfaint/n_bgs))
-    print('BGS Fib.Mag %.3f' % (n_bgs_fibmag/n_bgs))
-    print('BGS Low Q. %.3f' % (n_bgs_lowq/n_bgs))
+    print('BGS Bright %.3f (0.45)' % (n_bgs_bright/n_bgs))
+    print('BGS Faint %.3f (0.25)' % (n_bgs_faint/n_bgs))
+    print('BGS Ext.Faint %.3f (0.125)' % (n_bgs_extfaint/n_bgs))
+    print('BGS Fib.Mag %.3f (0.125)' % (n_bgs_fibmag/n_bgs))
+    print('BGS Low Q. %.3f (0.05)' % (n_bgs_lowq/n_bgs))
+    
+    fig = plt.figure(figsize=(10,5))
+    sub = fig.add_subplot(111)
+    sub.scatter(tile['TARGET_RA'], tile['TARGET_DEC'], c='k', s=2)
+    sub.scatter(tile['TARGET_RA'][_flags], tile['TARGET_DEC'][_flags], c='C1', s=2)
+
+    #sub.legend(loc='upper right', handletextpad=0.2, markerscale=5, fontsize=15) 
+    sub.set_xlabel('RA', fontsize=20)
+    sub.set_xlim(360., 0.)#tile['TARGET_RA'].min(), tile['TARGET_RA'].max())
+    sub.set_ylabel('Dec', fontsize=20)
+    #sub.set_ylim(22., 26) 
+    sub.set_ylim(-30., 80.)#tile['TARGET_DEC'].min(), tile['TARGET_DEC'].max())
+    fig.savefig(os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb', 'fiberassign_outliers.png'), bbox_inches='tight') 
+    return None 
+
+def testFA_tiles_targetclass(): 
+    ''' plot the target class fractions of the fiberassign output 
+    '''
+    # SV tiles 
+    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
+    phi = np.deg2rad(sv['RA'])
+    theta = 0.5 * np.pi - np.deg2rad(sv['DEC'])
+
+    fig = plt.figure(figsize=(20,20))
+    gs = mpl.gridspec.GridSpec(3,2, figure=fig)
+
+    classes = ['BGS_BRIGHT', 'BGS_FAINT', 'BGS_FAINT_EXT', 'BGS_FIBMAG', 'BGS_LOWQ', 'IN_SPECTRUTH']
+    subs = [plt.subplot(gs[i], projection='mollweide') for i in range(6)]
+
+    for cl, sub in zip(classes, subs):  
+        tras, tdecs, fclasses = [], [], [] 
+        for ftile in glob.glob(os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb', 'fiberassign*.fits')):
+            # read in tile
+            tile = fits.open(ftile)[1].data 
+            tid     = int(ftile.split('-')[-1].replace('.fits', ''))  # tile ID 
+            tra     = sv['RA'][sv['TILEID'] == tid] # tile phi 
+            tdec    = sv['DEC'][sv['TILEID'] == tid] # tile theta 
+
+            # bgs bitmask
+            bitmask_bgs = tile['SV1_BGS_TARGET'] 
+            n_bgs = float(np.sum((bitmask_bgs).astype(bool))) 
+            
+            if cl != 'IN_SPECTRUTH': 
+                bgs_class = (bitmask_bgs & bgs_mask.mask(cl)).astype(bool)
+            else:
+                # fraction of galaxies in spectroscopic truth tables 
+                bgs_class = (bitmask_bgs.astype(bool) & tile['IN_SPECTRUTH'])
+
+            # calculate target fraction in tile  
+            fclass = float(np.sum(bgs_class)) / n_bgs
+
+            tras.append(tra)
+            tdecs.append(tdec)
+            fclasses.append(fclass) 
+
+        tras = np.array(tras).flatten()
+        tdecs = np.array(tdecs).flatten() 
+        sub.scatter((tras - 180.) * np.pi/180., tdecs * np.pi/180., c=np.array(fclasses), 
+                cmap='viridis', vmin=0., vmax=1.) 
+        sub.set_title(cl, fontsize=20) 
+
+    fig.savefig(os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb', 'fiberassign_targetclass.png'), bbox_inches='tight') 
     return None 
 
 
@@ -139,7 +212,7 @@ def bgs_targetclass(bitmask_bgs):
 if __name__=="__main__": 
     #for f in glob.glob(os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb', 'fiberassign*.fits')): 
     #    testFA_singletile(f)
-    #testFA_tiles()
-    
-    for f in glob.glob(os.path.join(dir_dat, 'subpriority_test', 'fiberassign-test0*.fits')): 
-        testFA_singletile(f)
+    testFA_tiles()
+    #testFA_tiles_targetclass()
+    #for f in glob.glob(os.path.join(dir_dat, 'subpriority_test', 'fiberassign-test0*.fits')): 
+    #    testFA_singletile(f)
