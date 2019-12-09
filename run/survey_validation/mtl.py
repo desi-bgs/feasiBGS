@@ -171,7 +171,7 @@ def test_mtl(fmtl):
     return None 
 
 
-def make_mtl_healpix(targets):
+def make_mtl_healpix(targets, spectruth=True):
     ''' make mtl for healpix
     '''
     # determine whether the input targets are main survey, cmx or SV.
@@ -228,8 +228,10 @@ def make_mtl_healpix(targets):
 
     # bgs bitmask
     bitmask_bgs     = targets['SV1_BGS_TARGET']
-    
-    has_spec        = targets['IN_SPECTRUTH'] # objects in spectroscopic truth table  
+    if spectruth:
+        has_spec    = targets['IN_SPECTRUTH'] # objects in spectroscopic truth table  
+    else: 
+        has_spec    = np.zeros(n).astype(bool) 
     # target classes with spectra
     n_bgs_sp, n_bgs_bright_sp, n_bgs_faint_sp, n_bgs_extfaint_sp, n_bgs_fibmag_sp, n_bgs_lowq_sp = \
             bgs_targetclass(targets['SV1_BGS_TARGET'][has_spec])
@@ -316,7 +318,7 @@ def make_mtl_healpix(targets):
     return mtl
 
 
-def mtl_SV_healpy(): 
+def mtl_SV_healpy(spectruth=True): 
     ''' generate MTLs from targets in healpixels with SV tiles 
     '''
     sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
@@ -328,8 +330,12 @@ def mtl_SV_healpy():
     for i in ipixs: 
         print('--- %i pixel ---' % i) 
         targets = fitsio.read(os.path.join(dir_dat, 'sv1-targets-dr8-hp-%i.spec_truth.fits' % i))
-        mtl = make_mtl_healpix(targets)
-        mtl.write(os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-%i.fits' % i), format='fits', overwrite=True) 
+        mtl = make_mtl_healpix(targets, spectruth=spectruth)
+        if spectruth:
+            fmtl = os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-%i.spec_truth.fits' % i)
+        else: 
+            fmtl = os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-%i.fits' % i)
+        mtl.write(fmtl, format='fits', overwrite=True) 
     return None 
 
 
@@ -760,8 +766,9 @@ if __name__=="__main__":
     # full MTL 
     #match2spec_SV_healpy()
     #test_match2spec_SV_healpy()
-    #mtl_SV_healpy()
-    test_mtl_SV_healpy()
+    #mtl_SV_healpy(spectruth=True)
+    mtl_SV_healpy(spectruth=False)
+    #test_mtl_SV_healpy()
 
     #for _class in ['bright', 'faint', 'extfaint', 'fibmag', 'lowq']:
     #    target_healpix(target_class=_class)
