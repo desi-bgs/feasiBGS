@@ -67,7 +67,7 @@ def darksky():
 
     for ispec in range(10): 
         _i = 0 
-        waves, fluxes = {}, {} 
+        waves, fluxes, fluxes_texp, expids = {}, {}, {}, [] 
     
         # dark sky  
         isdark = (
@@ -78,33 +78,65 @@ def darksky():
         nights  = meta['night'][isdark]
         exps    = meta['exp'][isdark]
 
-        for night, exp in zip(nights, exps): 
+        for night, exp, texp in zip(nights, exps, meta['exptime'][isdark]): 
+            if exp in [30784]: continue 
             try: 
-                spectra = get_spectra(meta['night'], exp, type='sky')
+                spectra = get_spectra(night, exp, type='sky')
             except AssertionError: 
                 continue 
 
             issky = spectra['keep'][ispec]
             if np.sum(issky) == 0: continue  # no sky spectra in this petal 
-            print('%i spectra from %i (exp %i)' % (np.sum(issky), meta['night'], exp)) 
+            print('%i spectra from %i (exp %i) texp=%f' % (np.sum(issky), night, exp, texp)) 
 
             for band in ['b', 'r', 'z']: 
                 if _i == 0: 
                     waves[band] = spectra['wave_%s' % band][ispec,issky,:] 
                     fluxes[band] = spectra['flux_%s' % band][ispec,issky,:]
+                    fluxes_texp[band] = spectra['flux_%s' % band][ispec,issky,:]/texp
                 else: 
                     waves[band] = np.concatenate([waves[band], spectra['wave_%s' % band][ispec,issky,:]]) 
                     fluxes[band] = np.concatenate([fluxes[band], spectra['flux_%s' % band][ispec,issky,:]]) 
+                    fluxes_texp[band] = np.concatenate([fluxes_texp[band], spectra['flux_%s' % band][ispec,issky,:]/texp]) 
+            expids.append(np.repeat(exp, np.sum(issky)))
             _i += 1 
         if _i == 0: continue 
-        
-        fig = plt.figure(figsize=(10,5))
-        sub = fig.add_subplot(111)
+        expids = np.concatenate(expids) 
+
+        uniq_exp = np.unique(expids)
+    
+        fig = plt.figure(figsize=(20,5))
         for ib, band in enumerate(['b', 'r', 'z']): 
-            for i in np.arange(waves[band].shape[0])[::10]: 
-                sub.plot(waves[band][i,:], fluxes[band][i,:], c='C%i' % ib, alpha=0.1)
-        sub.set_xlim(3500, 9800) 
-        sub.set_ylim(0, 500) 
+            sub = fig.add_subplot(1,3,ib+1)
+
+            if band == 'b': 
+                wave_grid = np.linspace(3550, 5900, 4000)
+            elif band == 'r': 
+                wave_grid = np.linspace(5600, 7700, 4000)
+            elif band == 'z':
+                wave_grid = np.linspace(7350, 9800, 4000)
+
+            for _iexp, _exp in enumerate(uniq_exp):  
+                isexp = (expids == _exp)
+
+                flux_grid = []
+                for _i in range(np.sum(isexp)): 
+                    flux_grid.append(
+                            np.interp(wave_grid, waves[band][isexp,:][_i], fluxes_texp[band][isexp,:][_i]))
+                flux_grid = np.array(flux_grid)
+                sub.plot(wave_grid, np.median(flux_grid, axis=0), 
+                        c='C%i' % _iexp, lw=1, label='exp %i' % _exp)
+
+            if ib == 0: 
+                sub.set_xlim(3500, 6100) 
+                sub.legend(loc='upper left', fontsize=15) 
+            elif ib == 1: 
+                sub.set_xlim(5500, 8000) 
+            elif ib == 2: 
+                sub.set_xlim(7200, 10000) 
+            sub.set_ylim(0, 0.75) 
+            if ib != 0: sub.set_yticklabels([]) 
+            else: sub.set_ylabel('flux (counts/A/sec)', fontsize=15) 
         fig.savefig('desicmx.darksky.spectrograph%i.png' % ispec, bbox_inches='tight') 
     return None 
 
@@ -134,13 +166,13 @@ def maybe():
 
         for night, exp in zip(nights, exps): 
             try: 
-                spectra = get_spectra(meta['night'], exp, type='maybe')
+                spectra = get_spectra(night, exp, type='maybe')
             except AssertionError: 
                 continue 
 
             issky = spectra['keep'][ispec]
             if np.sum(issky) == 0: continue  # no sky spectra in this petal 
-            print('%i spectra from %i (exp %i)' % (np.sum(issky), meta['night'], exp)) 
+            print('%i spectra from %i (exp %i)' % (np.sum(issky), night, exp)) 
 
             for band in ['b', 'r', 'z']: 
                 if _i == 0: 
@@ -152,13 +184,16 @@ def maybe():
             _i += 1 
         if _i == 0: continue 
         
-        fig = plt.figure(figsize=(10,5))
-        sub = fig.add_subplot(111)
+        fig = plt.figure(figsize=(15,5))
         for ib, band in enumerate(['b', 'r', 'z']): 
-            for i in np.arange(waves[band].shape[0])[::10]: 
-                sub.plot(waves[band][i,:], fluxes[band][i,:], c='C%i' % ib, alpha=0.1)
-        sub.set_xlim(3500, 9800) 
-        sub.set_ylim(0, 500) 
+            sub = fig.add_subplot(1,3,ib+1)
+            for i in np.arange(waves[band].shape[0]): 
+                sub.plot(waves[band][i,:], fluxes[band][i,:], lw=0.1)#, alpha=0.1)
+            if ib == 0: sub.set_xlim(3500, 6100) 
+            elif ib == 1: sub.set_xlim(5500, 8000) 
+            elif ib == 2: sub.set_xlim(7200, 10000) 
+            sub.set_ylim(0, 500) 
+            if ib != 0: sub.set_yticklabels([]) 
         fig.savefig('desicmx.maybe.spectrograph%i.png' % ispec, bbox_inches='tight') 
     return None 
 
@@ -317,6 +352,7 @@ def make_obscond_table():
             meta['night']       = ExpInfo(exp, 'night')
             meta['mjd']         = ExpInfo(exp, 'mjd_obs')
             meta['sequence']    = ExpInfo(exp, 'sequence')
+            meta['exptime']     = ExpInfo(exp, 'exptime') 
             if _i == 0: 
                 for k in meta.keys(): 
                     metadata[k] = [meta[k]] 
@@ -331,4 +367,6 @@ def make_obscond_table():
 
 
 if __name__=='__main__': 
-    make_obscond_table()
+    #make_obscond_table()
+    darksky()
+    #maybe()
