@@ -171,9 +171,10 @@ def test_mtl(fmtl):
     return None 
 
 
-def make_mtl_healpix(targets, spectruth=True):
+def make_mtl_healpix(targets, spectruth=True, seed=None):
     ''' make mtl for healpix
     '''
+    np.random.seed(seed)
     # determine whether the input targets are main survey, cmx or SV.
     colnames, masks, survey = main_cmx_or_sv(targets)
     # ADM set the first column to be the "desitarget" column
@@ -318,7 +319,7 @@ def make_mtl_healpix(targets, spectruth=True):
     return mtl
 
 
-def mtl_SV_healpy(spectruth=True): 
+def mtl_SV_healpy(spectruth=True, seed=None): 
     ''' generate MTLs from targets in healpixels with SV tiles 
     '''
     sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
@@ -330,11 +331,14 @@ def mtl_SV_healpy(spectruth=True):
     for i in ipixs: 
         print('--- %i pixel ---' % i) 
         targets = fitsio.read(os.path.join(dir_dat, 'sv1-targets-dr8-hp-%i.spec_truth.fits' % i))
-        mtl = make_mtl_healpix(targets, spectruth=spectruth)
+        mtl = make_mtl_healpix(targets, spectruth=spectruth, seed=seed)
+        
         if spectruth:
-            fmtl = os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-%i.spec_truth.fits' % i)
+            dir_mtl = os.path.join(dir_dat, 'mtl.spec_truth')
+            fmtl = os.path.join(dir_mtl, 'mtl.dr8.0.34.0.bgs_sv.hp-%i.spec_truth.seed%i.fits' % (i, seed))
         else: 
-            fmtl = os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-%i.fits' % i)
+            dir_mtl = os.path.join(dir_dat, 'mtl')
+            fmtl = os.path.join(dir_mtl, 'mtl.dr8.0.34.0.bgs_sv.hp-%i.seed%i.fits' % (i, seed))
         mtl.write(fmtl, format='fits', overwrite=True) 
     return None 
 
@@ -766,8 +770,8 @@ if __name__=="__main__":
     # full MTL 
     #match2spec_SV_healpy()
     #test_match2spec_SV_healpy()
-    #mtl_SV_healpy(spectruth=True)
-    mtl_SV_healpy(spectruth=False)
+    mtl_SV_healpy(spectruth=True, seed=0)
+    mtl_SV_healpy(spectruth=False, seed=0)
     #test_mtl_SV_healpy()
 
     #for _class in ['bright', 'faint', 'extfaint', 'fibmag', 'lowq']:
