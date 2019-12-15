@@ -33,6 +33,53 @@ mpl.rcParams['legend.frameon'] = False
 dir_dat = os.path.join(UT.dat_dir(), 'survey_validation')
 
 
+def new_SVfields(): 
+    ''' compare SV fields from Sep 2019 to newly proposed SV regions from 
+    Anand and Christophe Dec 2019.
+    '''
+    import matplotlib.patches as patches
+
+    sv_old = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
+
+    svdict = {}
+    svdict['01_s82']            = '30,40,-7,2'
+    svdict['02_egs']            = '210,220,50,55'
+    svdict['03_gama12']         = '175,185,-3,2'
+    svdict['04_gama15']         = '212,222,-2,3'
+    svdict['05_overlap']        = '135,160,30,35'
+    svdict['06_refnorth']       = '215,230,41,46'
+    svdict['07_ages']           = '215,220,30,40'
+    svdict['08_sagittarius']    = '200,210,5,10'
+    svdict['09_highebv_n']      = '140,150,65,70'
+    svdict['10_highebv_s']      = '240,245,20,25'
+    svdict['11_highstardens_n'] = '273,283,40,45'
+    svdict['12_highstardens_s'] = '260,270,15,20'
+
+
+    fig = plt.figure(figsize=(10,5))
+    sub = fig.add_subplot(111)
+    for i, reg in enumerate(svdict.keys()): 
+        # get RA, Dec range of new SV regions 
+        ra_min, ra_max      = float(svdict[reg].split(',')[0]), float(svdict[reg].split(',')[1])
+        dec_min, dec_max    = float(svdict[reg].split(',')[2]), float(svdict[reg].split(',')[3])
+        
+        if i == 0:  
+            region = patches.Rectangle((ra_min, dec_min), (ra_max - ra_min), (dec_max - dec_min), 
+                    linewidth=1, edgecolor='k', facecolor='none', label='new SV regions')
+        else: 
+            region = patches.Rectangle((ra_min, dec_min), (ra_max - ra_min), (dec_max - dec_min), 
+                    linewidth=1, edgecolor='k', facecolor='none')
+        sub.add_patch(region) 
+    sub.scatter(sv_old['RA'], sv_old['DEC'], c='C1', s=20, label='SV fields from Sep 2019')
+    sub.legend(loc='lower left', markerscale=5, handletextpad=0.2, fontsize=20)
+    sub.set_xlabel('RA', fontsize=20)
+    sub.set_xlim(360, 0)
+    sub.set_ylabel('Dec', fontsize=20)
+    sub.set_ylim(-40, 90)
+    fig.savefig('new_SVregion.png', bbox_inches='tight') 
+    return None 
+
+
 def testFA_singletile(ftile): 
     ''' examine the different target classes for a single tile 
     '''
@@ -149,7 +196,7 @@ def testFA_tiles():
     fig.savefig(os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb', 'fiberassign_outliers.png'), bbox_inches='tight') 
     return None 
 
-def testFA_tiles_targetclass(): 
+def testFA_tiles_targetclass(spectruth=False): 
     ''' plot the target class fractions of the fiberassign output 
     '''
     # SV tiles 
@@ -157,15 +204,21 @@ def testFA_tiles_targetclass():
     phi = np.deg2rad(sv['RA'])
     theta = 0.5 * np.pi - np.deg2rad(sv['DEC'])
 
-    fig = plt.figure(figsize=(20,20))
-    gs = mpl.gridspec.GridSpec(3,2, figure=fig)
+    fig = plt.figure(figsize=(30,10))
+    gs = mpl.gridspec.GridSpec(2,3, figure=fig)
 
-    classes = ['BGS_BRIGHT', 'BGS_FAINT', 'BGS_FAINT_EXT', 'BGS_FIBMAG', 'BGS_LOWQ', 'IN_SPECTRUTH']
-    subs = [plt.subplot(gs[i], projection='mollweide') for i in range(6)]
+    if spectruth:
+        ffba = os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb.spec_truth', 'fiberassign*.fits')
+        classes = ['BGS_BRIGHT', 'BGS_FAINT', 'BGS_FAINT_EXT', 'BGS_FIBMAG', 'BGS_LOWQ', 'IN_SPECTRUTH']
+    else: 
+        ffba = os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb', 'fiberassign*.fits')
+        classes = ['BGS_BRIGHT', 'BGS_FAINT', 'BGS_FAINT_EXT', 'BGS_FIBMAG', 'BGS_LOWQ']
+    
+    subs = [plt.subplot(gs[i], projection='mollweide') for i in range(len(classes))]
 
     for cl, sub in zip(classes, subs):  
         tras, tdecs, fclasses = [], [], [] 
-        for ftile in glob.glob(os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb', 'fiberassign*.fits')):
+        for ftile in glob.glob(ffba):
             # read in tile
             tile = fits.open(ftile)[1].data 
             tid     = int(ftile.split('-')[-1].replace('.fits', ''))  # tile ID 
@@ -191,11 +244,16 @@ def testFA_tiles_targetclass():
 
         tras = np.array(tras).flatten()
         tdecs = np.array(tdecs).flatten() 
-        sub.scatter((tras - 180.) * np.pi/180., tdecs * np.pi/180., c=np.array(fclasses), 
-                cmap='viridis', vmin=0., vmax=1.) 
-        sub.set_title(cl, fontsize=20) 
+        im = sub.scatter((tras - 180.) * np.pi/180., tdecs * np.pi/180., c=np.array(fclasses), cmap='viridis') 
+        sub.set_title('%s (avg.frac. %.2f)' % (cl, np.mean(fclasses)), fontsize=20) 
+        sub.set_xticklabels([]) 
+        fig.colorbar(im, ax=sub)
 
-    fig.savefig(os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb', 'fiberassign_targetclass.png'), bbox_inches='tight') 
+    if spectruth: 
+        ffig = os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb.spec_truth', 'fiberassign_targetclass.png')
+    else: 
+        ffig = os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb', 'fiberassign_targetclass.png')
+    fig.savefig(ffig, bbox_inches='tight') 
     return None 
 
 
@@ -210,9 +268,11 @@ def bgs_targetclass(bitmask_bgs):
 
 
 if __name__=="__main__": 
+    new_SVfields()
     #for f in glob.glob(os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb', 'fiberassign*.fits')): 
     #    testFA_singletile(f)
-    testFA_tiles()
-    #testFA_tiles_targetclass()
+    #testFA_tiles()
+    #testFA_tiles_targetclass(spectruth=True)
+    #testFA_tiles_targetclass(spectruth=False)
     #for f in glob.glob(os.path.join(dir_dat, 'subpriority_test', 'fiberassign-test0*.fits')): 
     #    testFA_singletile(f)
