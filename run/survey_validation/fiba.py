@@ -16,7 +16,7 @@ from desitarget.sv1.sv1_targetmask import bgs_mask
 # -- plotting -- 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-if os.environ['NERSC_HOST'] != 'cori': 
+if 'NERSC_HOST' not in os.environ: 
     mpl.rcParams['text.usetex'] = True
 mpl.rcParams['font.family'] = 'serif'
 mpl.rcParams['axes.linewidth'] = 1.5
@@ -63,15 +63,12 @@ def new_SVfields():
         ra_min, ra_max      = float(svdict[reg].split(',')[0]), float(svdict[reg].split(',')[1])
         dec_min, dec_max    = float(svdict[reg].split(',')[2]), float(svdict[reg].split(',')[3])
         
-        if i == 0:  
-            region = patches.Rectangle((ra_min, dec_min), (ra_max - ra_min), (dec_max - dec_min), 
-                    linewidth=1, edgecolor='k', facecolor='none', label='new SV regions')
-        else: 
-            region = patches.Rectangle((ra_min, dec_min), (ra_max - ra_min), (dec_max - dec_min), 
-                    linewidth=1, edgecolor='k', facecolor='none')
+        name = reg.split('_')[1]
+        region = patches.Rectangle((ra_min, dec_min), (ra_max - ra_min), (dec_max - dec_min), 
+                linewidth=1, edgecolor='C%i' % i, facecolor='none', label=name)
         sub.add_patch(region) 
-    sub.scatter(sv_old['RA'], sv_old['DEC'], c='C1', s=20, label='SV fields from Sep 2019')
-    sub.legend(loc='lower left', markerscale=5, handletextpad=0.2, fontsize=20)
+    sub.scatter(sv_old['RA'], sv_old['DEC'], c='k', s=20, label='BGS SV')
+    sub.legend(loc='upper right', ncol=2, markerscale=2, handletextpad=0.2, fontsize=10)
     sub.set_xlabel('RA', fontsize=20)
     sub.set_xlim(360, 0)
     sub.set_ylabel('Dec', fontsize=20)
