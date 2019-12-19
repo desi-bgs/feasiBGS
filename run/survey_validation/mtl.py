@@ -330,7 +330,7 @@ def mtl_SV_healpy(spectruth=True, seed=None):
     
     for i in ipixs: 
         print('--- %i pixel ---' % i) 
-        targets = fitsio.read(os.path.join(dir_dat, 'sv1-targets-dr8-hp-%i.spec_truth.fits' % i))
+        targets = fitsio.read(os.path.join(dir_dat, 'sv.spec_truth', 'sv1-targets-dr8-hp-%i.spec_truth.fits' % i))
         mtl = make_mtl_healpix(targets, spectruth=spectruth, seed=seed)
         
         if spectruth:
@@ -396,7 +396,7 @@ def match2spec_SV_healpy():
         print('--- %i pixel ---' % i) 
         targets = fitsio.read(os.path.join(dir_sv, 'sv1-targets-dr8-hp-%i.fits' % i))
         targets = match2spectruth(targets) 
-        fitsio.write(os.path.join(dir_dat, 'sv1-targets-dr8-hp-%i.spec_truth.fits' % i), targets)
+        fitsio.write(os.path.join(dir_dat, 'sv.spec_truth', 'sv1-targets-dr8-hp-%i.spec_truth.fits' % i), targets)
     return None 
 
 
@@ -415,9 +415,10 @@ def match2spectruth(targets):
     st_objid    = spectruth['OBJID'][...]
 
     in_spectruth = np.zeros(targets.shape[0]).astype(bool)
+    gama_cataid  = np.repeat(-999, targets.shape[0]) 
     #in_spectruth.dtype.names = ['ID', 'IN_SPECTRUTH']
     ii = np.arange(targets.shape[0])
-    indices = [] 
+    indices, cataid = [], [] 
 
     uniq_brickid = np.unique(targ_brickid) 
     for brickid in uniq_brickid: 
@@ -427,14 +428,18 @@ def match2spectruth(targets):
         _, in_spec, in_targ = np.intersect1d(targ_objid[in_targbrick], st_objid[in_specbrick], 
                 return_indices=True)
         if len(in_spec) > 0: 
-            print(len(in_spec))
-            print(targets['RA'][isbgs][in_targbrick][in_spec] - spectruth['RA'][...][in_specbrick][in_targ]) 
-            print(targets['DEC'][isbgs][in_targbrick][in_spec] - spectruth['DEC'][...][in_specbrick][in_targ])
+            #print(len(in_spec))
+            #print(targets['RA'][isbgs][in_targbrick][in_spec] - spectruth['RA'][...][in_specbrick][in_targ]) 
+            #print(targets['DEC'][isbgs][in_targbrick][in_spec] - spectruth['DEC'][...][in_specbrick][in_targ])
+            #print(spectruth['GAMA_CATAID'][...][in_specbrick][in_targ]) 
             indices.append(ii[isbgs][in_targbrick][in_spec])
+            cataid.append(spectruth['GAMA_CATAID'][...][in_specbrick][in_targ]) 
 
     in_spectruth[np.concatenate(indices)] = True
+    gama_cataid[np.concatenate(indices)] = np.concatenate(cataid) 
     print('%i BGS SV targets have spectra' % np.sum(in_spectruth)) 
     targets = rfn.append_fields(targets, ['IN_SPECTRUTH'], [in_spectruth]) 
+    targets = rfn.append_fields(targets, ['GAMA_CATAID'], [gama_cataid]) 
     return targets
 
 
@@ -512,7 +517,7 @@ def bgs_truth_table():
     spectroscopic truth tables that Mike compiled 
     '''
 
-    brickid, objid, ra, dec, nors, survey = [], [], [], [], [], []
+    brickid, objid, ra, dec, nors, survey, gama_cataid = [], [], [], [], [], [], [] 
     for ns in ['north', 'south']: 
         fspecs = glob.glob(os.path.join(dir_dat, 'truth_table', '*-%s-standard.fits' % ns))
 
@@ -534,6 +539,14 @@ def bgs_truth_table():
             dec.append(tab['DEC'])
             nors.append(np.repeat(ns, tab.shape[0]))
             survey.append(np.repeat(os.path.basename(fmatch[0]), tab.shape[0]))
+
+            if 'GAMA' in fmatch[0]: # append CATAID from gama 
+                fgama = fmatch[0].replace('ls-dr8.0-', '')
+                print(fgama) 
+                gama = fitsio.read(fgama) # read gama data 
+                gama_cataid.append(gama['CATAID']) 
+            else: 
+                gama_cataid.append(np.repeat(-999, tab.shape[0]))
     
     fmaster = h5py.File(os.path.join(dir_dat, 'bgs_truth_table.hdf5'), 'w') 
     fmaster.create_dataset('BRICKID', data=np.concatenate(brickid))
@@ -542,6 +555,7 @@ def bgs_truth_table():
     fmaster.create_dataset('DEC', data=np.concatenate(dec))
     fmaster.create_dataset('NORS', data=np.concatenate(nors).astype('S'))
     fmaster.create_dataset('SURVEY', data=np.concatenate(survey).astype('S'))
+    fmaster.create_dataset('GAMA_CATAID', data=np.concatenate(gama_cataid))
     fmaster.close() 
     return None  
 
@@ -768,10 +782,10 @@ if __name__=="__main__":
     #bgs_truth_table()
 
     # full MTL 
-    #match2spec_SV_healpy()
+    match2spec_SV_healpy()
     #test_match2spec_SV_healpy()
-    mtl_SV_healpy(spectruth=True, seed=0)
-    mtl_SV_healpy(spectruth=False, seed=0)
+    #mtl_SV_healpy(spectruth=True, seed=0)
+    #mtl_SV_healpy(spectruth=False, seed=0)
     #test_mtl_SV_healpy()
 
     #for _class in ['bright', 'faint', 'extfaint', 'fibmag', 'lowq']:

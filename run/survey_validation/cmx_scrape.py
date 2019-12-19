@@ -5,6 +5,9 @@ https://github.com/desihub/desicmx/blob/master/analysis/specsky/sky-with-moon.ip
 https://github.com/desihub/desicmx/blob/master/analysis/gfa/GFA-ETC-Pipeline.ipynb
 https://github.com/belaa/cmx_sky/blob/master/sky_level_cmx.ipynb
 
+see also 
+https://docs.google.com/document/d/1DwwubRieoaRA8YBhVxE20QwE0EN5xkU-VZQ5tXZEFAE/edit?usp=sharing
+
 
 '''
 import os
@@ -13,11 +16,14 @@ import pickle
 import fitsio
 import numpy as np
 # -- desi --
-import speclite
+import desisim.simexp 
 import specsim.atmosphere
 import specsim.simulator
 from desietcimg.db import DB, Exposures
 from desietcimg.util import load_raw
+# -- feasibgs --
+from feasibgs import util as UT
+from feasibgs import skymodel as Sky
 # -- astro -- 
 import astropy.units as u
 from astropy.time import Time
@@ -55,13 +61,129 @@ if not os.path.exists('db.yaml'):
     print('Created db.yaml')
 
 
+def brightsky(dark_night=20191206, dark_exp=30948): 
+    '''
+    '''
+    # read in metadata of exposures 
+    meta = pickle.load(open('desicmx.exp.metadata.p', 'rb'))
+    # select exposures during bright time  
+    isbright = (
+            (meta['sequence'] == 'Spectrographs') &  
+            (meta['moon_alt'] > 0.) & 
+            (meta['exptime'] > 10.) 
+            )
+    print('%i exposures during bright time' % np.sum(isbright))
+
+    fexp_cmx, fexp_model, sig_fexp_cmx = [], [], [] 
+    for iexp in np.arange(len(meta['id']))[isbright]: 
+        if 'CALIB' in meta['program'][iexp]: continue 
+        try: 
+            fexptime, sig_fexp = fexptime_CMXspec(meta['night'][iexp], meta['id'][iexp], dark_night=dark_night, dark_exp=dark_exp)
+        except AssertionError:
+            continue 
+        fexptime_m = fexptime_model(meta['_airmass'][iexp], 
+                meta['moon_ill'][iexp], meta['moon_alt'][iexp], meta['moon_sep'][iexp],
+                meta['sunalt'][iexp], meta['sunsep'][iexp])
+        print('--- %s ---' % meta['program'][iexp]) 
+        print('%i exposure %i texp=%.2f' % (meta['night'][iexp], meta['id'][iexp], meta['exptime'][iexp]))
+        print('airmass=%.2f' % meta['_airmass'][iexp])
+        print('moon: ill=%.2f, alt=%.1f, sep=%.1f' % (meta['moon_ill'][iexp], meta['moon_alt'][iexp], meta['moon_sep'][iexp])) 
+        print('sun: alt=%.1f, sep=%.1f' % (meta['sunalt'][iexp], meta['sunsep'][iexp]))
+        print('cmx exptime factor=%.2f pm %.2f' % (fexptime, sig_fexp))
+        print('model exptime factor=%.2f' % fexptime_m) 
+        fexp_cmx.append(fexptime)
+        fexp_model.append(fexptime_m)
+        sig_fexp_cmx.append(sig_fexp) 
+
+    fig = plt.figure(figsize=(6,6))
+    sub = fig.add_subplot(111)
+    sub.errorbar(fexp_cmx, fexp_model, xerr=sig_fexp_cmx, fmt='.C0')
+    sub.plot([1., 10.], [1., 10.], c='k', ls='--') 
+    sub.set_xlabel(r'$f_{\rm exp}$ from CMX sky flux', fontsize=20) 
+    sub.set_xlim(1., 10.) 
+    sub.set_ylabel(r'$f_{\rm exp}$ from updated model', fontsize=20) 
+    sub.set_ylim(1., 10.) 
+    fig.savefig('desicmx.brightsky_fexp.png', bbox_inches='tight') 
+    return None 
+
+
+def fexptime_model(airmass, moonill, moonalt, moonsep, sun_alt, sun_sep): 
+    ''' 
+    '''
+    # get sky brightness from updated model 
+    wave, sky_bright = Sky.Isky_newKS_twi(airmass, moonill, moonalt, moonsep, sun_alt, sun_sep)
+    _, sky_bright_cont = getContinuum(wave.value, sky_bright)
+    
+    # nominal dark sky brightness 
+    config = desisim.simexp._specsim_config_for_wave(wave.value, dwave_out=None, specsim_config_file='desi')
+    atm_config = config.atmosphere
+    surface_brightness_dict = config.load_table(atm_config.sky, 'surface_brightness', as_dict=True)
+    sky_dark= surface_brightness_dict['dark'] 
+    
+    # get the continuums for dark sky 
+    w_cont, sky_dark_cont = getContinuum(wave.value, sky_dark.value)
+
+    # calculate (new sky brightness)/(nominal dark sky brightness), which is the correction
+    # factor for the exposure time. 
+    wlim = (w_cont > 4500) & (w_cont < 5500) 
+    f_exp = np.median((sky_bright_cont / sky_dark_cont)[wlim]) 
+    return f_exp  
+
+
+def fexptime_CMXspec(night, exp, dark_night=20191206, dark_exp=30948): 
+    ''' calculate the exposure time correction factor by taking the
+    ratio of the CMX sky fluxes:
+
+    (b band sky flux at [night, exp]) / (b band sky flux at [dark_night, dark_exp]) 
+
+    This assumes that the sky observation at [dark_night, dark_exp] is
+    close to the fiducial dark condition  
+    '''
+    # read in exposure metadata
+    meta = pickle.load(open('desicmx.exp.metadata.p', 'rb'))
+
+    # get dark sky spectra
+    dark_spectra = get_spectra(dark_night, dark_exp, type='sky')
+    texp_dark = meta['exptime'][meta['id'] == dark_exp][0]
+
+    # get spectra
+    spectra = get_spectra(night, exp, type='sky')
+    texp    = meta['exptime'][meta['id'] == exp][0]
+    
+    wave_grid = np.linspace(3550, 5900, 4000)
+    wlim = (wave_grid > 4900) & (wave_grid < 5100) 
+    
+    fexptime = [] 
+    for ispec in range(10): 
+        issky       = spectra['keep'][ispec]
+        isdarksky   = dark_spectra['keep'][ispec]
+        if (np.sum(issky) == 0) or (np.sum(isdarksky) == 0): 
+            continue
+        
+        flux_texp_grid = np.empty((np.sum(issky), len(wave_grid)))
+        dark_flux_texp_grid = np.empty((np.sum(isdarksky), len(wave_grid)) )
+
+        for i in range(np.sum(issky)): 
+            flux_texp_grid[i,:] = np.interp(wave_grid, 
+                    spectra['wave_b'][ispec,issky,:][i,:], 
+                    spectra['flux_b'][ispec,issky,:][i,:])/texp
+        for i in range(np.sum(isdarksky)): 
+            dark_flux_texp_grid[i,:] = np.interp(wave_grid, 
+                    dark_spectra['wave_b'][ispec,isdarksky,:][i,:], 
+                    dark_spectra['flux_b'][ispec,isdarksky,:][i,:])/texp_dark
+
+        fexptime.append(np.median(np.median(flux_texp_grid[:,wlim], axis=1)) / 
+                np.median(np.median(dark_flux_texp_grid[:,wlim], axis=1))) 
+    assert len(fexptime) > 0
+    return np.median(fexptime), np.std(fexptime) 
+
+
 def darksky():
     ''' compile dark sky spectra and compare with dark sky model to approximate
     flux calibrations for the spectrographs 
-    '''
-    db = DB() 
-    ExpInfo = Exposures(db)
 
+    **EXPOSURE 30948 on NIGHT 20191206 as "fiducial dark sky"**
+    '''
     # read in metadata of exposure
     meta = pickle.load(open('desicmx.exp.metadata.p', 'rb'))
 
@@ -80,6 +202,7 @@ def darksky():
 
         for night, exp, texp in zip(nights, exps, meta['exptime'][isdark]): 
             if exp in [30784]: continue 
+            #if exp in [30947, 30951]: continue # positioners placed on targets
             try: 
                 spectra = get_spectra(night, exp, type='sky')
             except AssertionError: 
@@ -126,6 +249,14 @@ def darksky():
                 flux_grid = np.array(flux_grid)
                 sub.plot(wave_grid, np.median(flux_grid, axis=0), 
                         c='C%i' % _iexp, lw=1, label='exp %i' % _exp)
+                flux_m1sig, flux_p1sig = np.quantile(flux_grid, [0.16, 0.84], axis=0) 
+                sub.fill_between(wave_grid, flux_m1sig, flux_p1sig, 
+                        facecolor='C%i' % _iexp, edgecolor='none', alpha=0.25)
+                if ib == 0:             
+                    print('-------------------------') 
+                    isexp = (meta['exp'] == _exp) 
+                    for k in meta.keys(): 
+                        print(k, meta[k][isexp][0])
 
             if ib == 0: 
                 sub.set_xlim(3500, 6100) 
@@ -138,6 +269,59 @@ def darksky():
             if ib != 0: sub.set_yticklabels([]) 
             else: sub.set_ylabel('flux (counts/A/sec)', fontsize=15) 
         fig.savefig('desicmx.darksky.spectrograph%i.png' % ispec, bbox_inches='tight') 
+    return None 
+
+
+def darksky_spectrographs(dark_night=20191206, dark_exp=30948):
+    ''' compare dark sky spectra for the different spectrographs 
+
+    **EXPOSURE 30948 on NIGHT 20191206 as "fiducial dark sky"**
+    '''
+    # read in metadata of exposure
+    meta = pickle.load(open('desicmx.exp.metadata.p', 'rb'))
+    isexp = (meta['exp'] == dark_exp) 
+    texp  = meta['exptime'][isexp][0]
+
+    spectra = get_spectra(dark_night, dark_exp, type='sky')
+
+    fig = plt.figure(figsize=(20,5))
+    for ispec in range(10): 
+        issky = spectra['keep'][ispec]
+        if np.sum(issky) == 0: continue
+
+        waves, fluxes, fluxes_texp = {}, {}, {} 
+        for ib, band in enumerate(['b', 'r', 'z']): 
+            sub = fig.add_subplot(1,3,ib+1)
+
+            waves[band] = spectra['wave_%s' % band][ispec,issky,:] 
+            fluxes[band] = spectra['flux_%s' % band][ispec,issky,:]
+            fluxes_texp[band] = spectra['flux_%s' % band][ispec,issky,:]/texp
+
+            if band == 'b': 
+                wave_grid = np.linspace(3550, 5900, 4000)
+            elif band == 'r': 
+                wave_grid = np.linspace(5600, 7700, 4000)
+            elif band == 'z':
+                wave_grid = np.linspace(7350, 9800, 4000)
+
+            flux_grid = []
+            for _i in range(np.sum(issky)): 
+                flux_grid.append(
+                        np.interp(wave_grid, waves[band][_i,:], fluxes_texp[band][_i,:]))
+            flux_grid = np.array(flux_grid)
+            sub.plot(wave_grid, np.median(flux_grid, axis=0), 
+                    c='C%i' % ispec, lw=0.5, label='spectrograph %i' % ispec)
+            if ib == 0: 
+                sub.set_xlim(3500, 6100) 
+                sub.legend(loc='upper left', fontsize=15) 
+            elif ib == 1: 
+                sub.set_xlim(5500, 8000) 
+            elif ib == 2: 
+                sub.set_xlim(7200, 10000) 
+            sub.set_ylim(0, 0.75) 
+            if ib != 0: sub.set_yticklabels([]) 
+            else: sub.set_ylabel('flux (counts/A/sec)', fontsize=15) 
+        fig.savefig('desicmx.darksky.%i_%i.spectrographs.png' % (dark_night, dark_exp), bbox_inches='tight') 
     return None 
 
 
@@ -241,8 +425,14 @@ def _get_spectra(night, exp):
             fspec = os.path.join(dir_spec, '%i' % night, '000%i' % exp, 'qframe-%s%i-000%i.fits' % (band, ispec, exp))
             if not os.path.exists(fspec): continue 
             
-            flux = fitsio.read(fspec, 'FLUX') 
-            wave = fitsio.read(fspec, 'WAVELENGTH') 
+            try: 
+                flux = fitsio.read(fspec, 'FLUX') 
+                wave = fitsio.read(fspec, 'WAVELENGTH') 
+            except OSError:
+                print('--------------------------------') 
+                print('Could not open %s' % fspec) 
+                print('--------------------------------') 
+                continue 
 
             if _i == 0: 
                 fluxes  = np.tile(-999., (10, flux.shape[0], flux.shape[1]))
@@ -325,20 +515,25 @@ def make_obscond_table():
     metadata = {}
     for exp in exps: 
         gfa_exp = None 
-        if ExpInfo(exp, 'sequence') == 'spectrographs': 
+
+        texp = ExpInfo(exp, 'mjd_obs')
+        if ExpInfo(exp, 'sequence') == 'Spectrographs': 
             # find nearest GFA exposure 
             _gfa_exp = allexps['id'].to_numpy().astype(int)[is_gfa][np.argmin(np.abs(mjd_gfa - ExpInfo(exp, 'mjd_obs')))]
             if np.abs(texp - ExpInfo(_gfa_exp, 'mjd_obs')) < 0.001:  
                 gfa_exp = _gfa_exp
 
-        texp = ExpInfo(exp, 'mjd_obs')
         meta = {} 
         meta['mjd'] = texp 
-        for col in ['airmass', 'skyra', 'skydec', 'moonra', 'moondec']: 
-            if ExpInfo(exp, col) is not None: 
+        for col in ExpInfo.columns: #['airmass', 'skyra', 'skydec', 'moonra', 'moondec']: 
+            if col in ['skyra', 'skydec']: 
+                if (ExpInfo(exp, col) is None) and (ExpInfo(exp, 'sequence') == 'Spectrographs') and (gfa_exp is not None): 
+                    print(exp, gfa_exp)
+                    meta[col] = ExpInfo(gfa_exp, col)
+                else: 
+                    meta[col] = ExpInfo(exp, col)
+            elif ExpInfo(exp, col) is not None: 
                 meta[col] = ExpInfo(exp, col)
-            elif (ExpInfo(exp, 'sequence') == 'Spectrographs') and gfa_exp is not None: 
-                meta[col] = ExpInfo(gfa_exp, col)
             else: 
                 meta[col] = None 
 
@@ -347,12 +542,12 @@ def make_obscond_table():
             # append additional observing conditions  
             obscond = get_obscond(meta['skyra'], meta['skydec'], meta['mjd']) 
             for k in obscond.keys(): 
-                meta[k] = obscond[k]
-            meta['exp']         = exp
-            meta['night']       = ExpInfo(exp, 'night')
-            meta['mjd']         = ExpInfo(exp, 'mjd_obs')
-            meta['sequence']    = ExpInfo(exp, 'sequence')
-            meta['exptime']     = ExpInfo(exp, 'exptime') 
+                if k == 'airmass': 
+                    meta['_airmass'] = obscond[k]
+                else: 
+                    meta[k] = obscond[k]
+
+            meta['mjd'] = ExpInfo(exp, 'mjd_obs')
             if _i == 0: 
                 for k in meta.keys(): 
                     metadata[k] = [meta[k]] 
@@ -366,7 +561,22 @@ def make_obscond_table():
     return None
 
 
+def getContinuum(ww, sb): 
+    ''' smooth out the sufrace brightness somehow...
+    '''
+    wavebin = np.linspace(3.6e3, 1e4, 10)
+    sb_med = np.zeros(len(wavebin)-1)
+    for i in range(len(wavebin)-1): 
+        inwbin = ((wavebin[i] < ww) & (ww < wavebin[i+1]) & np.isfinite(sb))
+        if np.sum(inwbin) > 0.: 
+            sb_med[i] = np.median(sb[inwbin])
+    return 0.5*(wavebin[1:]+wavebin[:-1]), sb_med
+
+
 if __name__=='__main__': 
     #make_obscond_table()
-    darksky()
+    #darksky()
+    #darksky_spectrographs(dark_night=20191206, dark_exp=30948)
+    #fexptime_spec(20191022, 20137, dark_night=20191206, dark_exp=30948)
+    brightsky()
     #maybe()
