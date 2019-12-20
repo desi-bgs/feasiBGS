@@ -453,8 +453,8 @@ def GALeg_noisySpec_TSreview(specfile):
 if __name__=='__main__': 
     #GALeg_G15_sourceSpec()
     #GALeg_G15_noisySpec()
-    GALeg_sourceSpec(5000)
+    #GALeg_sourceSpec(5000)
     #GALeg_noisySpec_TSreview(os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.hdf5')) 
-    #GALeg_noisySpec_surveysim(
-    #        os.path.join(dir_proj, 'GALeg.g15.sourceSpec.5000.seed0.hdf5'), 
-    #        os.path.join(dir_dat, 'exposures_surveysim_fork_150sv0p5.sample.seed0.hdf5'))
+    GALeg_noisySpec_surveysim(
+            os.path.join(dir_proj, 'GALeg.g15.sourceSpec.5000.seed0.hdf5'), 
+            os.path.join(dir_dat, 'exposures_surveysim_fork_150sv0p5.sample.seed0.hdf5'))
