@@ -74,7 +74,10 @@ def brightsky(dark_night=20191206, dark_exp=30948):
             )
     print('%i exposures during bright time' % np.sum(isbright))
 
-    fexp_cmx, fexp_model, sig_fexp_cmx = [], [], [] 
+    fexp_cmx, sig_fexp_cmx = [], []
+    fexp_model, fexp_omodel = [], [] 
+    programs, nights, exps = [], [], [] 
+    airmasses, moonills, moonalts, moonseps, sunalts, sunseps = [], [], [], [], [], [] 
     for iexp in np.arange(len(meta['id']))[isbright]: 
         if 'CALIB' in meta['program'][iexp]: continue 
         try: 
@@ -84,6 +87,7 @@ def brightsky(dark_night=20191206, dark_exp=30948):
         fexptime_m = fexptime_model(meta['_airmass'][iexp], 
                 meta['moon_ill'][iexp], meta['moon_alt'][iexp], meta['moon_sep'][iexp],
                 meta['sunalt'][iexp], meta['sunsep'][iexp])
+        fexptime_om = fexptime_omodel(meta['_airmass'][iexp], meta['moon_ill'][iexp], meta['moon_alt'][iexp], meta['moon_sep'][iexp])
         print('--- %s ---' % meta['program'][iexp]) 
         print('%i exposure %i texp=%.2f' % (meta['night'][iexp], meta['id'][iexp], meta['exptime'][iexp]))
         print('airmass=%.2f' % meta['_airmass'][iexp])
@@ -91,18 +95,49 @@ def brightsky(dark_night=20191206, dark_exp=30948):
         print('sun: alt=%.1f, sep=%.1f' % (meta['sunalt'][iexp], meta['sunsep'][iexp]))
         print('cmx exptime factor=%.2f pm %.2f' % (fexptime, sig_fexp))
         print('model exptime factor=%.2f' % fexptime_m) 
+        print('omodel exptime factor=%.2f' % fexptime_om) 
         fexp_cmx.append(fexptime)
         fexp_model.append(fexptime_m)
+        fexp_omodel.append(fexptime_om)
         sig_fexp_cmx.append(sig_fexp) 
+        
+        programs.append(meta['program'][iexp])
+        nights.append(meta['night'][iexp]) 
+        exps.append(meta['id'][iexp]) 
+        airmasses.append(meta['_airmass'][iexp])
+        moonills.append(meta['moon_ill'][iexp]) 
+        moonalts.append(meta['moon_alt'][iexp])
+        moonseps.append(meta['moon_sep'][iexp])
+        sunalts.append(meta['sunalt'][iexp])
+        sunseps.append(meta['sunsep'][iexp])
+
+    # save exposure details 
+    bright_exps = {
+            'program': programs, 
+            'night': nights, 
+            'exp': exps, 
+            'airmass': airmasses,
+            'moonill': moonills, 
+            'moonalt': moonalts, 
+            'moonsep': moonseps, 
+            'sunalt': sunalts, 
+            'sunsep': sunseps, 
+            'fexp_cmx': fexp_cmx, 
+            'sig_fexp_cmx': sig_fexp_cmx, 
+            'fexp_model': fexp_model, 
+            'fexp_omodel': fexp_omodel 
+            }
+    pickle.dump(bright_exps, open('desicmx.brightsky_exp.p', 'wb'))
 
     fig = plt.figure(figsize=(6,6))
     sub = fig.add_subplot(111)
     sub.errorbar(fexp_cmx, fexp_model, xerr=sig_fexp_cmx, fmt='.C0')
-    sub.plot([1., 10.], [1., 10.], c='k', ls='--') 
+    sub.errorbar(fexp_cmx, fexp_omodel, xerr=sig_fexp_cmx, fmt='.C1')
+    sub.plot([1., 20.], [1., 20.], c='k', ls='--') 
     sub.set_xlabel(r'$f_{\rm exp}$ from CMX sky flux', fontsize=20) 
-    sub.set_xlim(1., 10.) 
+    sub.set_xlim(1., 20.) 
     sub.set_ylabel(r'$f_{\rm exp}$ from updated model', fontsize=20) 
-    sub.set_ylim(1., 10.) 
+    sub.set_ylim(1., 20.) 
     fig.savefig('desicmx.brightsky_fexp.png', bbox_inches='tight') 
     return None 
 
@@ -123,6 +158,35 @@ def fexptime_model(airmass, moonill, moonalt, moonsep, sun_alt, sun_sep):
     # get the continuums for dark sky 
     w_cont, sky_dark_cont = getContinuum(wave.value, sky_dark.value)
 
+    # calculate (new sky brightness)/(nominal dark sky brightness), which is the correction
+    # factor for the exposure time. 
+    wlim = (w_cont > 4500) & (w_cont < 5500) 
+    f_exp = np.median((sky_bright_cont / sky_dark_cont)[wlim]) 
+    return f_exp  
+
+
+def fexptime_omodel(airmass, moonill, moonalt, moonsep):
+    '''
+    '''
+    skymodel = specsim.simulator.Simulator('desi').atmosphere
+    skymodel.airmass = airmass 
+    skymodel.moon.moon_phase = np.arccos(2.*moonill - 1)/np.pi
+    skymodel.moon.moon_zenith = (90. - moonalt) * u.deg
+    skymodel.moon.separation_angle = moonsep * u.deg
+
+    sky_bright = skymodel.surface_brightness
+    
+    _, sky_bright_cont = getContinuum(skymodel._wavelength.value, sky_bright.value)
+
+    # nominal dark sky brightness 
+    config = desisim.simexp._specsim_config_for_wave(skymodel._wavelength.value, dwave_out=None, specsim_config_file='desi')
+    atm_config = config.atmosphere
+    surface_brightness_dict = config.load_table(atm_config.sky, 'surface_brightness', as_dict=True)
+    sky_dark= surface_brightness_dict['dark'] 
+
+    # get the continuums for dark sky 
+    w_cont, sky_dark_cont = getContinuum(skymodel._wavelength.value, sky_dark.value)
+    
     # calculate (new sky brightness)/(nominal dark sky brightness), which is the correction
     # factor for the exposure time. 
     wlim = (w_cont > 4500) & (w_cont < 5500) 

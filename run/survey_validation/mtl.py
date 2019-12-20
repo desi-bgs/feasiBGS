@@ -393,6 +393,7 @@ def match2spec_SV_healpy():
     
     dir_sv = '/project/projectdirs/desi/target/catalogs/dr8/0.34.0/targets/sv/resolve/bright/'
     for i in ipixs: 
+        if i <= 14: continue 
         print('--- %i pixel ---' % i) 
         targets = fitsio.read(os.path.join(dir_sv, 'sv1-targets-dr8-hp-%i.fits' % i))
         targets = match2spectruth(targets) 
