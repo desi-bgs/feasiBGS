@@ -13,7 +13,8 @@ from feasibgs import forwardmodel as FM
 # -- plotting -- 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-mpl.rcParams['text.usetex'] = True
+if os.environ['NERSC_HOST'] != 'cori': 
+    mpl.rcParams['text.usetex'] = True
 mpl.rcParams['font.family'] = 'serif'
 mpl.rcParams['axes.linewidth'] = 1.5
 mpl.rcParams['axes.xmargin'] = 1
@@ -27,6 +28,7 @@ mpl.rcParams['legend.frameon'] = False
 
 
 dir_dat = os.path.join(UT.dat_dir(), 'survey_validation')
+dir_proj = '/project/projectdirs/desi/users/chahah/bgs_spec_sims/'
 
 
 def GALeg_G15_sourceSpec(): 
@@ -189,7 +191,7 @@ def GALeg_G15_noisySpec():
     return None 
 
 
-def GALeg_sourceSpec(nsub, flag=None): 
+def GALeg_sourceSpec(nsub, seed=0): 
     '''generate noiseless simulated spectra for a subset of GAMAlegacy 
     galaxies. The output hdf5 file will also contain all the galaxy
     properties 
@@ -197,10 +199,8 @@ def GALeg_sourceSpec(nsub, flag=None):
     :param nsub: 
         number of galaxies to randomly select from the GAMALegacy 
         joint catalog 
-
-    :param flag: (optional) 
-        flag specifies additional sample selection criteria. (default: None) 
     '''
+    np.random.seed(seed) 
     # read in GAMA-Legacy catalog with galaxies in both GAMA and Legacy surveys
     cata = Cat.GamaLegacy()
     gleg = cata.Read('g15', dr_gama=3, dr_legacy=7, silent=True)  
@@ -231,11 +231,11 @@ def GALeg_sourceSpec(nsub, flag=None):
     # emission line fluxes from GAMA data  
     emline_flux = s_bgs.EmissionLineFlux(gleg, index=subsamp, dr_gama=3, silent=True) # emission lines from GAMA 
 
-    flux, wave, _, magnorm_flag = s_bgs.Spectra(
+    flux, wave, magnorm_flag = s_bgs.Spectra(
             r_mag_apflux[subsamp], 
             redshift[subsamp],
             vdisp[subsamp], 
-            seed=1, 
+            seed=seed, 
             templateid=match[subsamp], 
             emflux=emline_flux, 
             mag_em=r_mag_gama[subsamp], 
@@ -245,7 +245,7 @@ def GALeg_sourceSpec(nsub, flag=None):
     subsamp = subsamp[isubsamp]
     
     # save to file  
-    fspec = os.path.join(dir_dat, 'GALeg.g15.sourceSpec.%i.hdf5' % nsub)
+    fspec = os.path.join(dir_proj, 'GALeg.g15.sourceSpec.%i.seed%i.hdf5' % (nsub, seed))
     fsub = h5py.File(fspec, 'w') 
     fsub.create_dataset('zred', data=redshift[subsamp])
     fsub.create_dataset('absmag_ugriz', data=absmag_ugriz[:,subsamp]) 
@@ -452,9 +452,9 @@ def GALeg_noisySpec_TSreview(specfile):
 
 if __name__=='__main__': 
     #GALeg_G15_sourceSpec()
-    GALeg_G15_noisySpec()
-    #GALeg_sourceSpec(5000)
+    #GALeg_G15_noisySpec()
+    GALeg_sourceSpec(5000)
     #GALeg_noisySpec_TSreview(os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.hdf5')) 
     #GALeg_noisySpec_surveysim(
-    #        os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.hdf5'), 
+    #        os.path.join(dir_proj, 'GALeg.g15.sourceSpec.5000.seed0.hdf5'), 
     #        os.path.join(dir_dat, 'exposures_surveysim_fork_150sv0p5.sample.seed0.hdf5'))

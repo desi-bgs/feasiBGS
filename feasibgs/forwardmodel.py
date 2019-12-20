@@ -133,7 +133,7 @@ class BGSsourceSpectra(GALAXY):
         self.wave = np.arange(round(wavemin, 1), wavemax, dw)
 
         super(BGSsourceSpectra, self).__init__(objtype='BGS', minwave=3600.0, maxwave=10000.0, 
-                cdelt=0.2, wave=self.wave, colorcuts_function=None, normfilter='decam2014-r', 
+                cdelt=0.2, wave=self.wave, colorcuts_function=None, normfilter_south='decam2014-r', 
                 normline=None, add_SNeIa=False, baseflux=None, basewave=None, basemeta=None)
 
     def Spectra(self, r_mag, zred, vdisp, seed=None, templateid=None, emflux=None, mag_em=None, silent=True):
@@ -144,17 +144,17 @@ class BGSsourceSpectra(GALAXY):
         else: 
             nobj = 1
         # meta data of 'mag', 'redshift', 'vdisp'
-        input_meta = empty_metatable(nmodel=nobj, objtype='BGS')
+        input_meta = empty_metatable(nmodel=nobj, objtype='BGS', input_meta=True)
         input_meta['SEED'] = seed #np.random.randint(2**32, size=nobj) 
         input_meta['MAG'] = r_mag # r band apparent magnitude
         input_meta['REDSHIFT'] = zred # redshift
         input_meta['VDISP'] = vdisp 
         input_meta['TEMPLATEID'] = templateid
 
-        flux, self.wave, meta, magnorm_flag = self._make_galaxy_templates(input_meta, emflux=emflux, mag_em=mag_em, 
+        flux, self.wave, magnorm_flag = self._make_galaxy_templates(input_meta, emflux=emflux, mag_em=mag_em, 
                 nocolorcuts=True, restframe=False, silent=silent) 
 
-        return flux, self.wave, meta, magnorm_flag
+        return flux, self.wave, magnorm_flag
 
     def EmissionLineFlux(self, gleg, index=None, dr_gama=3, silent=True): 
         ''' Calculate emission line flux for GAMA-Legacy objects. Returns
@@ -322,14 +322,14 @@ class BGSsourceSpectra(GALAXY):
             # normalize spectra to match input apparent magnitude
             maggies = self.decamwise.get_ab_maggies(restflux, zwave, mask_invalid=True)
             emmaggies = self.decamwise.get_ab_maggies(emflux[ii], zwave, mask_invalid=True)
-            if self.normfilter in self.decamwise.names:
-                normmaggies = np.array(maggies[self.normfilter])
-                norm_emmaggies = np.array(emmaggies[self.normfilter])
+            if self.normfilter_south in self.decamwise.names:
+                normmaggies = np.array(maggies[self.normfilter_south])
+                norm_emmaggies = np.array(emmaggies[self.normfilter_south])
             else:
                 normmaggies = np.array(self.normfilt.get_ab_maggies(
-                    restflux, zwave, mask_invalid=True)[self.normfilter])
+                    restflux, zwave, mask_invalid=True)[self.normfilter_south])
                 norm_emmaggies = np.array(self.normfilt.get_ab_maggies(
-                    emflux, zwave, mask_invalid=True)[self.normfilter])
+                    emflux, zwave, mask_invalid=True)[self.normfilter_south])
 
             # populate the output flux vector (suitably normalized) and metadata table, 
             # convolve with the velocity dispersion, resample, and finish up.  
@@ -357,11 +357,11 @@ class BGSsourceSpectra(GALAXY):
 
                 norm_restflux = restflux * magnorm0 + emflux[ii] 
                 maggies1 = self.decamwise.get_ab_maggies(norm_restflux, zwave, mask_invalid=True)
-                if self.normfilter in self.decamwise.names:
-                    normmaggies1 = np.array(maggies1[self.normfilter])
+                if self.normfilter_south in self.decamwise.names:
+                    normmaggies1 = np.array(maggies1[self.normfilter_south])
                 else:
                     normmaggies1 = np.array(self.normfilt.get_ab_maggies(
-                        norm_restflux, zwave, mask_invalid=True)[self.normfilter])
+                        norm_restflux, zwave, mask_invalid=True)[self.normfilter_south])
                 magnorm1 = 10**(-0.4*mag[ii]) / normmaggies1
                 # we checked to make sure these are the same 
                 #magnorm1 = 10**(-0.4*mag[ii]) / 10**(-0.4*mag_em[ii]) 
@@ -373,15 +373,7 @@ class BGSsourceSpectra(GALAXY):
 
             outflux[ii, :] = resample_flux(self.wave, zwave, blurflux, extrapolate=True)
 
-            input_meta['TEMPLATEID'][ii] = templateid[ii] 
-            input_meta['D4000'][ii] = d4000[templateid[ii]]
-            input_meta['FLUX_G'][ii] = synthnano['decam2014-g']
-            input_meta['FLUX_R'][ii] = synthnano['decam2014-r']
-            input_meta['FLUX_Z'][ii] = synthnano['decam2014-z']
-            input_meta['FLUX_W1'][ii] = synthnano['wise2010-W1']
-            input_meta['FLUX_W2'][ii] = synthnano['wise2010-W2']
-
-        return 1e17 * outflux, self.wave, input_meta, magnorm_flag
+        return 1e17 * outflux, self.wave, magnorm_flag 
 
     def _blurmatrix(self, vdisp):
         """Pre-compute the blur_matrix as a dictionary keyed by each unique value of
@@ -404,7 +396,7 @@ class BGSsourceSpectra(GALAXY):
         np.random.seed(seed) # set random seed
 
         # initialize the templates once:
-        self.bgs_templates = BGS(wave=self.wave, normfilter='decam2014-r') 
+        self.bgs_templates = BGS(wave=self.wave, normfilter_south='decam2014-r') 
         #normfilter='sdss2010-r') # Need to generalize this!
         self.bgs_templates.normline = None # no emission lines!
 
