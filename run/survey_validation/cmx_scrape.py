@@ -127,18 +127,72 @@ def brightsky(dark_night=20191206, dark_exp=30948):
             'fexp_model': fexp_model, 
             'fexp_omodel': fexp_omodel 
             }
-    pickle.dump(bright_exps, open('desicmx.brightsky_exp.p', 'wb'))
+    pickle.dump(bright_exps, open('/project/projectdirs/desi/users/chahah/desicmx.brightsky_exp.p', 'wb'))
+    return None 
+
+
+def plot_brightsky(dark_night=20191206, dark_exp=30948):  
+    '''
+    '''
+    bright_exps = pickle.load(open('/project/projectdirs/desi/users/chahah/desicmx.brightsky_exp.p', 'rb'))
 
     fig = plt.figure(figsize=(6,6))
     sub = fig.add_subplot(111)
-    sub.errorbar(fexp_cmx, fexp_model, xerr=sig_fexp_cmx, fmt='.C0')
-    sub.errorbar(fexp_cmx, fexp_omodel, xerr=sig_fexp_cmx, fmt='.C1')
+    sub.errorbar(bright_exps['fexp_cmx'], bright_exps['fexp_model'], xerr=bright_exps['sig_fexp_cmx'], fmt='.C0', label='updated sky model')
+    sub.errorbar(bright_exps['fexp_cmx'], bright_exps['fexp_omodel'], xerr=bright_exps['sig_fexp_cmx'], fmt='.C1', label='KS sky model')
     sub.plot([1., 20.], [1., 20.], c='k', ls='--') 
     sub.set_xlabel(r'$f_{\rm exp}$ from CMX sky flux', fontsize=20) 
     sub.set_xlim(1., 20.) 
-    sub.set_ylabel(r'$f_{\rm exp}$ from updated model', fontsize=20) 
+    sub.set_ylabel(r'$f_{\rm exp}$ from model', fontsize=20) 
     sub.set_ylim(1., 20.) 
-    fig.savefig('desicmx.brightsky_fexp.png', bbox_inches='tight') 
+    sub.legend(loc='upper left', fontsize=15)
+    fig.savefig('/project/projectdirs/desi/users/chahah/desicmx.brightsky_fexp.png', bbox_inches='tight') 
+    
+    # compare bright sky spectra from CMX with dark sky spectra from CMX 
+    i_bright = np.random.choice(np.arange(len(bright_exps['fexp_cmx'])), 3)
+    
+    meta = pickle.load(open('desicmx.exp.metadata.p', 'rb'))
+
+    # get dark sky spectra
+    dark_spectra = get_spectra(dark_night, dark_exp, type='sky')
+    texp_dark = meta['exptime'][meta['id'] == dark_exp][0]
+
+    fig = plt.figure(figsize=(15,5))
+    for ib, band in enumerate(['b', 'r', 'z']): 
+        sub = fig.add_subplot(1,3,ib+1)
+
+        if band == 'b': 
+            wave_grid = np.linspace(3550, 5900, 4000)
+        elif band == 'r': 
+            wave_grid = np.linspace(5600, 7700, 4000)
+        elif band == 'z':
+            wave_grid = np.linspace(7350, 9800, 4000)
+        print(wave_grid)
+        print(dark_spectra['wave_%s' % band]) 
+
+        dark_flux_grid = np.interp(wave_grid, dark_spectra['wave_%s' % band], dark_spectra['flux_%s' % band])
+        sub.plot(wave_grid, dark_flux_grid/texp_dark, c='k', lw=1) 
+
+        for i in i_bright: 
+            _spectra = get_spectra(bright_exps['night'][i], bright_exps['exp'][i])
+            texp_bright = meta['exptime'][meta['id'] == bright_exps['exp'][i]][0]
+
+            bright_flux_grid = np.interp(wave_grid, _spectra['wave_%s' % band], _spectra['flux_%s' % band])
+
+            sub.plot(wave_grid, bright_flux_grid/texp_bright, c='C%i' % i_bright, lw=1, 
+                    label=r'$f_{\rm exp} = %.2f' % bright_exps['fexp_cmx'][i]) 
+
+        if ib == 0: 
+            sub.set_xlim(3500, 6100) 
+            sub.legend(loc='upper left', fontsize=15) 
+        elif ib == 1: 
+            sub.set_xlim(5500, 8000) 
+        elif ib == 2: 
+            sub.set_xlim(7200, 10000) 
+        sub.set_ylim(0, 0.75) 
+        if ib != 0: sub.set_yticklabels([]) 
+        else: sub.set_ylabel('flux (counts/A/sec)', fontsize=15) 
+    fig.savefig('/project/projectdirs/desi/users/chahah/desicmx.brightsky.spectra.png', bbox_inches='tight') 
     return None 
 
 
@@ -642,5 +696,6 @@ if __name__=='__main__':
     #darksky()
     #darksky_spectrographs(dark_night=20191206, dark_exp=30948)
     #fexptime_spec(20191022, 20137, dark_night=20191206, dark_exp=30948)
-    brightsky()
+    #brightsky()
+    plot_brightsky()
     #maybe()
