@@ -132,7 +132,7 @@ def GALeg_G15_noisySpec5000(t_fid=150.):
     sun_sep     = fexps['sun_sep'][...]
     seeing      = fexps['seeing'][...]
     transp      = fexps['transp'][...]
-    n_sample    = len(texp) 
+    n_sample    = len(airmass) 
 
     # read in sky brightness 
     wave_sky    = fexps['wave'][...]
@@ -152,7 +152,7 @@ def GALeg_G15_noisySpec5000(t_fid=150.):
         _fexp = specfile.replace('sourceSpec', 'bgsSpec').replace('.hdf5', 
                 '.exposures_surveysim_fork_150sv0p5.sample.seed0.tfid%.f.exp%i.fits' % (t_fid, iexp))
         print('--- constructing %s ---' % _fexp) 
-        print('t_exp=%.f' % texp[iexp])
+        print('t_exp=%.f (unscaled %.f)' % (texp[iexp], fexps['texp_total'][...][iexp]))
         print('airmass=%.2f' % airmass[iexp])
         print('moon ill=%.2f alt=%.f, sep=%.f' % (moon_ill[iexp], moon_alt[iexp], moon_sep[iexp]))
         print('sun alt=%.f, sep=%.f' % (sun_alt[iexp], sun_sep[iexp]))
