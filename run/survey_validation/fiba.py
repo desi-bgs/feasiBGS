@@ -33,11 +33,14 @@ mpl.rcParams['legend.frameon'] = False
 dir_dat = os.path.join(UT.dat_dir(), 'survey_validation')
 
 
-def new_SVfields(): 
+def new_SVfields(seed=1): 
     ''' compare SV fields from Sep 2019 to newly proposed SV regions from 
     Anand and Christophe Dec 2019.
+
+    radius of tile is 1.6275 deg 
     '''
     import matplotlib.patches as patches
+    np.random.seed(seed)
 
     sv_old = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
 
@@ -55,8 +58,95 @@ def new_SVfields():
     svdict['11_highstardens_n'] = '273,283,40,45'
     svdict['12_highstardens_s'] = '260,270,15,20'
 
+    # regions that were omitted 
+    omitted = {} 
+    omitted['g09'] = '129,141,-1,3'
+    omitted['PRIMUS-COSMOS'] = '149.6,150.7,1.8,2.9'
+    omitted['PRIMUS-CDFS-SWIRE'] = '51.8,54.4,-29.7,-28.0'
 
-    fig = plt.figure(figsize=(10,5))
+    # formulate new SV fields 
+    # keep fields that already fall into regions 
+
+    ra_keep, dec_keep = [], [] 
+    for reg in svdict.keys(): 
+        # get RA, Dec range of new SV regions 
+        ra_min, ra_max      = float(svdict[reg].split(',')[0]), float(svdict[reg].split(',')[1])
+        dec_min, dec_max    = float(svdict[reg].split(',')[2]), float(svdict[reg].split(',')[3])
+        inkeep = (
+                (sv_old['RA'] > ra_min) & 
+                (sv_old['RA'] < ra_max) & 
+                (sv_old['DEC'] > dec_min) & 
+                (sv_old['DEC'] < dec_max)
+                ) 
+        if np.sum(inkeep) > 0: 
+            ra_keep.append(sv_old['RA'][inkeep])
+            dec_keep.append(sv_old['DEC'][inkeep])
+    print(len(np.concatenate(ra_keep)))
+    
+    for reg in omitted.keys(): 
+        ra_min, ra_max      = float(omitted[reg].split(',')[0]), float(omitted[reg].split(',')[1])
+        dec_min, dec_max    = float(omitted[reg].split(',')[2]), float(omitted[reg].split(',')[3])
+        inkeep = (
+                (sv_old['RA'] > ra_min) & 
+                (sv_old['RA'] < ra_max) & 
+                (sv_old['DEC'] > dec_min) & 
+                (sv_old['DEC'] < dec_max)
+                ) 
+        if np.sum(inkeep) > 0: 
+            ra_keep.append(sv_old['RA'][inkeep])
+            dec_keep.append(sv_old['DEC'][inkeep])
+    print(len(np.concatenate(ra_keep)))
+
+    # put SV tiles on high EBV regions and high star density 
+    for reg in ['01_s82', '02_egs', '05_overlap', '06_refnorth', '08_sagittarius', '09_highebv_n', '10_highebv_s', '11_highstardens_n', '12_highstardens_s']: 
+        ra_min, ra_max      = float(svdict[reg].split(',')[0]), float(svdict[reg].split(',')[1])
+        dec_min, dec_max    = float(svdict[reg].split(',')[2]), float(svdict[reg].split(',')[3])
+        
+        if reg == '10_highebv_s': 
+            ra_keep.append([0.5*(ra_min + ra_max)])
+            dec_keep.append([0.5*(dec_min + dec_max)]) 
+        elif reg == '06_refnorth': 
+            ra_keep.append([0.5*(ra_min + ra_max)-4.89, 0.5*(ra_min + ra_max)-1.63, 0.5*(ra_min + ra_max)+1.63, 0.5*(ra_min + ra_max)+4.89])
+            dec_keep.append([0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max)]) 
+        elif reg == '05_overlap': 
+            ra_keep.append([0.5*(ra_min + ra_max)-6.52, 0.5*(ra_min + ra_max)-3.26, 0.5*(ra_min + ra_max), 0.5*(ra_min + ra_max)+3.26, 0.5*(ra_min + ra_max)+6.52])
+            dec_keep.append([0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max)]) 
+        elif reg == '01_s82':
+            ra_keep.append([0.5*(ra_min + ra_max)-1.63, 0.5*(ra_min + ra_max)+1.63])
+            dec_keep.append([0.25*dec_min + 0.75*dec_max, 0.25*dec_min + 0.75*dec_max]) 
+        else: 
+            ra_keep.append([0.5*(ra_min + ra_max)-1.63, 0.5*(ra_min + ra_max)+1.63])
+            dec_keep.append([0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max)]) 
+    
+    ra_new = np.concatenate(ra_keep) 
+    dec_new = np.concatenate(dec_keep) 
+    print(len(ra_new))
+
+    # pick the rest of the tiles from desi-tiles.fits far from the selected tiles 
+    desi_tiles = fitsio.read(os.path.join(dir_dat, 'desi-tiles.fits')) 
+    
+    keeptile = np.ones(desi_tiles.shape[0]).astype(bool) 
+    for ra, dec in zip(ra_new, dec_new): 
+        _keep = (
+                (desi_tiles['IN_DESI'] == 1) & 
+                (desi_tiles['PASS'] == 5) & 
+                ((desi_tiles['RA'] - ra)**2 + (desi_tiles['DEC'] - dec)**2 > 100.)
+                )
+        keeptile = keeptile & _keep
+    
+    for i in range(60 - len(ra_new)): 
+        new_pick = np.random.choice(np.arange(np.sum(keeptile)), 1, replace=False) 
+        _ra, _dec = desi_tiles['RA'][keeptile][new_pick], desi_tiles['DEC'][keeptile][new_pick]
+        ra_new = np.concatenate([ra_new, _ra]) 
+        dec_new = np.concatenate([dec_new, _dec]) 
+    
+        keeptile = keeptile & ((desi_tiles['RA'] - _ra)**2 + (desi_tiles['DEC'] - _dec)**2 > 100.)
+
+    # write out the tile centers 
+    np.savetxt('updated_BGSSV_tile_centers.seed%i.dat' % seed, np.vstack([ra_new, dec_new]).T, fmt='%.2f %.2f')
+
+    # --- plot everything ---
+    fig = plt.figure(figsize=(20,10))
     sub = fig.add_subplot(111)
     for i, reg in enumerate(svdict.keys()): 
         # get RA, Dec range of new SV regions 
@@ -67,7 +157,39 @@ def new_SVfields():
         region = patches.Rectangle((ra_min, dec_min), (ra_max - ra_min), (dec_max - dec_min), 
                 linewidth=1, edgecolor='C%i' % i, facecolor='none', label=name)
         sub.add_patch(region) 
-    sub.scatter(sv_old['RA'], sv_old['DEC'], c='k', s=20, label='BGS SV')
+
+    for i, reg in enumerate(omitted.keys()): 
+        ra_min, ra_max      = float(omitted[reg].split(',')[0]), float(omitted[reg].split(',')[1])
+        dec_min, dec_max    = float(omitted[reg].split(',')[2]), float(omitted[reg].split(',')[3])
+
+        if i == 0:
+            region = patches.Rectangle((ra_min, dec_min), (ra_max - ra_min), (dec_max - dec_min), 
+                    linewidth=1, edgecolor='r', facecolor='none', linestyle='--', label='omitted')
+        else: 
+            region = patches.Rectangle((ra_min, dec_min), (ra_max - ra_min), (dec_max - dec_min), 
+                    linewidth=1, edgecolor='r', facecolor='none', linestyle='--')
+        sub.add_patch(region) 
+        if reg != 'g09':
+            sub.annotate(reg, xy=(0.5*(ra_min+ra_max), 0.5*(dec_min+dec_max)), xycoords='data',
+                xytext=(ra_max-50., dec_max+20.), textcoords='data',
+                arrowprops=dict(facecolor='black', width=0.1, headwidth=3),
+                horizontalalignment='right', verticalalignment='top')
+        else:
+            sub.annotate(reg, xy=(0.5*(ra_min+ra_max), 0.5*(dec_min+dec_max)), xycoords='data',
+                xytext=(ra_max-30., dec_max+10.), textcoords='data',
+                arrowprops=dict(facecolor='black', width=0.1, headwidth=3),
+                horizontalalignment='right', verticalalignment='top')
+
+    for i in range(len(sv_old['RA'])): 
+        circ = patches.Circle((sv_old['RA'][i], sv_old['DEC'][i]), 
+                radius=1.6275, edgecolor='k', facecolor='none', linestyle=':') 
+        sub.add_patch(circ) 
+        #sub.scatter(sv_old['RA'], sv_old['DEC'], c='k', s=20, label='BGS SV')
+    
+    for i in range(len(ra_new)): 
+        circ = patches.Circle((ra_new[i], dec_new[i]), radius=1.6275, edgecolor='C1', facecolor='none') 
+        sub.add_patch(circ) 
+
     sub.legend(loc='upper right', ncol=2, markerscale=2, handletextpad=0.2, fontsize=10)
     sub.set_xlabel('RA', fontsize=20)
     sub.set_xlim(360, 0)
