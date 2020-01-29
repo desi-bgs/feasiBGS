@@ -322,9 +322,15 @@ def make_mtl_healpix(targets, spectruth=True, seed=None):
 def mtl_SV_healpy(spectruth=True, seed=None): 
     ''' generate MTLs from targets in healpixels with SV tiles 
     '''
-    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
-    phi = np.deg2rad(sv['RA'])
-    theta = 0.5 * np.pi - np.deg2rad(sv['DEC'])
+    # old SV tiles
+    #sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
+    #phi = np.deg2rad(sv['RA'])
+    #theta = 0.5 * np.pi - np.deg2rad(sv['DEC'])
+    
+    # updated SV tiles 
+    sv = np.loadtxt(os.path.join(dir_dat, 'updated_BGSSV_tile_centers.seed1.dat'), unpack=True, usecols=[0,1]) 
+    phi = np.deg2rad(sv[0])
+    theta = 0.5 * np.pi - np.deg2rad(sv[1])
 
     ipixs = np.unique(hp.ang2pix(2, theta, phi, nest=True)) 
     
@@ -452,9 +458,15 @@ def match2spectruth(targets):
 def test_match2spec_SV_healpy(): 
     ''' plot where the spectroscopic truth table SV targets lie
     '''
-    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
-    phi_sv = np.deg2rad(sv['RA'])
-    theta_sv = 0.5 * np.pi - np.deg2rad(sv['DEC'])
+    # old SV tiles
+    #sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
+    #phi = np.deg2rad(sv['RA'])
+    #theta = 0.5 * np.pi - np.deg2rad(sv['DEC'])
+    
+    # updated SV tiles 
+    sv = np.loadtxt(os.path.join(dir_dat, 'updated_BGSSV_tile_centers.seed1.dat'), unpack=True, usecols=[0,1]) 
+    phi = np.deg2rad(sv[0])
+    theta = 0.5 * np.pi - np.deg2rad(sv[1])
 
     pixs = np.zeros(hp.nside2npix(2))
     ipixs = np.unique(hp.ang2pix(2, theta_sv, phi_sv, nest=True)) 
@@ -630,7 +642,6 @@ if __name__=="__main__":
     match2spec_SV_healpy()
     #test_match2spec_SV_healpy()
     #mtl_SV_healpy(spectruth=True, seed=0)
-    #mtl_SV_healpy(spectruth=False, seed=0)
     #test_mtl_SV_healpy()
 
     #for _class in ['bright', 'faint', 'extfaint', 'fibmag', 'lowq']:
