@@ -43,6 +43,7 @@ def new_SVfields(seed=1):
     np.random.seed(seed)
 
     sv_old = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
+    sv_new = sv_old.copy() 
 
     svdict = {}
     svdict['01_s82']            = '30,40,-7,2'
@@ -67,21 +68,17 @@ def new_SVfields(seed=1):
     # formulate new SV fields 
     # keep fields that already fall into regions 
 
-    ra_keep, dec_keep = [], [] 
+    keep = np.zeros(len(sv_old['RA'])).astype(bool) 
     for reg in svdict.keys(): 
         # get RA, Dec range of new SV regions 
         ra_min, ra_max      = float(svdict[reg].split(',')[0]), float(svdict[reg].split(',')[1])
         dec_min, dec_max    = float(svdict[reg].split(',')[2]), float(svdict[reg].split(',')[3])
         inkeep = (
-                (sv_old['RA'] > ra_min) & 
-                (sv_old['RA'] < ra_max) & 
-                (sv_old['DEC'] > dec_min) & 
-                (sv_old['DEC'] < dec_max)
-                ) 
-        if np.sum(inkeep) > 0: 
-            ra_keep.append(sv_old['RA'][inkeep])
-            dec_keep.append(sv_old['DEC'][inkeep])
-    print(len(np.concatenate(ra_keep)))
+                (sv_old['RA'] > ra_min) & (sv_old['RA'] < ra_max) & 
+                (sv_old['DEC'] > dec_min) & (sv_old['DEC'] < dec_max)
+                )    
+        keep = keep | inkeep
+    print('keeping %i previous fields in new region' % np.sum(keep))
     
     for reg in omitted.keys(): 
         ra_min, ra_max      = float(omitted[reg].split(',')[0]), float(omitted[reg].split(',')[1])
@@ -92,35 +89,42 @@ def new_SVfields(seed=1):
                 (sv_old['DEC'] > dec_min) & 
                 (sv_old['DEC'] < dec_max)
                 ) 
-        if np.sum(inkeep) > 0: 
-            ra_keep.append(sv_old['RA'][inkeep])
-            dec_keep.append(sv_old['DEC'][inkeep])
-    print(len(np.concatenate(ra_keep)))
+        keep = keep | inkeep 
+    print('keeping %i previous fields including omitted regions' % np.sum(keep))
 
     # put SV tiles on high EBV regions and high star density 
+    ra_new, dec_new = [], [] 
     for reg in ['01_s82', '02_egs', '05_overlap', '06_refnorth', '08_sagittarius', '09_highebv_n', '10_highebv_s', '11_highstardens_n', '12_highstardens_s']: 
         ra_min, ra_max      = float(svdict[reg].split(',')[0]), float(svdict[reg].split(',')[1])
         dec_min, dec_max    = float(svdict[reg].split(',')[2]), float(svdict[reg].split(',')[3])
         
         if reg == '10_highebv_s': 
-            ra_keep.append([0.5*(ra_min + ra_max)])
-            dec_keep.append([0.5*(dec_min + dec_max)]) 
+            ra_new.append([0.5*(ra_min + ra_max)])
+            dec_new.append([0.5*(dec_min + dec_max)]) 
         elif reg == '06_refnorth': 
-            ra_keep.append([0.5*(ra_min + ra_max)-4.89, 0.5*(ra_min + ra_max)-1.63, 0.5*(ra_min + ra_max)+1.63, 0.5*(ra_min + ra_max)+4.89])
-            dec_keep.append([0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max)]) 
+            ra_new.append([0.5*(ra_min + ra_max)-4.89, 0.5*(ra_min + ra_max)-1.63, 0.5*(ra_min + ra_max)+1.63, 0.5*(ra_min + ra_max)+4.89])
+            dec_new.append([0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max)]) 
         elif reg == '05_overlap': 
-            ra_keep.append([0.5*(ra_min + ra_max)-6.52, 0.5*(ra_min + ra_max)-3.26, 0.5*(ra_min + ra_max), 0.5*(ra_min + ra_max)+3.26, 0.5*(ra_min + ra_max)+6.52])
-            dec_keep.append([0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max)]) 
+            ra_new.append([0.5*(ra_min + ra_max)-6.52, 0.5*(ra_min + ra_max)-3.26, 0.5*(ra_min + ra_max), 0.5*(ra_min + ra_max)+3.26, 0.5*(ra_min + ra_max)+6.52])
+            dec_new.append([0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max)]) 
         elif reg == '01_s82':
-            ra_keep.append([0.5*(ra_min + ra_max)-1.63, 0.5*(ra_min + ra_max)+1.63])
-            dec_keep.append([0.25*dec_min + 0.75*dec_max, 0.25*dec_min + 0.75*dec_max]) 
+            ra_new.append([0.5*(ra_min + ra_max)-1.63, 0.5*(ra_min + ra_max)+1.63])
+            dec_new.append([0.25*dec_min + 0.75*dec_max, 0.25*dec_min + 0.75*dec_max]) 
         else: 
-            ra_keep.append([0.5*(ra_min + ra_max)-1.63, 0.5*(ra_min + ra_max)+1.63])
-            dec_keep.append([0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max)]) 
+            ra_new.append([0.5*(ra_min + ra_max)-1.63, 0.5*(ra_min + ra_max)+1.63])
+            dec_new.append([0.5*(dec_min + dec_max), 0.5*(dec_min + dec_max)]) 
     
-    ra_new = np.concatenate(ra_keep) 
-    dec_new = np.concatenate(dec_keep) 
-    print(len(ra_new))
+    ra_new = np.concatenate(ra_new)
+    dec_new = np.concatenate(dec_new)
+    i_new = len(ra_new) 
+    print('%i new SV fields in new regions' % i_new) 
+
+    for i in range(i_new):
+        sv_new['RA'][np.arange(len(sv_old['RA']))[~keep][i]] = ra_new[i]
+        sv_new['DEC'][np.arange(len(sv_old['RA']))[~keep][i]] = dec_new[i]
+
+    ra_new = np.concatenate([sv_old['RA'][keep], ra_new]) 
+    dec_new = np.concatenate([sv_old['DEC'][keep], dec_new]) 
 
     # pick the rest of the tiles from desi-tiles.fits far from the selected tiles 
     desi_tiles = fitsio.read(os.path.join(dir_dat, 'desi-tiles.fits')) 
@@ -133,17 +137,24 @@ def new_SVfields(seed=1):
                 ((desi_tiles['RA'] - ra)**2 + (desi_tiles['DEC'] - dec)**2 > 100.)
                 )
         keeptile = keeptile & _keep
-    
-    for i in range(60 - len(ra_new)): 
+     
+    for i in range(60 - i_new - np.sum(keep)): 
         new_pick = np.random.choice(np.arange(np.sum(keeptile)), 1, replace=False) 
         _ra, _dec = desi_tiles['RA'][keeptile][new_pick], desi_tiles['DEC'][keeptile][new_pick]
         ra_new = np.concatenate([ra_new, _ra]) 
         dec_new = np.concatenate([dec_new, _dec]) 
+
+        for k in sv_new.dtype.names:
+            if k in desi_tiles.dtype.names: 
+                sv_new[k][np.arange(len(sv_old['RA']))[~keep][i_new+i]] = desi_tiles[k][keeptile][new_pick][0]
     
         keeptile = keeptile & ((desi_tiles['RA'] - _ra)**2 + (desi_tiles['DEC'] - _dec)**2 > 100.)
+    print('%i random new fields' % (60 - i_new - np.sum(keep)))
 
     # write out the tile centers 
     np.savetxt('updated_BGSSV_tile_centers.seed%i.dat' % seed, np.vstack([ra_new, dec_new]).T, fmt='%.2f %.2f')
+    # write out 
+    fitsio.write(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Jan2020.fits'), sv_new, clobber=True)
 
     # --- plot everything ---
     fig = plt.figure(figsize=(20,10))
@@ -185,9 +196,9 @@ def new_SVfields(seed=1):
                 radius=1.6275, edgecolor='k', facecolor='none', linestyle=':') 
         sub.add_patch(circ) 
         #sub.scatter(sv_old['RA'], sv_old['DEC'], c='k', s=20, label='BGS SV')
-    
-    for i in range(len(ra_new)): 
-        circ = patches.Circle((ra_new[i], dec_new[i]), radius=1.6275, edgecolor='C1', facecolor='none') 
+
+    for i in range(len(sv_new['RA'])): 
+        circ = patches.Circle((sv_new['RA'][i], sv_new['DEC'][i]), radius=1.6275, edgecolor='C1', facecolor='none') 
         sub.add_patch(circ) 
 
     sub.legend(loc='upper right', ncol=2, markerscale=2, handletextpad=0.2, fontsize=10)
