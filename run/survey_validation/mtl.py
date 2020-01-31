@@ -322,15 +322,11 @@ def make_mtl_healpix(targets, spectruth=True, seed=None):
 def mtl_SV_healpy(spectruth=True, seed=None): 
     ''' generate MTLs from targets in healpixels with SV tiles 
     '''
-    # old SV tiles
-    #sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
-    #phi = np.deg2rad(sv['RA'])
-    #theta = 0.5 * np.pi - np.deg2rad(sv['DEC'])
     
-    # updated SV tiles 
-    sv = np.loadtxt(os.path.join(dir_dat, 'updated_BGSSV_tile_centers.seed1.dat'), unpack=True, usecols=[0,1]) 
-    phi = np.deg2rad(sv[0])
-    theta = 0.5 * np.pi - np.deg2rad(sv[1])
+    #sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) # old SV tiles
+    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Jan2020.fits')) # new SV tiles
+    phi = np.deg2rad(sv['RA'])
+    theta = 0.5 * np.pi - np.deg2rad(sv['DEC'])
 
     ipixs = np.unique(hp.ang2pix(2, theta, phi, nest=True)) 
     
@@ -358,11 +354,13 @@ def test_mtl_SV_healpy():
     classes = ['BGS_BRIGHT', 'BGS_FAINT', 'BGS_FAINT_EXT', 'BGS_FIBMAG', 'BGS_LOWQ', 'IN_SPECTRUTH']
     subs = [plt.subplot(gs[i], projection='mollweide') for i in range(6)]
 
+    dir_mtl = os.path.join(dir_dat, 'mtl.spec_truth')
+
     for cl, sub in zip(classes, subs):  
         print(cl) 
         fclass_pixs = np.zeros(hp.nside2npix(2))
 
-        for fmtl in glob.glob(os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-*.fits')): 
+        for fmtl in glob.glob(os.path.join(dir_mtl, 'mtl.dr8.0.34.0.bgs_sv.hp-*.fits')): 
             # read MTL 
             mtl = fitsio.read(fmtl)
 
@@ -377,7 +375,7 @@ def test_mtl_SV_healpy():
                 bgs_class = (bitmask_bgs.astype(bool) & mtl['IN_SPECTRUTH'])
 
             # calculate target fraction in healpix 
-            ipix = int(os.path.basename(fmtl).split('-')[-1].replace('.fits', ''))
+            ipix = int(os.path.basename(fmtl).split('-')[-1].split('.')[0])
             fclass_pixs[ipix] = float(np.sum(bgs_class)) / n_bgs
 
         plt.axes(sub) 
@@ -391,20 +389,16 @@ def match2spec_SV_healpy():
     ''' append desitarget SV output files with column specifying spectroscopic 
     truth tables. 
     '''
-    # old SV tiles
-    #sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
-    #phi = np.deg2rad(sv['RA'])
-    #theta = 0.5 * np.pi - np.deg2rad(sv['DEC'])
-    
-    # updated SV tiles 
-    sv = np.loadtxt(os.path.join(dir_dat, 'updated_BGSSV_tile_centers.seed1.dat'), unpack=True, usecols=[0,1]) 
-    phi = np.deg2rad(sv[0])
-    theta = 0.5 * np.pi - np.deg2rad(sv[1])
+    #sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) # old SV tiles
+    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Jan2020.fits')) # new SV tiles
+    phi = np.deg2rad(sv['RA'])
+    theta = 0.5 * np.pi - np.deg2rad(sv['DEC'])
 
     ipixs = np.unique(hp.ang2pix(2, theta, phi, nest=True)) 
     
     dir_sv = '/project/projectdirs/desi/target/catalogs/dr8/0.34.0/targets/sv/resolve/bright/'
     for i in ipixs: 
+        if i <= 17: continue
         print('--- %i pixel ---' % i) 
         targets = fitsio.read(os.path.join(dir_sv, 'sv1-targets-dr8-hp-%i.fits' % i))
         targets = match2spectruth(targets) 
@@ -460,14 +454,10 @@ def test_match2spec_SV_healpy():
     '''
     # old SV tiles
     #sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
-    #phi = np.deg2rad(sv['RA'])
-    #theta = 0.5 * np.pi - np.deg2rad(sv['DEC'])
+    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Jan2020.fits')) # new SV tiles
+    phi_sv = np.deg2rad(sv['RA'])
+    theta_sv = 0.5 * np.pi - np.deg2rad(sv['DEC'])
     
-    # updated SV tiles 
-    sv = np.loadtxt(os.path.join(dir_dat, 'updated_BGSSV_tile_centers.seed1.dat'), unpack=True, usecols=[0,1]) 
-    phi = np.deg2rad(sv[0])
-    theta = 0.5 * np.pi - np.deg2rad(sv[1])
-
     pixs = np.zeros(hp.nside2npix(2))
     ipixs = np.unique(hp.ang2pix(2, theta_sv, phi_sv, nest=True)) 
     
@@ -476,7 +466,7 @@ def test_match2spec_SV_healpy():
     hp.mollview(pixs, nest=True, rot=180.) 
 
     for i in ipixs: 
-        targ = fitsio.read(os.path.join(dir_dat, 'sv1-targets-dr8-hp-%i.spec_truth.fits' % i))
+        targ = fitsio.read(os.path.join(dir_dat, 'sv.spec_truth', 'sv1-targets-dr8-hp-%i.spec_truth.fits' % i))
         targ_spectrue = targ[targ['IN_SPECTRUTH']] 
 
         phi = np.deg2rad(targ_spectrue['RA'])
@@ -639,11 +629,11 @@ if __name__=="__main__":
     #bgs_truth_table()
 
     # full MTL 
-    match2spec_SV_healpy()
+    #match2spec_SV_healpy()
     #test_match2spec_SV_healpy()
-    #mtl_SV_healpy(spectruth=True, seed=0)
-    #test_mtl_SV_healpy()
+    mtl_SV_healpy(spectruth=True, seed=0)
+    test_mtl_SV_healpy()
 
     #for _class in ['bright', 'faint', 'extfaint', 'fibmag', 'lowq']:
     #    target_healpix(target_class=_class)
-    #master_truth_table()
+    #aster_truth_table()
