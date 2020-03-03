@@ -1,8 +1,14 @@
 '''
-script for generating spectral simulations relevant for SRP tasks 
+
+
+script for generating completeness simulations and using them to make redshift
+success rate calculations
+
+
 '''
 import os 
 import h5py 
+import fitsio 
 import numpy as np 
 import astropy.units as u 
 # -- feasibgs -- 
@@ -193,6 +199,58 @@ def GALeg_G15_noisySpec5000(t_fid=150.):
     return None 
 
 
+def zsuccess(): 
+    ''' compare the redshift completeness 
+    '''
+    # get true redshifts 
+    specfile = os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.seed0.hdf5')
+    fspec = h5py.File(specfile, 'r') 
+    ztrue = fspec['zred'][...]
+    r_mag = UT.flux2mag(fspec['legacy-photo']['flux_r'][...], method='log') 
+
+    f_rr = lambda tfid, iexp: os.path.join(dir_dat,
+            'GALeg.g15.bgsSpec.5000.seed0.exposures_surveysim_fork_150sv0p5.sample.seed0.tfid%i.exp%i.rr.fits'
+            % (tfid, iexp))
+
+    fig = plt.figure(figsize=(20,10))
+    for iexp in range(8): 
+        sub = fig.add_subplot(2,4,iexp+1) 
+        sub.plot([15., 22.], [1., 1.], c='k', ls='--', lw=2)
+        
+        _plts = [] 
+        for i, tfid in enumerate([130, 150, 200]): 
+            if not os.path.isfile(f_rr(tfid, iexp)): 
+                continue 
+
+            rr      = fitsio.read(f_rr(tfid, iexp)) # read redrock file
+            zrr     = rr['Z']
+            dchi2   = rr['DELTACHI2']
+            zwarn   = rr['ZWARN']
+            _zsuc   = UT.zsuccess(zrr, ztrue, zwarn, deltachi2=dchi2, min_deltachi2=40.)
+            wmean, rate, err_rate = UT.zsuccess_rate(r_mag, _zsuc, range=[15,22], nbins=28, bin_min=10) 
+
+            _plt = sub.errorbar(wmean, rate, err_rate, fmt='.C%i' % i, elinewidth=2, markersize=10)
+            _plts.append(_plt) 
+
+        sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
+        sub.set_xlim([16., 21.]) 
+        if iexp < 4: sub.set_xticklabels([]) 
+        sub.set_ylim([0.6, 1.1])
+        if iexp in [0,4]: sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
+        else: sub.set_yticklabels([]) 
+    sub.legend(_plts, 
+            [r'$t_{\rm fid} = 130s$', r'$t_{\rm fid} = 150s$', r'$t_{\rm fid} = 200s$'], 
+            fontsize=25, loc='lower right') 
+    bkgd = fig.add_subplot(111, frameon=False)
+    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    bkgd.set_xlabel(r'Legacy DR7 $r$ magnitude', labelpad=10, fontsize=30)
+    bkgd.set_ylabel(r'redrock $z$ success rate', labelpad=10, fontsize=30)
+    fig.subplots_adjust(wspace=0.05, hspace=0.05)
+    fig.savefig(os.path.join(dir_dat, 'comp_sim.zsuccess.png'), bbox_inches='tight') 
+    return None 
+
+
 if __name__=="__main__": 
-    GALeg_G15_noisySpec5000(t_fid=130.)
-    GALeg_G15_noisySpec5000(t_fid=200.)
+    #GALeg_G15_noisySpec5000(t_fid=130.)
+    #GALeg_G15_noisySpec5000(t_fid=200.)
+    zsuccess()
