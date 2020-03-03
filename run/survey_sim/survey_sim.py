@@ -193,7 +193,7 @@ def _get_obs_param(tileid, mjd):
     return isbgs, airmass, moon_ill, moon_alt, moon_sep, sun_alt, sun_sep
 
 
-def run_surveysim(name, fconfig, twilight=False): 
+def run_surveysim(name, fconfig, twilight=False, brightsky=False): 
     ''' run surveysim for specified configuration file 
     '''
     fconfig = os.path.join(_dir, fconfig)
@@ -202,10 +202,14 @@ def run_surveysim(name, fconfig, twilight=False):
     if twilight: 
         flag_twilight = ' --twilight' 
 
-    print('surveysim --name %s --config-file %s%s' % 
-            (name, fconfig, flag_twilight)) 
-    os.system('surveysim --name %s --config-file %s%s' % 
-            (name, fconfig, flag_twilight)) 
+    flag_brightsky = ''
+    if brightsky: 
+        flag_brightsky = ' --brightsky' 
+
+    print('surveysim --name %s --config-file %s%s%s' % 
+            (name, fconfig, flag_twilight, flag_brightsky)) 
+    os.system('surveysim --name %s --config-file %s%s%s' % 
+            (name, fconfig, flag_twilight, flag_brightsky)) 
     return None 
 
 
@@ -233,15 +237,17 @@ if __name__=="__main__":
     '''
         >>> python survey_sim.py name fconfig twilight 
     '''
-    name    = sys.argv[1]
-    fconfig = sys.argv[2]
-    twilight= sys.argv[3] == 'True'
+    name        = sys.argv[1]
+    fconfig     = sys.argv[2]
+    twilight    = sys.argv[3] == 'True'
+    brightsky   = sys.argv[4] == 'True'
 
     if twilight: name += '.twilight'
+    if brightsky: name += '.brightsky'
 
     # check survey init
     surveyinit()
     # run surveysim
-    run_surveysim(name, fconfig, twilight=twilight) 
+    run_surveysim(name, fconfig, twilight=twilight, brightsky=brightsky) 
     # get summary statistics of surveysim run
     stats_surveysim(name)
