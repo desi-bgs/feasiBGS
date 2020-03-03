@@ -49,7 +49,11 @@ os.environ['DESISURVEY_OUTPUT'] = os.path.join(os.environ['CSCRATCH'],
 
 
 def stats_surveysim(name): 
-    '''
+    ''' generate some plots assessing the surveysim run 
+
+    notes 
+    -----
+    *   https://github.com/desihub/tutorials/blob/master/survey-simulations.ipynb
     '''
     # read in exposures surveysim output  
     f_exp = os.path.join(os.environ['DESISURVEY_OUTPUT'], 
