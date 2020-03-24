@@ -36,142 +36,55 @@ if not os.path.isdir(dir_dat):
     dir_dat = '/Users/ChangHoon/data/feasiBGS/survey_validation/'
 
 
-def make_mtl(targets):
+def mtl_dr9sv(seed=1): 
+    ''' make MTL using DR9SV imaging 
     '''
-    '''
-    # determine whether the input targets are main survey, cmx or SV.
-    colnames, masks, survey = main_cmx_or_sv(targets)
-    # ADM set the first column to be the "desitarget" column
-    desi_target, desi_mask = colnames[0], masks[0]
-    n = len(targets)
+    np.random.seed(seed)
+    #########################################################################
+    # compile sv tiles 
+    #########################################################################
+    # read SV tiles 
+    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Mar2020.fits')) # new SV tiles
+    n_tiles = len(sv['RA']) 
+    print('%i BGS SV tiles') 
+    # get SV tiles *outside* of the DR9 SV imaging region 
+    in_dr9 = _in_DR9_SVregion(sv['RA'], sv['DEC'])
+    print('%i tiles outside of DR9' % np.sum(~in_dr9))
+    #########################################################################
+    # compile targets and match to truth table 
+    #########################################################################
+    # read targets from DR9SV 
+    ftargets = ['sv1-targets-dr9-hp-X.fits']
+    # for tiles outside of DR9SV read dr8 healpix
+    phi = np.deg2rad(sv['RA'][~in_dr9])
+    theta = 0.5 * np.pi - np.deg2rad(sv['DEC'][~in_dr9])
+    ipixs = np.unique(hp.ang2pix(2, theta, phi, nest=True)) 
+    print('     reading in %i DR8 healpixels' % len(ipixs))
+    for i in ipixs: 
+        ftargets.append('sv1-targets-dr8-hp-%i.fits' % i) 
 
-    # ADM if the input target columns were incorrectly called NUMOBS or PRIORITY
-    # ADM rename them to NUMOBS_INIT or PRIORITY_INIT.
-    for name in ['NUMOBS', 'PRIORITY']:
-        targets.dtype.names = [name+'_INIT' if col == name else col for col in targets.dtype.names]
-
-    # ADM if a redshift catalog was passed, order it to match the input targets
-    # ADM catalog on 'TARGETID'.
-    ztargets = Table()
-    ztargets['TARGETID'] = targets['TARGETID']
-    ztargets['NUMOBS'] = np.zeros(n, dtype=np.int32)
-    ztargets['Z'] = -1 * np.ones(n, dtype=np.float32)
-    ztargets['ZWARN'] = -1 * np.ones(n, dtype=np.int32)
-    # ADM if zcat wasn't passed, there is a one-to-one correspondence
-    # ADM between the targets and the zcat.
-    zmatcher = np.arange(n)
-
-    # ADM extract just the targets that match the input zcat.
-    targets_zmatcher = targets[zmatcher]
-
-    # ADM use passed value of NUMOBS_INIT instead of calling the memory-heavy calc_numobs.
-    # ztargets['NUMOBS_MORE'] = np.maximum(0, calc_numobs(ztargets) - ztargets['NUMOBS'])
-    ztargets['NUMOBS_MORE'] = np.maximum(0, targets_zmatcher['NUMOBS_INIT'] - ztargets['NUMOBS'])
-
-    # ADM need a minor hack to ensure BGS targets are observed once
-    # ADM (and only once) every time during the BRIGHT survey, regardless
-    # ADM of how often they've previously been observed. I've turned this
-    # ADM off for commissioning. Not sure if we'll keep it in general.
-
-    # ADM only if we're considering bright survey conditions.
-    ii = targets_zmatcher[desi_target] & desi_mask.BGS_ANY > 0
-    ztargets['NUMOBS_MORE'][ii] = 1
-
-    # ADM assign priorities, note that only things in the zcat can have changed priorities.
-    # ADM anything else will be assigned PRIORITY_INIT, below.
-    priority = calc_priority(targets_zmatcher, ztargets, 'BRIGHT')
-
-    # set subpriority in order to tune the SV target densities 
-    # BGS target classes: BRIGHT, FAINT, EXTFAINT, FIBERMAG, LOWQ
-    # initial DR8 target density ---> desired density
-    # BRIGHT:   882.056980 ---> 540 = 63%   0.62 - 1  
-    # FAINT:    746.769486 ---> 300 = 41%   0.41 - 1
-    # EXTFAINT: 623.470673 ---> 150 = 24%   0    - 1
-    # FIBERMAG: 207.534409 ---> 150 = 71%   0.66 - 1
-    # LOW Q:    55.400240  ---> 60  = 100%  0.76 - 1
-    # (depending on imaging LOWQ varies a lot! DES~50/deg2, DECALS~114/deg2, North~185/deg2) 
-
-    # bgs bitmask
-    bitmask_bgs = targets['SV1_BGS_TARGET']
-    bgs_all         = (bitmask_bgs).astype(bool)
-    bgs_bright      = (bitmask_bgs & bgs_mask.mask('BGS_BRIGHT')).astype(bool)
-    bgs_faint       = (bitmask_bgs & bgs_mask.mask('BGS_FAINT')).astype(bool)
-    bgs_extfaint    = (bitmask_bgs & bgs_mask.mask('BGS_FAINT_EXT')).astype(bool) # extended faint
-    bgs_fibmag      = (bitmask_bgs & bgs_mask.mask('BGS_FIBMAG')).astype(bool) # fiber magnitude limited
-    bgs_lowq        = (bitmask_bgs & bgs_mask.mask('BGS_LOWQ')).astype(bool) # low quality
-   
-    subpriority = np.random.uniform(0., 1., n) 
-    subpriority[bgs_bright]     = np.random.uniform(0.62, 1., np.sum(bgs_bright))
-    subpriority[bgs_faint]      = np.random.uniform(0.41, 1., np.sum(bgs_faint))
-    subpriority[bgs_extfaint]   = np.random.uniform(0., 1, np.sum(bgs_extfaint))
-    subpriority[bgs_fibmag]     = np.random.uniform(0.66, 1, np.sum(bgs_fibmag))
-    subpriority[bgs_lowq]       = np.random.uniform(0.99, 1, np.sum(bgs_lowq))
-
-    # set priority of all BGS targets equal 
-    priority[bgs_all] = 2000
-    
-    n_bgs, n_bgs_bright, n_bgs_faint, n_bgs_extfaint, n_bgs_fibmag, n_bgs_lowq = \
-            bgs_targetclass(targets['SV1_BGS_TARGET'])
-    print('---------------------------------')
-    print('total n_bgs = %i' % n_bgs)
-    print('nobj, frac (ls frac)')  
-    print('BGS Bright %i %.3f (0.35)' % (n_bgs_bright, n_bgs_bright/n_bgs))
-    print('BGS Faint %i %.3f (0.29)' % (n_bgs_faint, n_bgs_faint/n_bgs))
-    print('BGS Ext.Faint %i %.3f (0.25)' % (n_bgs_extfaint, n_bgs_extfaint/n_bgs))
-    print('BGS Fib.Mag %i %.3f (0.08)' % (n_bgs_fibmag, n_bgs_fibmag/n_bgs))
-    print('BGS Low Q. %i %.3f (0.02)' % (n_bgs_lowq, n_bgs_lowq/n_bgs))
-
-    # If priority went to 0==DONOTOBSERVE or 1==OBS or 2==DONE, then NUMOBS_MORE should also be 0.
-    # ## mtl['NUMOBS_MORE'] = ztargets['NUMOBS_MORE']
-    #ii = (priority <= 2)
-    #log.info('{:d} of {:d} targets have priority zero, setting N_obs=0.'.format(np.sum(ii), n))
-    #ztargets['NUMOBS_MORE'][ii] = 0
-
-    # - Set the OBSCONDITIONS mask for each target bit.
-    obsconmask = set_obsconditions(targets)
-
-    # ADM set up the output mtl table.
-    mtl = Table(targets)
-    mtl.meta['EXTNAME'] = 'MTL'
-    # ADM any target that wasn't matched to the ZCAT should retain its
-    # ADM original (INIT) value of PRIORITY and NUMOBS.
-    mtl['NUMOBS_MORE'] = mtl['NUMOBS_INIT']
-    mtl['PRIORITY'] = mtl['PRIORITY_INIT']
-    # ADM now populate the new mtl columns with the updated information.
-    mtl['OBSCONDITIONS'] = obsconmask
-    mtl['PRIORITY'][zmatcher] = priority
-    mtl['SUBPRIORITY'][zmatcher] = subpriority
-    mtl['NUMOBS_MORE'][zmatcher] = ztargets['NUMOBS_MORE']
-
-    # Filtering can reset the fill_value, which is just wrong wrong wrong
-    # See https://github.com/astropy/astropy/issues/4707
-    # and https://github.com/astropy/astropy/issues/4708
-    mtl['NUMOBS_MORE'].fill_value = -1
-    return mtl
-
-
-def test_mtl(fmtl): 
-    '''
-    '''
-    mtl = fitsio.read(fmtl)
-    # bgs bitmask
-    bitmask_bgs = mtl['SV1_BGS_TARGET']
-    bgs_bright      = (bitmask_bgs & bgs_mask.mask('BGS_BRIGHT')).astype(bool)
-    bgs_faint       = (bitmask_bgs & bgs_mask.mask('BGS_FAINT')).astype(bool)
-    bgs_extfaint    = (bitmask_bgs & bgs_mask.mask('BGS_FAINT_EXT')).astype(bool) # extended faint
-    bgs_fibmag      = (bitmask_bgs & bgs_mask.mask('BGS_FIBMAG')).astype(bool) # fiber magnitude limited
-    bgs_lowq        = (bitmask_bgs & bgs_mask.mask('BGS_LOWQ')).astype(bool) # low quality
-
-    
-    for name, bgs_class in zip(['bgs_bright', 'bgs_faint', 'bgs_extfaint', 'bgs_fibmag', 'bgs_lowq'],
-            [bgs_bright, bgs_faint, bgs_extfaint, bgs_fibmag, bgs_lowq]): 
-        print('--- %s ---' % name) 
-        print('PRIORITY: %.2f - %.2f' % (mtl['PRIORITY'][bgs_class].min(), mtl['PRIORITY'][bgs_class].max()))
-        print('SUBPRIORITY: %.2f - %.2f' % (mtl['SUBPRIORITY'][bgs_class].min(), mtl['SUBPRIORITY'][bgs_class].max()))
+    targets = [] 
+    for _ftarget in ftargets: 
+        ftarget = os.path.join(dir_dat, 'sv.spec_truth', _ftarget)
+        if not os.path.isfile(ftarget): 
+            _target = fitsio.read(os.path.join(dir_dat, _ftarget)) 
+            target = match2spectruth(_target)
+        else: 
+            target = fitsio.read(ftarget)
+        targets.append(target)
+    #########################################################################
+    # construct MTLs for set of targets 
+    #########################################################################
+    n_targets = len(targets)
+    for i, target in enumerate(targets): 
+        mtl = make_mtl(target)
+        fmtl = os.path.join(dir_dat, 'mtl',
+                'mtl.bgs.dr9sv.%iof%i.seed%i.fits' % (i+1, n_targets, seed))
+        mtl.write(fmtl, format='fits', overwrite=True) 
     return None 
 
 
-def make_mtl_healpix(targets, spectruth=True, seed=None):
+def make_mtl(targets, spectruth=True, seed=None):
     ''' make mtl for healpix
     '''
     np.random.seed(seed)
@@ -317,6 +230,56 @@ def make_mtl_healpix(targets, spectruth=True, seed=None):
     # and https://github.com/astropy/astropy/issues/4708
     mtl['NUMOBS_MORE'].fill_value = -1
     return mtl
+
+
+def _in_DR9_SVregion(ras, decs): 
+    ''' DR9 imaging SV region listed in
+    https://desi.lbl.gov/trac/wiki/TargetSelectionWG/SVFields_for_DR9
+    '''
+    sv_regions = {}
+    sv_regions['01_s82']            = [30,40,-7,2]
+    sv_regions['02_egs']            = [210,220,50,55]
+    sv_regions['03_gama09']         = [129,141,-2,3]
+    sv_regions['04_gama12']         = [175,185,-3,2]
+    sv_regions['05_gama15']         = [212,222,-2,3]
+    sv_regions['06_overlap']        = [135,160,30,35]
+    sv_regions['07_refnorth']       = [215,230,41,46]
+    sv_regions['08_ages']           = [215,220,30,40]
+    sv_regions['09_sagittarius']    = [200,210,5,10]
+    sv_regions['10_highebv_n']      = [140,150,65,70]
+    sv_regions['11_highebv_s']      = [240,245,20,25]
+    sv_regions['12_highstardens_n'] = [273,283,40,45]
+    sv_regions['13_highstardens_s'] = [260,270,15,20]
+    
+    in_dr9 = np.zeros(n_tiles).astype(bool) 
+    for i, ra, dec in zip(len(ras), ras, decs): 
+        for k in sv_regions.keys(): 
+            if ((ra >= sv_regions[k][0]) & (ra <= sv_regions[k][1]) & 
+                    (dec >= sv_regions[k][2]) & (dec <= sv_regions[k][3])): 
+                in_dr9[i] = True
+
+    return sv_regions
+
+
+def test_mtl(fmtl): 
+    '''
+    '''
+    mtl = fitsio.read(fmtl)
+    # bgs bitmask
+    bitmask_bgs = mtl['SV1_BGS_TARGET']
+    bgs_bright      = (bitmask_bgs & bgs_mask.mask('BGS_BRIGHT')).astype(bool)
+    bgs_faint       = (bitmask_bgs & bgs_mask.mask('BGS_FAINT')).astype(bool)
+    bgs_extfaint    = (bitmask_bgs & bgs_mask.mask('BGS_FAINT_EXT')).astype(bool) # extended faint
+    bgs_fibmag      = (bitmask_bgs & bgs_mask.mask('BGS_FIBMAG')).astype(bool) # fiber magnitude limited
+    bgs_lowq        = (bitmask_bgs & bgs_mask.mask('BGS_LOWQ')).astype(bool) # low quality
+
+    
+    for name, bgs_class in zip(['bgs_bright', 'bgs_faint', 'bgs_extfaint', 'bgs_fibmag', 'bgs_lowq'],
+            [bgs_bright, bgs_faint, bgs_extfaint, bgs_fibmag, bgs_lowq]): 
+        print('--- %s ---' % name) 
+        print('PRIORITY: %.2f - %.2f' % (mtl['PRIORITY'][bgs_class].min(), mtl['PRIORITY'][bgs_class].max()))
+        print('SUBPRIORITY: %.2f - %.2f' % (mtl['SUBPRIORITY'][bgs_class].min(), mtl['SUBPRIORITY'][bgs_class].max()))
+    return None 
 
 
 def mtl_SV_healpy(spectruth=True, seed=None): 
@@ -524,7 +487,6 @@ def bgs_truth_table():
     ''' compile list of brickid, objid, ra, dec, north or south, name of survey of
     spectroscopic truth tables that Mike compiled 
     '''
-
     brickid, objid, ra, dec, nors, survey, gama_cataid = [], [], [], [], [], [], [] 
     for ns in ['north', 'south']: 
         fspecs = glob.glob(os.path.join(dir_dat, 'truth_table', '*-%s-standard.fits' % ns))
@@ -636,4 +598,4 @@ if __name__=="__main__":
 
     #for _class in ['bright', 'faint', 'extfaint', 'fibmag', 'lowq']:
     #    target_healpix(target_class=_class)
-    #aster_truth_table()
+    #master_truth_table()
