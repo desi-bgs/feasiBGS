@@ -51,7 +51,7 @@ def mtl_dr9sv(seed=0):
     in_dr9 = _in_DR9_SVregion(sv['RA'], sv['DEC'])
     print('%i tiles outside of DR9' % np.sum(~in_dr9))
     #########################################################################
-    # compile targets and match to truth table 
+    # compile targets and match to truth table and SN host 
     #########################################################################
     # read targets from DR9SV 
     ftargets = ['sv1-targets-dr9-hp-X.fits']
@@ -63,50 +63,52 @@ def mtl_dr9sv(seed=0):
     for i in ipixs: 
         ftargets.append('sv1-targets-dr8-hp-%i.fits' % i) 
 
-    for _ftarget in ftargets: 
-        ftarget = os.path.join(dir_dat, 'sv.spec_truth', 
-                _ftarget.replace('.fits', '.spec_truth.fits'))
-        if not os.path.isfile(ftarget): 
-            print('... matching %s to truth table' % _ftarget) 
-            _target = fitsio.read(os.path.join(dir_dat, _ftarget)) 
-            target = match2spectruth(_target)
-            fitsio.write(ftarget, target, clobber=True)
-        else: 
-            target = fitsio.read(ftarget)
-    
-    ftargets = [ftarget.replace('.fits', '.spec_truth.fits') 
-            for ftarget in ftargets]
-    #########################################################################
-    # match to supernova hosts 
-    #########################################################################
     targets = [] 
     for _ftarget in ftargets: 
         ftarget = os.path.join(dir_dat, 'sv.spec_truth', 
-                _ftarget.replace('.fits', '.sn_host.fits'))
+                _ftarget.replace('.fits', '.spec_truth.sn_host.fits'))
         if not os.path.isfile(ftarget): 
+            # read target files with truth tables 
+            _f = os.path.join(dir_dat, 'sv.spec_truth', 
+                _ftarget.replace('.fits', '.spec_truth.fits'))
+            if not os.path.isfile(_f):  
+                print('... matching %s to truth table' % _ftarget) 
+                _target = fitsio.read(os.path.join(dir_dat, _ftarget)) 
+                target = match2spectruth(_target)
+                fitsio.write(_f, target, clobber=True)
+            else: 
+                target = fitsio.read(_f)
+
             print('... matching %s to SN host' % _ftarget) 
-            _target = fitsio.read(os.path.join(dir_dat, 'sv.spec_truth', _ftarget)) 
-            target = match2snhost(_target)
+            target = match2snhost(target)
             fitsio.write(ftarget, target, clobber=True)
         else: 
             target = fitsio.read(ftarget)
+
         targets.append(target)
-    raise ValueError
     #########################################################################
     # construct MTLs for set of targets 
     #########################################################################
     n_targets = len(targets)
     for i, target in enumerate(targets): 
-        mtl = make_mtl(target)
+        mtl = make_mtl(target, seed=seed)
         fmtl = os.path.join(dir_dat, 'mtl',
                 'mtl.bgs.dr9sv.%iof%i.seed%i.fits' % (i+1, n_targets, seed))
         mtl.write(fmtl, format='fits', overwrite=True) 
     return None 
 
 
-def make_mtl(targets, spectruth=True, seed=None):
-    ''' make mtl for healpix
+def make_mtl(targets, seed=None):
+    ''' construct mtl given targets. 
+
+    notes: 
+    -----
+    * At the moment, highest priority is set for targets with spectroscopic
+    redshifts or are SN hosts. 
     '''
+    assert 'IN_SPECTRUTH' in targets.dtype.names
+    assert 'HAS_SN' in targets.dtype.names
+
     np.random.seed(seed)
     # determine whether the input targets are main survey, cmx or SV.
     colnames, masks, survey = main_cmx_or_sv(targets)
@@ -161,16 +163,16 @@ def make_mtl(targets, spectruth=True, seed=None):
     # (depending on imaging LOWQ varies a lot! DES~50/deg2, DECALS~114/deg2, North~185/deg2) 
 
     # bgs bitmask
-    bitmask_bgs     = targets['SV1_BGS_TARGET']
-    if spectruth:
-        has_spec    = targets['IN_SPECTRUTH'] # objects in spectroscopic truth table  
-    else: 
-        has_spec    = np.zeros(n).astype(bool) 
+    bitmask_bgs = targets['SV1_BGS_TARGET']
+    has_spec    = targets['IN_SPECTRUTH'] # objects in spectroscopic truth table  
+    has_sn      = targets['HAS_SN']
+
     # target classes with spectra
     n_bgs_sp, n_bgs_bright_sp, n_bgs_faint_sp, n_bgs_extfaint_sp, n_bgs_fibmag_sp, n_bgs_lowq_sp = \
             bgs_targetclass(targets['SV1_BGS_TARGET'][has_spec])
 
-    bgs_has_spec    = has_spec & (bitmask_bgs).astype(bool) # objects in BGS with spectra
+    # BGS objects with spectra or hosts SN 
+    bgs_has_spec    = has_spec & has_sn & (bitmask_bgs).astype(bool) 
 
     bgs_all         = ~has_spec & (bitmask_bgs).astype(bool)
     bgs_bright      = ~has_spec & (bitmask_bgs & bgs_mask.mask('BGS_BRIGHT')).astype(bool)
@@ -485,8 +487,8 @@ def test_match2spec_SV_healpy():
     return None 
 
 
-def target_healpix(target_class='bright'): 
-    ''' examine 
+def target_dr8healpix(target_class='bright'): 
+    ''' examine target class densities for DR8 healpixels
     '''
     dir_sv = '/project/projectdirs/desi/target/catalogs/dr8/0.34.0/targets/sv/resolve/bright/'
     ftargs = glob.glob(os.path.join(dir_sv, '*.fits')) 
