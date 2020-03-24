@@ -10,6 +10,7 @@ import numpy.lib.recfunctions as rfn
 import fitsio
 import healpy as hp 
 from astropy.table import Table
+from pydl.pydlutils.spheregroup import spherematch
 # -- desitarget --
 from desitarget.targets import calc_priority, main_cmx_or_sv, set_obsconditions
 from desitarget.sv1.sv1_targetmask import bgs_mask
@@ -36,7 +37,7 @@ if not os.path.isdir(dir_dat):
     dir_dat = '/Users/ChangHoon/data/feasiBGS/survey_validation/'
 
 
-def mtl_dr9sv(seed=1): 
+def mtl_dr9sv(seed=0): 
     ''' make MTL using DR9SV imaging 
     '''
     np.random.seed(seed)
@@ -45,8 +46,7 @@ def mtl_dr9sv(seed=1):
     #########################################################################
     # read SV tiles 
     sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Mar2020.fits')) # new SV tiles
-    n_tiles = len(sv['RA']) 
-    print('%i BGS SV tiles') 
+    print('%i BGS SV tiles' % len(sv['RA']))
     # get SV tiles *outside* of the DR9 SV imaging region 
     in_dr9 = _in_DR9_SVregion(sv['RA'], sv['DEC'])
     print('%i tiles outside of DR9' % np.sum(~in_dr9))
@@ -59,19 +59,39 @@ def mtl_dr9sv(seed=1):
     phi = np.deg2rad(sv['RA'][~in_dr9])
     theta = 0.5 * np.pi - np.deg2rad(sv['DEC'][~in_dr9])
     ipixs = np.unique(hp.ang2pix(2, theta, phi, nest=True)) 
-    print('     reading in %i DR8 healpixels' % len(ipixs))
+    print('     reading in healpixels', ipixs)
     for i in ipixs: 
         ftargets.append('sv1-targets-dr8-hp-%i.fits' % i) 
 
-    targets = [] 
     for _ftarget in ftargets: 
-        ftarget = os.path.join(dir_dat, 'sv.spec_truth', _ftarget)
+        ftarget = os.path.join(dir_dat, 'sv.spec_truth', 
+                _ftarget.replace('.fits', '.spec_truth.fits'))
         if not os.path.isfile(ftarget): 
+            print('... matching %s to truth table' % _ftarget) 
             _target = fitsio.read(os.path.join(dir_dat, _ftarget)) 
             target = match2spectruth(_target)
+            fitsio.write(ftarget, target, clobber=True)
+        else: 
+            target = fitsio.read(ftarget)
+    
+    ftargets = [ftarget.replace('.fits', '.spec_truth.fits') 
+            for ftarget in ftargets]
+    #########################################################################
+    # match to supernova hosts 
+    #########################################################################
+    targets = [] 
+    for _ftarget in ftargets: 
+        ftarget = os.path.join(dir_dat, 'sv.spec_truth', 
+                _ftarget.replace('.fits', '.sn_host.fits'))
+        if not os.path.isfile(ftarget): 
+            print('... matching %s to SN host' % _ftarget) 
+            _target = fitsio.read(os.path.join(dir_dat, 'sv.spec_truth', _ftarget)) 
+            target = match2snhost(_target)
+            fitsio.write(ftarget, target, clobber=True)
         else: 
             target = fitsio.read(ftarget)
         targets.append(target)
+    raise ValueError
     #########################################################################
     # construct MTLs for set of targets 
     #########################################################################
@@ -237,28 +257,94 @@ def _in_DR9_SVregion(ras, decs):
     https://desi.lbl.gov/trac/wiki/TargetSelectionWG/SVFields_for_DR9
     '''
     sv_regions = {}
-    sv_regions['01_s82']            = [30,40,-7,2]
-    sv_regions['02_egs']            = [210,220,50,55]
-    sv_regions['03_gama09']         = [129,141,-2,3]
-    sv_regions['04_gama12']         = [175,185,-3,2]
-    sv_regions['05_gama15']         = [212,222,-2,3]
-    sv_regions['06_overlap']        = [135,160,30,35]
-    sv_regions['07_refnorth']       = [215,230,41,46]
-    sv_regions['08_ages']           = [215,220,30,40]
-    sv_regions['09_sagittarius']    = [200,210,5,10]
-    sv_regions['10_highebv_n']      = [140,150,65,70]
-    sv_regions['11_highebv_s']      = [240,245,20,25]
-    sv_regions['12_highstardens_n'] = [273,283,40,45]
-    sv_regions['13_highstardens_s'] = [260,270,15,20]
-    
+    sv_regions['01_s82']            = [30.,40.,-7.,2.]
+    sv_regions['02_egs']            = [210.,220.,50.,55.]
+    sv_regions['03_gama09']         = [129.,141.,-2.,3.]
+    sv_regions['04_gama12']         = [175.,185.,-3.,2.]
+    sv_regions['05_gama15']         = [212.,222.,-2.,3.]
+    sv_regions['06_overlap']        = [135.,160.,30.,35.]
+    sv_regions['07_refnorth']       = [215.,230.,41.,46.]
+    sv_regions['08_ages']           = [215.,220.,30.,40.]
+    sv_regions['09_sagittarius']    = [200.,210.,5.,10.]
+    sv_regions['10_highebv_n']      = [140.,150.,65.,70.]
+    sv_regions['11_highebv_s']      = [240.,245.,20.,25.]
+    sv_regions['12_highstardens_n'] = [273.,283.,40.,45.]
+    sv_regions['13_highstardens_s'] = [260.,270.,15.,20.]
+   
+    n_tiles = len(ras)
     in_dr9 = np.zeros(n_tiles).astype(bool) 
-    for i, ra, dec in zip(len(ras), ras, decs): 
+    for i, ra, dec in zip(range(n_tiles), ras, decs): 
         for k in sv_regions.keys(): 
             if ((ra >= sv_regions[k][0]) & (ra <= sv_regions[k][1]) & 
                     (dec >= sv_regions[k][2]) & (dec <= sv_regions[k][3])): 
                 in_dr9[i] = True
+    return in_dr9 
 
-    return sv_regions
+
+def match2spectruth(targets): 
+    ''' match target table to spectroscopic truth table
+    '''
+    assert 'BRICKID' in targets.dtype.names
+    assert 'BRICK_OBJID' in targets.dtype.names 
+    isbgs = (targets['SV1_BGS_TARGET']).astype(bool) 
+    targ_brickid    = targets['BRICKID'][isbgs]
+    targ_objid      = targets['BRICK_OBJID'][isbgs]
+
+    # read in spectroscopic truth table
+    spectruth   = h5py.File(os.path.join(dir_dat, 'bgs_truth_table.hdf5'), 'r') 
+    st_brickid  = spectruth['BRICKID'][...]
+    st_objid    = spectruth['OBJID'][...]
+
+    in_spectruth = np.zeros(targets.shape[0]).astype(bool)
+    gama_cataid  = np.repeat(-999, targets.shape[0]) 
+    #in_spectruth.dtype.names = ['ID', 'IN_SPECTRUTH']
+    ii = np.arange(targets.shape[0])
+    indices, cataid = [], [] 
+
+    uniq_brickid = np.unique(targ_brickid) 
+    for brickid in uniq_brickid: 
+        in_targbrick = (targ_brickid == brickid)
+        in_specbrick = (st_brickid == brickid)
+        #in_spec = np.isin(targ_objid[in_targbrick], st_objid[in_specbrick])
+        _, in_spec, in_targ = np.intersect1d(targ_objid[in_targbrick], st_objid[in_specbrick], 
+                return_indices=True)
+        if len(in_spec) > 0: 
+            #print(len(in_spec))
+            #print(targets['RA'][isbgs][in_targbrick][in_spec] - spectruth['RA'][...][in_specbrick][in_targ]) 
+            #print(targets['DEC'][isbgs][in_targbrick][in_spec] - spectruth['DEC'][...][in_specbrick][in_targ])
+            #print(spectruth['GAMA_CATAID'][...][in_specbrick][in_targ]) 
+            indices.append(ii[isbgs][in_targbrick][in_spec])
+            cataid.append(spectruth['GAMA_CATAID'][...][in_specbrick][in_targ]) 
+
+    in_spectruth[np.concatenate(indices)] = True
+    gama_cataid[np.concatenate(indices)] = np.concatenate(cataid) 
+    print('%i BGS SV targets have spectra' % np.sum(in_spectruth)) 
+    targets = rfn.append_fields(targets, ['IN_SPECTRUTH'], [in_spectruth]) 
+    targets = rfn.append_fields(targets, ['GAMA_CATAID'], [gama_cataid]) 
+    return targets
+
+
+def match2snhost(targets): 
+    ''' match target table to supernovae hosts compiled by Segev
+    '''
+    assert 'BRICKID' in targets.dtype.names
+    assert 'BRICK_OBJID' in targets.dtype.names 
+    isbgs = (targets['SV1_BGS_TARGET']).astype(bool) 
+    targ_ra     = targets['RA'][isbgs]
+    targ_dec    = targets['DEC'][isbgs]
+
+    # read in supernovae hosts
+    snhost  = fitsio.read(os.path.join(dir_dat, 'snhost_dr8_target.fits'))
+    sn_ra   = snhost['RA']
+    sn_dec  = snhost['DEC']
+
+    has_sn = np.zeros(targets.shape[0]).astype(bool)
+    # spherematch compiled hosts 
+    m_targ, m_sn, d_match = spherematch(targ_ra, targ_dec, sn_ra, sn_dec, 0.000277778, maxmatch=1) 
+    has_sn[m_targ] = True
+    print('%i BGS SV targets are supernova hosts' % np.sum(has_sn)) 
+    targets = rfn.append_fields(targets, ['HAS_SN'], [has_sn]) 
+    return targets
 
 
 def test_mtl(fmtl): 
@@ -367,49 +453,6 @@ def match2spec_SV_healpy():
         targets = match2spectruth(targets) 
         fitsio.write(os.path.join(dir_dat, 'sv.spec_truth', 'sv1-targets-dr8-hp-%i.spec_truth.fits' % i), targets, clobber=True)
     return None 
-
-
-def match2spectruth(targets): 
-    ''' match target table to spectroscopic truth table
-    '''
-    assert 'BRICKID' in targets.dtype.names
-    assert 'BRICK_OBJID' in targets.dtype.names 
-    isbgs = (targets['SV1_BGS_TARGET']).astype(bool) 
-    targ_brickid    = targets['BRICKID'][isbgs]
-    targ_objid      = targets['BRICK_OBJID'][isbgs]
-
-    # read in spectroscopic truth table
-    spectruth   = h5py.File(os.path.join(dir_dat, 'bgs_truth_table.hdf5'), 'r') 
-    st_brickid  = spectruth['BRICKID'][...]
-    st_objid    = spectruth['OBJID'][...]
-
-    in_spectruth = np.zeros(targets.shape[0]).astype(bool)
-    gama_cataid  = np.repeat(-999, targets.shape[0]) 
-    #in_spectruth.dtype.names = ['ID', 'IN_SPECTRUTH']
-    ii = np.arange(targets.shape[0])
-    indices, cataid = [], [] 
-
-    uniq_brickid = np.unique(targ_brickid) 
-    for brickid in uniq_brickid: 
-        in_targbrick = (targ_brickid == brickid)
-        in_specbrick = (st_brickid == brickid)
-        #in_spec = np.isin(targ_objid[in_targbrick], st_objid[in_specbrick])
-        _, in_spec, in_targ = np.intersect1d(targ_objid[in_targbrick], st_objid[in_specbrick], 
-                return_indices=True)
-        if len(in_spec) > 0: 
-            #print(len(in_spec))
-            #print(targets['RA'][isbgs][in_targbrick][in_spec] - spectruth['RA'][...][in_specbrick][in_targ]) 
-            #print(targets['DEC'][isbgs][in_targbrick][in_spec] - spectruth['DEC'][...][in_specbrick][in_targ])
-            #print(spectruth['GAMA_CATAID'][...][in_specbrick][in_targ]) 
-            indices.append(ii[isbgs][in_targbrick][in_spec])
-            cataid.append(spectruth['GAMA_CATAID'][...][in_specbrick][in_targ]) 
-
-    in_spectruth[np.concatenate(indices)] = True
-    gama_cataid[np.concatenate(indices)] = np.concatenate(cataid) 
-    print('%i BGS SV targets have spectra' % np.sum(in_spectruth)) 
-    targets = rfn.append_fields(targets, ['IN_SPECTRUTH'], [in_spectruth]) 
-    targets = rfn.append_fields(targets, ['GAMA_CATAID'], [gama_cataid]) 
-    return targets
 
 
 def test_match2spec_SV_healpy(): 
@@ -584,18 +627,4 @@ def bgs_targetclass(bitmask_bgs):
 
 
 if __name__=="__main__": 
-    #for fmtl in glob.glob(os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-*.fits')): 
-    #    mtl = fitsio.read(fmtl)
-    #    match2spectruth(mtl)
-    #    raise ValueError
-    #bgs_truth_table()
-
-    # full MTL 
-    #match2spec_SV_healpy()
-    #test_match2spec_SV_healpy()
-    mtl_SV_healpy(spectruth=True, seed=0)
-    test_mtl_SV_healpy()
-
-    #for _class in ['bright', 'faint', 'extfaint', 'fibmag', 'lowq']:
-    #    target_healpix(target_class=_class)
-    #master_truth_table()
+    mtl_dr9sv(seed=0)
