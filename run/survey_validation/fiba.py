@@ -9,8 +9,6 @@ import numpy as np
 # --- 
 import fitsio
 from astropy.io import fits
-# -- feasibgs -- 
-from feasibgs import util as UT
 # -- desitarget -- 
 from desitarget.sv1.sv1_targetmask import bgs_mask
 # -- plotting -- 
@@ -30,7 +28,7 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
-dir_dat = os.path.join(UT.dat_dir(), 'survey_validation')
+dir_dat = '/global/cscratch1/sd/chahah/feasibgs/survey_validation'
 
 
 def new_SVfields(seed=1): 
@@ -210,6 +208,143 @@ def new_SVfields(seed=1):
     return None 
 
 
+def testFA_dr9sv(): 
+    ''' test the fiberassign output of DR9SV 
+    '''
+    # all the fiberassign output files 
+    f_fbas = glob.glob(os.path.join(dir_dat, 'fba_dr9sv.spec_truth.Mar2020',
+        'fiberassign*.fits'))
+
+    n_zero = 0
+    n_nosky = 0 
+    __n_bgs_bright, __n_bgs_faint, __n_bgs_extfaint, __n_bgs_fibmag, __n_bgs_lowq = [], [], [], [], []
+    for i, f in enumerate(f_fbas): 
+        # read in tile
+        tile_i = fitsio.read(f)
+        if i == 0: 
+            tile = tile_i
+        else: 
+            tile = np.concatenate([tile, tile_i]) 
+
+        _n_bgs, _n_bgs_bright, _n_bgs_faint, _n_bgs_extfaint, _n_bgs_fibmag, _n_bgs_lowq = \
+                bgs_targetclass(tile_i['SV1_BGS_TARGET'])
+        _n_sky = np.sum(tile_i['OBJTYPE'] == 'SKY')
+        
+        __n_bgs_bright.append(_n_bgs_bright/_n_bgs)
+        __n_bgs_faint.append(_n_bgs_faint/_n_bgs)
+        __n_bgs_extfaint.append(_n_bgs_extfaint/_n_bgs)
+        __n_bgs_fibmag.append(_n_bgs_fibmag/_n_bgs)
+        __n_bgs_lowq.append(_n_bgs_lowq/_n_bgs)
+
+        print('---------------------------------')
+        print('tiles: %s' % os.path.basename(f))
+        print('total n_bgs = %i' % _n_bgs)
+        print('                       nobj frac (expected frac)')  
+        print('     ------------------------------------')  
+        print('     BGS Bright          %i %.3f (0.45)' % (_n_bgs_bright, _n_bgs_bright/_n_bgs))
+        print('     BGS Faint           %i %.3f (0.25)' % (_n_bgs_faint, _n_bgs_faint/_n_bgs))
+        print('     BGS Ext.Faint       %i %.3f (0.125)' % (_n_bgs_extfaint, _n_bgs_extfaint/_n_bgs))
+        print('     BGS Fib.Mag         %i %.3f (0.125)' % (_n_bgs_fibmag, _n_bgs_fibmag/_n_bgs))
+        print('     BGS Low Q.          %i %.3f (0.05)' % (_n_bgs_lowq, _n_bgs_lowq/_n_bgs))
+        print('     SKY                 %i' % (_n_sky)) 
+        # tiles with no sky targets 
+        if _n_sky == 0: n_nosky += 1
+        # tiles with no BGS targets 
+        if _n_bgs == 0: n_zero += 1
+    print('---------------------------------')
+    print('%i tiles with zero BGS targets' % n_zero)
+    print('%i tiles with zero SKY targets' % n_nosky)
+
+    n_bgs, n_bgs_bright, n_bgs_faint, n_bgs_extfaint, n_bgs_fibmag, n_bgs_lowq = \
+            bgs_targetclass(tile['SV1_BGS_TARGET'])
+    print('---------------------------------')
+    print('total n_bgs = %i' % n_bgs)
+    print('                       nobj frac (expected frac)')  
+    print('     ------------------------------------')  
+    print('     BGS Bright          %i %.3f, %.3f-%.3f (0.45)' % (n_bgs_bright, n_bgs_bright/n_bgs, np.min(__n_bgs_bright), np.max(__n_bgs_bright)))
+    print('     BGS Faint           %i %.3f, %.3f-%.3f (0.25)' % (n_bgs_faint, n_bgs_faint/n_bgs, np.min(__n_bgs_faint), np.max(__n_bgs_faint)))
+    print('     BGS Ext.Faint       %i %.3f, %.3f-%.3f (0.125)' % (n_bgs_extfaint, n_bgs_extfaint/n_bgs, np.min(__n_bgs_extfaint), np.max(__n_bgs_extfaint)))
+    print('     BGS Fib.Mag         %i %.3f, %.3f-%.3f (0.125)' % (n_bgs_fibmag, n_bgs_fibmag/n_bgs, np.min(__n_bgs_fibmag), np.max(__n_bgs_fibmag)))
+    print('     BGS Low Q.          %i %.3f, %.3f-%.3f (0.05)' % (n_bgs_lowq, n_bgs_lowq/n_bgs, np.min(__n_bgs_lowq), np.max(__n_bgs_lowq)))
+    
+    #fig = plt.figure(figsize=(10,5))
+    #sub = fig.add_subplot(111)
+    #sub.scatter(tile['TARGET_RA'], tile['TARGET_DEC'], c='k', s=2)
+    #sub.scatter(tile['TARGET_RA'][_flags], tile['TARGET_DEC'][_flags], c='C1', s=2)
+
+    ##sub.legend(loc='upper right', handletextpad=0.2, markerscale=5, fontsize=15) 
+    #sub.set_xlabel('RA', fontsize=20)
+    #sub.set_xlim(360., 0.)#tile['TARGET_RA'].min(), tile['TARGET_RA'].max())
+    #sub.set_ylabel('Dec', fontsize=20)
+    ##sub.set_ylim(22., 26) 
+    #sub.set_ylim(-30., 80.)#tile['TARGET_DEC'].min(), tile['TARGET_DEC'].max())
+    #fig.savefig(os.path.join(dir_dat, 'fba_dr9sv.spec_truth.Mar2020', 'fiberassign_outliers.png'), bbox_inches='tight') 
+    return None 
+
+
+def _dr9sv_nosky(): 
+    ''' examine why some tiles have no sky fibers
+    '''
+    # all the fiberassign output files 
+    f_fbas = glob.glob(os.path.join(dir_dat, 'fba_dr9sv.spec_truth.Mar2020',
+        'fiberassign*.fits'))
+    # all the sky targets
+    f_skies = [ 
+            "/global/cfs/cdirs/desi/target/catalogs/dr8/0.37.0/skies/skies-dr8-hp-0.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr8/0.37.0/skies/skies-dr8-hp-15.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr8/0.37.0/skies/skies-dr8-hp-19.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr8/0.37.0/skies/skies-dr8-hp-47.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-4.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-5.fits", 
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-7.fits", 
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-8.fits", 
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-9.fits", 
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-10.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-11.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-14.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-17.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-21.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-24.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-25.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-26.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-27.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-31.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-35.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-39.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-43.fits"]
+
+    fig = plt.figure(figsize=(10,5))
+    sub = fig.add_subplot(111)
+    for f in f_skies: 
+        sky = fitsio.read(f) 
+        _plt_sky = sub.scatter(sky['RA'][::100], sky['DEC'][::100], c='k', s=1)
+
+    dr8sky = fitsio.read(os.path.join(dir_dat, 'mtl', 'dr8_skies_cutout.fits'))
+    _plt_sky2 = sub.scatter(dr8sky['RA'][::100], dr8sky['DEC'][::100], c='C1', s=1)
+
+    for f in f_fbas: 
+        # read in tile
+        tile_i = fitsio.read(f)
+        _n_sky = np.sum(tile_i['OBJTYPE'] == 'SKY')
+
+        if _n_sky == 0: 
+            _plt_nosky = sub.scatter(tile_i['TARGET_RA'][::10], tile_i['TARGET_DEC'][::10],
+                    c='r', s=1, label='No Sky Fibers')
+        else: 
+            _plt_bgs = sub.scatter(tile_i['TARGET_RA'][::10], tile_i['TARGET_DEC'][::10],
+                    c='C0', s=1, label='BGS SV tile')
+
+    sub.legend([_plt_sky, _plt_sky2, _plt_nosky, _plt_bgs], 
+            ['Sky Targets', 'DR8 cut out', 'No Sky Fibers', 'BGS SV tiles'], 
+            loc='upper right', handletextpad=0.2, markerscale=5, fontsize=15) 
+    sub.set_xlabel('RA', fontsize=20)
+    sub.set_xlim(360., 0.)#tile['TARGET_RA'].min(), tile['TARGET_RA'].max())
+    sub.set_ylabel('Dec', fontsize=20)
+    sub.set_ylim(-40., 90.)#tile['TARGET_DEC'].min(), tile['TARGET_DEC'].max())
+    fig.savefig('fba_dr9sv_nosky.png', bbox_inches='tight') 
+    return None 
+
+
 def testFA_singletile(ftile): 
     ''' examine the different target classes for a single tile 
     '''
@@ -326,6 +461,7 @@ def testFA_tiles():
     fig.savefig(os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb', 'fiberassign_outliers.png'), bbox_inches='tight') 
     return None 
 
+
 def testFA_tiles_targetclass(spectruth=False): 
     ''' plot the target class fractions of the fiberassign output 
     '''
@@ -398,9 +534,9 @@ def bgs_targetclass(bitmask_bgs):
 
 
 if __name__=="__main__": 
-    new_SVfields()
-    #for f in glob.glob(os.path.join(dir_dat, 'fba_dr8.0.34.0.hp-comb', 'fiberassign*.fits')): 
-    #    testFA_singletile(f)
+    #new_SVfields()
+    testFA_dr9sv()
+    #_dr9sv_nosky()
     #testFA_tiles()
     #testFA_tiles_targetclass(spectruth=True)
     #testFA_tiles_targetclass(spectruth=False)

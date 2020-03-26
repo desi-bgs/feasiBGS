@@ -1,5 +1,5 @@
 '''
-script for making the mtl file from desitarget output 
+script for generating the MTL and fiberassign on DR9SV imaging. 
 '''
 import os 
 import glob
@@ -31,12 +31,13 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
-
 dir_dat = '/global/cscratch1/sd/chahah/feasibgs/survey_validation/'
 if not os.path.isdir(dir_dat): 
     dir_dat = '/Users/ChangHoon/data/feasiBGS/survey_validation/'
 
-
+######################################################################
+# constructing MTLs
+######################################################################
 def mtl_dr9sv(seed=0): 
     ''' make MTL using DR9SV imaging 
     '''
@@ -90,28 +91,6 @@ def mtl_dr9sv(seed=0):
         fmtl = os.path.join(dir_dat, 'mtl',
                 'mtl.bgs.dr9sv.%iof%i.seed%i.fits' % (i+1, n_targets, seed))
         mtl.write(fmtl, format='fits', overwrite=True) 
-    return None 
-
-
-def check_mtl_dr9sv(): 
-    ''' check the target fraction of the MTLs  
-    '''
-    for fmtl in glob.glob(os.path.join(dir_dat, 'mtl', '*.fits')): 
-        print('--- %s ---' % fmtl) 
-        # read MTL 
-        mtl = fitsio.read(fmtl)
-
-        n_bgs, n_bgs_bright, n_bgs_faint, n_bgs_extfaint, n_bgs_fibmag, n_bgs_lowq = \
-                bgs_targetclass(mtl['SV1_BGS_TARGET'])
-
-        print('total n_bgs = %i' % n_bgs)
-        print('                       nobj frac (expected frac)')  
-        print('     ------------------------------------')  
-        print('     BGS Bright          %i %.3f (0.45)' % (n_bgs_bright, n_bgs_bright/n_bgs))
-        print('     BGS Faint           %i %.3f (0.25)' % (n_bgs_faint, n_bgs_faint/n_bgs))
-        print('     BGS Ext.Faint       %i %.3f (0.125)' % (n_bgs_extfaint, n_bgs_extfaint/n_bgs))
-        print('     BGS Fib.Mag         %i %.3f (0.125)' % (n_bgs_fibmag, n_bgs_fibmag/n_bgs))
-        print('     BGS Low Q.          %i %.3f (0.05)' % (n_bgs_lowq, n_bgs_lowq/n_bgs))
     return None 
 
 
@@ -287,61 +266,6 @@ def make_mtl(targets, seed=None):
     return mtl
 
 
-def dr8_skies_cutouts(): 
-    ''' compiled skies file for BGS tiles outside of the dr9sv regions 
-    '''
-    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Mar2020.fits')) # new SV tiles
-    in_dr9 = _in_DR9_SVregion(sv['RA'], sv['DEC'])
-    print("%i tiles outside of DR9SV" % (np.sum(~in_dr9)))
-
-    # DR8 sky files 
-    fskies = glob.glob('/global/cfs/cdirs/desi/target/catalogs/dr8/0.37.0/skies/*fits')
-
-    dr8_skies = [] 
-    for fsky in fskies: 
-        print('... reading %s' % fsky)
-        sky = fitsio.read(fsky)
-        
-        keep = np.zeros(len(sky['RA'])).astype(bool)
-        for tile_ra, tile_dec in zip(sv['RA'][~in_dr9], sv['DEC'][~in_dr9]): 
-            keep = keep | (np.sqrt((sky['RA'] - tile_ra)**2 + (sky['DEC'] - tile_dec)**2) < 2.)
-
-            dr8_skies.append(sky[keep])
-
-    dr8_skies = np.concatenate(dr8_skies) 
-    fitsio.write(os.path.join(dir_dat, 'mtl', 'dr8_skies_cutout.fits'), dr8_skies, clobber=True)
-    return None 
-
-
-def _in_DR9_SVregion(ras, decs): 
-    ''' DR9 imaging SV region listed in
-    https://desi.lbl.gov/trac/wiki/TargetSelectionWG/SVFields_for_DR9
-    '''
-    sv_regions = {}
-    sv_regions['01_s82']            = [30.,40.,-7.,2.]
-    sv_regions['02_egs']            = [210.,220.,50.,55.]
-    sv_regions['03_gama09']         = [129.,141.,-2.,3.]
-    sv_regions['04_gama12']         = [175.,185.,-3.,2.]
-    sv_regions['05_gama15']         = [212.,222.,-2.,3.]
-    sv_regions['06_overlap']        = [135.,160.,30.,35.]
-    sv_regions['07_refnorth']       = [215.,230.,41.,46.]
-    sv_regions['08_ages']           = [215.,220.,30.,40.]
-    sv_regions['09_sagittarius']    = [200.,210.,5.,10.]
-    sv_regions['10_highebv_n']      = [140.,150.,65.,70.]
-    sv_regions['11_highebv_s']      = [240.,245.,20.,25.]
-    sv_regions['12_highstardens_n'] = [273.,283.,40.,45.]
-    sv_regions['13_highstardens_s'] = [260.,270.,15.,20.]
-   
-    n_tiles = len(ras)
-    in_dr9 = np.zeros(n_tiles).astype(bool) 
-    for i, ra, dec in zip(range(n_tiles), ras, decs): 
-        for k in sv_regions.keys(): 
-            if ((ra >= sv_regions[k][0]) & (ra <= sv_regions[k][1]) & 
-                    (dec >= sv_regions[k][2]) & (dec <= sv_regions[k][3])): 
-                in_dr9[i] = True
-    return in_dr9 
-
-
 def match2spectruth(targets): 
     ''' match target table to spectroscopic truth table
     '''
@@ -408,251 +332,33 @@ def match2snhost(targets):
     return targets
 
 
-def mtl_dr8sv_healpy(spectruth=True, seed=None): 
-    ''' generate MTLs from targets in healpixels with SV tiles 
+def _in_DR9_SVregion(ras, decs): 
+    ''' DR9 imaging SV region listed in
+    https://desi.lbl.gov/trac/wiki/TargetSelectionWG/SVFields_for_DR9
     '''
-    #sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) # old SV tiles
-    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Jan2020.fits')) # new SV tiles
-    phi = np.deg2rad(sv['RA'])
-    theta = 0.5 * np.pi - np.deg2rad(sv['DEC'])
-
-    ipixs = np.unique(hp.ang2pix(2, theta, phi, nest=True)) 
-    
-    for i in ipixs: 
-        print('--- %i pixel ---' % i) 
-        targets = fitsio.read(os.path.join(dir_dat, 'sv.spec_truth', 'sv1-targets-dr8-hp-%i.spec_truth.fits' % i))
-        mtl = make_mtl_healpix(targets, spectruth=spectruth, seed=seed)
-        
-        if spectruth:
-            dir_mtl = os.path.join(dir_dat, 'mtl.spec_truth')
-            fmtl = os.path.join(dir_mtl, 'mtl.dr8.0.34.0.bgs_sv.hp-%i.spec_truth.seed%i.fits' % (i, seed))
-        else: 
-            dir_mtl = os.path.join(dir_dat, 'mtl')
-            fmtl = os.path.join(dir_mtl, 'mtl.dr8.0.34.0.bgs_sv.hp-%i.seed%i.fits' % (i, seed))
-        mtl.write(fmtl, format='fits', overwrite=True) 
-    return None 
-
-
-def test_mtl_SV_healpy(): 
-    ''' test the MTLs by plotting the SV BGS target fractions in each of healpix 
-    '''
-    fig = plt.figure(figsize=(20,20))
-    gs = mpl.gridspec.GridSpec(3,2, figure=fig)
-
-    classes = ['BGS_BRIGHT', 'BGS_FAINT', 'BGS_FAINT_EXT', 'BGS_FIBMAG', 'BGS_LOWQ', 'IN_SPECTRUTH']
-    subs = [plt.subplot(gs[i], projection='mollweide') for i in range(6)]
-
-    dir_mtl = os.path.join(dir_dat, 'mtl.spec_truth')
-
-    for cl, sub in zip(classes, subs):  
-        print(cl) 
-        fclass_pixs = np.zeros(hp.nside2npix(2))
-
-        for fmtl in glob.glob(os.path.join(dir_mtl, 'mtl.dr8.0.34.0.bgs_sv.hp-*.fits')): 
-            # read MTL 
-            mtl = fitsio.read(fmtl)
-
-            # bgs bitmask
-            bitmask_bgs = mtl['SV1_BGS_TARGET'] 
-            n_bgs = float(np.sum((bitmask_bgs).astype(bool))) 
-            
-            if cl != 'IN_SPECTRUTH': 
-                bgs_class = (bitmask_bgs & bgs_mask.mask(cl)).astype(bool)
-            else:
-                # fraction of galaxies in spectroscopic truth tables 
-                bgs_class = (bitmask_bgs.astype(bool) & mtl['IN_SPECTRUTH'])
-
-            # calculate target fraction in healpix 
-            ipix = int(os.path.basename(fmtl).split('-')[-1].split('.')[0])
-            fclass_pixs[ipix] = float(np.sum(bgs_class)) / n_bgs
-
-        plt.axes(sub) 
-        hp.mollview(fclass_pixs, nest=True, rot=180., hold=True, title=cl) 
-
-    fig.savefig(os.path.join(dir_dat, 'mtl_healpix_targetclass.png'), bbox_inches='tight') 
-    return None 
-
-
-def match2spec_SV_healpy(): 
-    ''' append desitarget SV output files with column specifying spectroscopic 
-    truth tables. 
-    '''
-    #sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) # old SV tiles
-    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Jan2020.fits')) # new SV tiles
-    phi = np.deg2rad(sv['RA'])
-    theta = 0.5 * np.pi - np.deg2rad(sv['DEC'])
-
-    ipixs = np.unique(hp.ang2pix(2, theta, phi, nest=True)) 
-    
-    dir_sv = '/project/projectdirs/desi/target/catalogs/dr8/0.34.0/targets/sv/resolve/bright/'
-    for i in ipixs: 
-        if i <= 17: continue
-        print('--- %i pixel ---' % i) 
-        targets = fitsio.read(os.path.join(dir_sv, 'sv1-targets-dr8-hp-%i.fits' % i))
-        targets = match2spectruth(targets) 
-        fitsio.write(os.path.join(dir_dat, 'sv.spec_truth', 'sv1-targets-dr8-hp-%i.spec_truth.fits' % i), targets, clobber=True)
-    return None 
-
-
-def test_match2spec_SV_healpy(): 
-    ''' plot where the spectroscopic truth table SV targets lie
-    '''
-    # old SV tiles
-    #sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
-    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Jan2020.fits')) # new SV tiles
-    phi_sv = np.deg2rad(sv['RA'])
-    theta_sv = 0.5 * np.pi - np.deg2rad(sv['DEC'])
-    
-    pixs = np.zeros(hp.nside2npix(2))
-    ipixs = np.unique(hp.ang2pix(2, theta_sv, phi_sv, nest=True)) 
-    
-    dir_sv = '/project/projectdirs/desi/target/catalogs/dr8/0.34.0/targets/sv/resolve/bright/'
-    for i in ipixs: pixs[i] = 1.
-    hp.mollview(pixs, nest=True, rot=180.) 
-
-    for i in ipixs: 
-        targ = fitsio.read(os.path.join(dir_dat, 'sv.spec_truth', 'sv1-targets-dr8-hp-%i.spec_truth.fits' % i))
-        targ_spectrue = targ[targ['IN_SPECTRUTH']] 
-
-        phi = np.deg2rad(targ_spectrue['RA'])
-        theta = 0.5 * np.pi - np.deg2rad(targ_spectrue['DEC'])
-
-        hp.projscatter(theta[::10], phi[::10], c='C1', s=1)
-    hp.projscatter(theta_sv, phi_sv, c='C0', s=20)
-
-    plt.savefig(os.path.join(dir_dat, 'match2spec_SV_healpix.png'), bbox_inches='tight') 
-    return None 
-
-
-def target_dr8healpix(target_class='bright'): 
-    ''' examine target class densities for DR8 healpixels
-    '''
-    dir_sv = '/project/projectdirs/desi/target/catalogs/dr8/0.34.0/targets/sv/resolve/bright/'
-    ftargs = glob.glob(os.path.join(dir_sv, '*.fits')) 
-    
-    pixs = np.zeros(hp.nside2npix(2))
-
-    for ftarg in ftargs: 
-        ipix = int(os.path.basename(ftarg).split('-')[-1].replace('.fits', ''))
-        print('--- %i pixel ---' % ipix) 
-
-        targets = fitsio.read(ftarg)
-        n_bgs, n_bgs_bright, n_bgs_faint, n_bgs_extfaint, n_bgs_fibmag, n_bgs_lowq = \
-                bgs_targetclass(targets['SV1_BGS_TARGET'])
-        
-        if target_class == 'bright': 
-            pixs[ipix] = n_bgs_bright/n_bgs 
-        elif target_class == 'faint': 
-            pixs[ipix] = n_bgs_faint/n_bgs 
-        elif target_class == 'extfaint':
-            pixs[ipix] = n_bgs_extfaint/n_bgs 
-        elif target_class == 'fibmag':
-            pixs[ipix] = n_bgs_fibmag/n_bgs 
-        elif target_class == 'lowq':
-            pixs[ipix] = n_bgs_lowq/n_bgs 
-    
-    if target_class != 'lowq': 
-        hp.mollview(pixs, nest=True, rot=180., title='%s Target Class Fraction' % target_class.upper()) 
-    else: 
-        hp.mollview(pixs, nest=True, rot=180., title='%s Target Class Fraction' % target_class.upper(), min=0., max=0.2) 
-
-    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Sep2019.fits')) 
-    phi = np.deg2rad(sv['RA'])
-    theta = 0.5 * np.pi - np.deg2rad(sv['DEC'])
-    hp.projscatter(theta, phi, c='k', s=20)
-
-    plt.savefig(os.path.join(dir_dat, 'target_healpix.%s.png' % target_class), bbox_inches='tight') 
-    return None 
-
-
-def bgs_truth_table(): 
-    ''' compile list of brickid, objid, ra, dec, north or south, name of survey of
-    spectroscopic truth tables that Mike compiled 
-    '''
-    brickid, objid, ra, dec, nors, survey, gama_cataid = [], [], [], [], [], [], [] 
-    for ns in ['north', 'south']: 
-        fspecs = glob.glob(os.path.join(dir_dat, 'truth_table', '*-%s-standard.fits' % ns))
-
-        dir_match = '/project/projectdirs/desi/target/analysis/truth/dr8.0/%s/matched/' % ns
-        for fspec in fspecs:
-            print(fspec)
-            _fspec = os.path.basename(fspec).replace('-%s-standard.fits' % ns, '')
-
-            fmatch = glob.glob(os.path.join(dir_match, 'ls-dr8.0-*%s*' % _fspec))
-            assert len(fmatch) == 1
-            print(fmatch[0]) 
-
-            tab = fitsio.read(fmatch[0])
-            print('%i objects in %s' % (tab.shape[0], os.path.basename(fmatch[0])))
-
-            brickid.append(tab['BRICKID'])
-            objid.append(tab['OBJID'])
-            ra.append(tab['RA'])
-            dec.append(tab['DEC'])
-            nors.append(np.repeat(ns, tab.shape[0]))
-            survey.append(np.repeat(os.path.basename(fmatch[0]), tab.shape[0]))
-
-            if 'GAMA' in fmatch[0]: # append CATAID from gama 
-                fgama = fmatch[0].replace('ls-dr8.0-', '')
-                print(fgama) 
-                gama = fitsio.read(fgama) # read gama data 
-                gama_cataid.append(gama['CATAID']) 
-            else: 
-                gama_cataid.append(np.repeat(-999, tab.shape[0]))
-    
-    fmaster = h5py.File(os.path.join(dir_dat, 'bgs_truth_table.hdf5'), 'w') 
-    fmaster.create_dataset('BRICKID', data=np.concatenate(brickid))
-    fmaster.create_dataset('OBJID', data=np.concatenate(objid))
-    fmaster.create_dataset('RA', data=np.concatenate(ra))
-    fmaster.create_dataset('DEC', data=np.concatenate(dec))
-    fmaster.create_dataset('NORS', data=np.concatenate(nors).astype('S'))
-    fmaster.create_dataset('SURVEY', data=np.concatenate(survey).astype('S'))
-    fmaster.create_dataset('GAMA_CATAID', data=np.concatenate(gama_cataid))
-    fmaster.close() 
-    return None  
-
-
-def target_densities(): 
-    ''' Examine the target class densities for the different healpixels to
-    see the variation in the targeting 
-    '''
-    dir_sv = '/project/projectdirs/desi/target/catalogs/dr8/0.34.0/targets/sv/resolve/bright/'
-    for i in ipixs: 
-        print('--- %i pixel ---' % i) 
-        targets = fitsio.read(os.path.join(dir_sv, 'sv1-targets-dr8-hp-%i.fits' % i))
-        mtl = make_mtl(targets)
-        mtl.write(os.path.join(dir_dat, 'mtl.dr8.0.34.0.bgs_sv.hp-%i.fits' % i), format='fits') 
-
-
-def master_truth_table(): 
-    ''' compile master list of brickid, objid, ra, dec, north or south, name of survey of
-    spectroscopic truth tables 
-    '''
-    import h5py 
-    brickid, objid, ra, dec, nors, survey = [], [], [], [], [], []
-    for ns in ['north', 'south']: 
-        dir_match = '/project/projectdirs/desi/target/analysis/truth/dr8.0/%s/matched/' % ns
-        ftabs = glob.glob(dir_match+'ls-dr8.0*') 
-        for ftab in ftabs: 
-            tab = fitsio.read(ftab)
-            print('%i objects in %s' % (tab.shape[0], os.path.basename(ftab)))
-
-            brickid.append(tab['BRICKID'])
-            objid.append(tab['OBJID'])
-            ra.append(tab['RA'])
-            dec.append(tab['DEC'])
-            nors.append(np.repeat(ns, tab.shape[0]))
-            survey.append(np.repeat(os.path.basename(ftab), tab.shape[0]))
-    
-    fmaster = h5py.File(os.path.join(dir_dat, 'master_truth_table.hdf5'), 'w') 
-    fmaster.create_dataset('BRICKID', data=np.concatenate(brickid))
-    fmaster.create_dataset('OBJID', data=np.concatenate(objid))
-    fmaster.create_dataset('RA', data=np.concatenate(ra))
-    fmaster.create_dataset('DEC', data=np.concatenate(dec))
-    fmaster.create_dataset('NORS', data=np.concatenate(nors).astype('S'))
-    fmaster.create_dataset('SURVEY', data=np.concatenate(survey).astype('S'))
-    fmaster.close() 
-    return None  
+    sv_regions = {}
+    sv_regions['01_s82']            = [30.,40.,-7.,2.]
+    sv_regions['02_egs']            = [210.,220.,50.,55.]
+    sv_regions['03_gama09']         = [129.,141.,-2.,3.]
+    sv_regions['04_gama12']         = [175.,185.,-3.,2.]
+    sv_regions['05_gama15']         = [212.,222.,-2.,3.]
+    sv_regions['06_overlap']        = [135.,160.,30.,35.]
+    sv_regions['07_refnorth']       = [215.,230.,41.,46.]
+    sv_regions['08_ages']           = [215.,220.,30.,40.]
+    sv_regions['09_sagittarius']    = [200.,210.,5.,10.]
+    sv_regions['10_highebv_n']      = [140.,150.,65.,70.]
+    sv_regions['11_highebv_s']      = [240.,245.,20.,25.]
+    sv_regions['12_highstardens_n'] = [273.,283.,40.,45.]
+    sv_regions['13_highstardens_s'] = [260.,270.,15.,20.]
+   
+    n_tiles = len(ras)
+    in_dr9 = np.zeros(n_tiles).astype(bool) 
+    for i, ra, dec in zip(range(n_tiles), ras, decs): 
+        for k in sv_regions.keys(): 
+            if ((ra >= sv_regions[k][0]) & (ra <= sv_regions[k][1]) & 
+                    (dec >= sv_regions[k][2]) & (dec <= sv_regions[k][3])): 
+                in_dr9[i] = True
+    return in_dr9 
 
 
 def bgs_targetclass(bitmask_bgs): 
@@ -665,7 +371,245 @@ def bgs_targetclass(bitmask_bgs):
     return n_bgs, n_bgs_bright, n_bgs_faint, n_bgs_extfaint, n_bgs_fibmag, n_bgs_lowq
 
 
+def check_mtl_dr9sv(): 
+    ''' check the target fraction of the MTLs  
+    '''
+    for fmtl in glob.glob(os.path.join(dir_dat, 'mtl', 'mtl*.fits')): 
+        print('--- %s ---' % fmtl) 
+        # read MTL 
+        mtl = fitsio.read(fmtl)
+
+        assigned  = mtl['SUBPRIORITY'] > 0.943
+
+        n_bgs, n_bgs_bright, n_bgs_faint, n_bgs_extfaint, n_bgs_fibmag, n_bgs_lowq = \
+                bgs_targetclass(mtl['SV1_BGS_TARGET'][assigned])
+
+        print('total n_bgs = %i' % n_bgs)
+        print('                       nobj frac (expected frac)')  
+        print('     ------------------------------------')  
+        print('     BGS Bright          %i %.3f (0.45)' % (n_bgs_bright, n_bgs_bright/n_bgs))
+        print('     BGS Faint           %i %.3f (0.25)' % (n_bgs_faint, n_bgs_faint/n_bgs))
+        print('     BGS Ext.Faint       %i %.3f (0.125)' % (n_bgs_extfaint, n_bgs_extfaint/n_bgs))
+        print('     BGS Fib.Mag         %i %.3f (0.125)' % (n_bgs_fibmag, n_bgs_fibmag/n_bgs))
+        print('     BGS Low Q.          %i %.3f (0.05)' % (n_bgs_lowq, n_bgs_lowq/n_bgs))
+    return None 
+
+
+def _dr8_skies_cutouts(): 
+    ''' compiled skies file for BGS SV tiles outside of the dr9sv regions 
+    '''
+    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Mar2020.fits')) # new SV tiles
+    in_dr9 = _in_DR9_SVregion(sv['RA'], sv['DEC'])
+    print("%i tiles outside of DR9SV" % (np.sum(~in_dr9)))
+
+    # DR8 sky files 
+    fskies = glob.glob('/global/cfs/cdirs/desi/target/catalogs/dr8/0.37.0/skies/*fits')
+
+    dr8_skies = [] 
+    for fsky in fskies: 
+        print('... reading %s' % fsky)
+        sky = fitsio.read(fsky)
+        
+        keep = np.zeros(len(sky['RA'])).astype(bool)
+        for tile_ra, tile_dec in zip(sv['RA'][~in_dr9], sv['DEC'][~in_dr9]): 
+            keep = keep | (np.sqrt((sky['RA'] - tile_ra)**2 + (sky['DEC'] - tile_dec)**2) < 2.)
+
+            dr8_skies.append(sky[keep])
+
+    dr8_skies = np.concatenate(dr8_skies) 
+
+    # only kep unique TARGTEID
+    _, uniq = np.unique(dr8_skies['TARGETID'], return_index=True)
+
+    fitsio.write(os.path.join(dir_dat, 'mtl', 'dr8_skies_cutout.fits'),
+            dr8_skies[uniq], clobber=True)
+    return None 
+
+
+######################################################################
+# fiberassign 
+######################################################################
+def run_fiberassign(): 
+    ''' generate script for running fiberassign (for posterity) and run it
+    '''
+    assert os.environ['NERSC_HOST'] == 'cori'
+
+    fmtls = glob.glob(os.path.join(dir_dat, 'mtl', 'mtl*fits'))
+    fskies = glob.glob(os.path.join('/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/', 
+        'skies*.fits'))
+    fskies += ['/global/cscratch1/sd/chahah/feasibgs/survey_validation/mtl/dr8_skies_cutout.fits']
+
+    scrpt = '\n'.join([
+        '#!/bin/bash', 
+        'export DESIMODEL="/global/cscratch1/sd/chahah/feasibgs/desimodel_0.12.0"', 
+        '', 
+        'odir="/global/cscratch1/sd/chahah/feasibgs/survey_validation/fba_dr9sv.spec_truth.Mar2020"', 
+        'tfile="/global/cscratch1/sd/chahah/feasibgs/survey_validation/BGS_SV_30_3x_superset60_Mar2020.fits"', 
+        '', 
+        'export OMP_NUM_THREADS=32', 
+        '', 
+        'mkdir ${odir}', 
+        'rm ${odir}/*.fits', 
+        '', 
+        'export DESI_LOGLEVEL=DEBUG', 
+        'fba_run --targets %s --sky %s --footprint ${tfile} --standards_per_petal 20 --sky_per_petal 80 --write_all_targets --dir ${odir} --overwrite | tee log.o' % (' '.join(fmtls), ' '.join(fskies)),
+        '', 
+        'fba_merge_results --targets %s --dir ${odir}' % (' '.join(fmtls + fskies))
+        ])
+
+    f = open('cori_dr9sv_fba.sh','w')
+    f.write(scrpt)
+    f.close()
+    os.system('sh cori_dr9sv_fba.sh')
+    return None 
+
+
+def check_fba(): 
+    ''' test target densities in the fiberassign output of DR9SV 
+    '''
+    # all the fiberassign output files 
+    f_fbas = glob.glob(os.path.join(dir_dat, 'fba_dr9sv.spec_truth.Mar2020',
+        'fiberassign*.fits'))
+
+    n_zero = 0
+    n_nosky = 0 
+    __n_bgs_bright, __n_bgs_faint, __n_bgs_extfaint, __n_bgs_fibmag, __n_bgs_lowq, __n_sky = [], [], [], [], [], [] 
+    for i, f in enumerate(f_fbas): 
+        # read in tile
+        tile_i = fitsio.read(f)
+        if i == 0: 
+            tile = tile_i
+        else: 
+            tile = np.concatenate([tile, tile_i]) 
+
+        _n_bgs, _n_bgs_bright, _n_bgs_faint, _n_bgs_extfaint, _n_bgs_fibmag, _n_bgs_lowq = \
+                bgs_targetclass(tile_i['SV1_BGS_TARGET'])
+        _n_sky = np.sum(tile_i['OBJTYPE'] == 'SKY')
+        
+        __n_bgs_bright.append(_n_bgs_bright/_n_bgs)
+        __n_bgs_faint.append(_n_bgs_faint/_n_bgs)
+        __n_bgs_extfaint.append(_n_bgs_extfaint/_n_bgs)
+        __n_bgs_fibmag.append(_n_bgs_fibmag/_n_bgs)
+        __n_bgs_lowq.append(_n_bgs_lowq/_n_bgs)
+
+        print('---------------------------------')
+        print('tiles: %s' % os.path.basename(f))
+        print('total n_bgs = %i' % _n_bgs)
+        print('                       nobj frac (expected frac)')  
+        print('     ------------------------------------')  
+        print('     BGS Bright          %i %.3f (0.45)' % (_n_bgs_bright, _n_bgs_bright/_n_bgs))
+        print('     BGS Faint           %i %.3f (0.25)' % (_n_bgs_faint, _n_bgs_faint/_n_bgs))
+        print('     BGS Ext.Faint       %i %.3f (0.125)' % (_n_bgs_extfaint, _n_bgs_extfaint/_n_bgs))
+        print('     BGS Fib.Mag         %i %.3f (0.125)' % (_n_bgs_fibmag, _n_bgs_fibmag/_n_bgs))
+        print('     BGS Low Q.          %i %.3f (0.05)' % (_n_bgs_lowq, _n_bgs_lowq/_n_bgs))
+        print('     SKY                 %i' % (_n_sky)) 
+        __n_sky.append(_n_sky) 
+        # tiles with no sky targets 
+        if _n_sky == 0: n_nosky += 1
+        # tiles with no BGS targets 
+        if _n_bgs == 0: n_zero += 1
+    print('---------------------------------')
+    print('%i tiles with zero BGS targets' % n_zero)
+    print('%i tiles with zero SKY targets' % n_nosky)
+
+    n_bgs, n_bgs_bright, n_bgs_faint, n_bgs_extfaint, n_bgs_fibmag, n_bgs_lowq = \
+            bgs_targetclass(tile['SV1_BGS_TARGET'])
+    print('---------------------------------')
+    print('total n_bgs = %i' % n_bgs)
+    print('                       nobj frac (expected frac)')  
+    print('     ------------------------------------')  
+    print('     BGS Bright          %i %.3f, %.3f-%.3f (0.45)' % (n_bgs_bright, n_bgs_bright/n_bgs, np.min(__n_bgs_bright), np.max(__n_bgs_bright)))
+    print('     BGS Faint           %i %.3f, %.3f-%.3f (0.25)' % (n_bgs_faint, n_bgs_faint/n_bgs, np.min(__n_bgs_faint), np.max(__n_bgs_faint)))
+    print('     BGS Ext.Faint       %i %.3f, %.3f-%.3f (0.125)' % (n_bgs_extfaint, n_bgs_extfaint/n_bgs, np.min(__n_bgs_extfaint), np.max(__n_bgs_extfaint)))
+    print('     BGS Fib.Mag         %i %.3f, %.3f-%.3f (0.125)' % (n_bgs_fibmag, n_bgs_fibmag/n_bgs, np.min(__n_bgs_fibmag), np.max(__n_bgs_fibmag)))
+    print('     BGS Low Q.          %i %.3f, %.3f-%.3f (0.05)' % (n_bgs_lowq, n_bgs_lowq/n_bgs, np.min(__n_bgs_lowq), np.max(__n_bgs_lowq)))
+    print('     SKY                 %i' % (np.mean(__n_sky)))
+    
+    #fig = plt.figure(figsize=(10,5))
+    #sub = fig.add_subplot(111)
+    #sub.scatter(tile['TARGET_RA'], tile['TARGET_DEC'], c='k', s=2)
+    #sub.scatter(tile['TARGET_RA'][_flags], tile['TARGET_DEC'][_flags], c='C1', s=2)
+
+    ##sub.legend(loc='upper right', handletextpad=0.2, markerscale=5, fontsize=15) 
+    #sub.set_xlabel('RA', fontsize=20)
+    #sub.set_xlim(360., 0.)#tile['TARGET_RA'].min(), tile['TARGET_RA'].max())
+    #sub.set_ylabel('Dec', fontsize=20)
+    ##sub.set_ylim(22., 26) 
+    #sub.set_ylim(-30., 80.)#tile['TARGET_DEC'].min(), tile['TARGET_DEC'].max())
+    #fig.savefig(os.path.join(dir_dat, 'fba_dr9sv.spec_truth.Mar2020', 'fiberassign_outliers.png'), bbox_inches='tight') 
+    return None 
+
+
+def check_fba_skies(): 
+    ''' check that the fiberassign outputs 
+    '''
+    # all the fiberassign output files 
+    f_fbas = glob.glob(os.path.join(dir_dat, 'fba_dr9sv.spec_truth.Mar2020',
+        'fiberassign*.fits'))
+    # all the sky targets
+    f_skies = [ 
+            "/global/cfs/cdirs/desi/target/catalogs/dr8/0.37.0/skies/skies-dr8-hp-0.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr8/0.37.0/skies/skies-dr8-hp-15.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr8/0.37.0/skies/skies-dr8-hp-19.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr8/0.37.0/skies/skies-dr8-hp-47.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-4.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-5.fits", 
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-7.fits", 
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-8.fits", 
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-9.fits", 
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-10.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-11.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-14.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-17.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-21.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-24.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-25.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-26.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-27.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-31.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-35.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-39.fits",
+            "/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-dr9-hp-43.fits"]
+
+    fig = plt.figure(figsize=(10,5))
+    sub = fig.add_subplot(111)
+    for f in f_skies: 
+        sky = fitsio.read(f) 
+        _plt_sky = sub.scatter(sky['RA'][::100], sky['DEC'][::100], c='k', s=1)
+
+    dr8sky = fitsio.read(os.path.join(dir_dat, 'mtl', 'dr8_skies_cutout.fits'))
+    _plt_sky2 = sub.scatter(dr8sky['RA'][::100], dr8sky['DEC'][::100], c='C1', s=1)
+
+    for f in f_fbas: 
+        # read in tile
+        tile_i = fitsio.read(f)
+        _n_sky = np.sum(tile_i['OBJTYPE'] == 'SKY')
+
+        if _n_sky == 0: 
+            _plt_nosky = sub.scatter(tile_i['TARGET_RA'][::10], tile_i['TARGET_DEC'][::10],
+                    c='r', s=1, label='No Sky Fibers')
+        else: 
+            _plt_bgs = sub.scatter(tile_i['TARGET_RA'][::10], tile_i['TARGET_DEC'][::10],
+                    c='C0', s=1, label='BGS SV tile')
+
+    sub.legend([_plt_sky, _plt_sky2, _plt_nosky, _plt_bgs], 
+            ['Sky Targets', 'DR8 cut out', 'No Sky Fibers', 'BGS SV tiles'], 
+            loc='upper right', handletextpad=0.2, markerscale=5, fontsize=15) 
+    sub.set_xlabel('RA', fontsize=20)
+    sub.set_xlim(360., 0.)#tile['TARGET_RA'].min(), tile['TARGET_RA'].max())
+    sub.set_ylabel('Dec', fontsize=20)
+    sub.set_ylim(-40., 90.)#tile['TARGET_DEC'].min(), tile['TARGET_DEC'].max())
+    fig.savefig('fba_dr9sv_nosky.png', bbox_inches='tight') 
+    return None 
+
+
+
 if __name__=="__main__": 
-    mtl_dr9sv(seed=0)
+    # construct MTL
+    #mtl_dr9sv(seed=0)
     #check_mtl_dr9sv()
-    #dr8_skies_cutouts()
+
+    #_dr8_skies_cutouts()
+
+    #run_fiberassign()
+    check_fba()
