@@ -85,11 +85,14 @@ def compile_skies():
         sky_data['moon_sep'].append(_moon_sep) 
         sky_data['sun_alt'].append(np.repeat(_sun_alt, len(_airmass))) 
         sky_data['sun_sep'].append(_sun_sep) 
+
+    wave = fitsio.read(f_coadd, ext=2)  
     
     f = h5py.File(os.path.join(dir_coadd, 
         'sky_fibers.coadd_gfa.minisv2_sv0.hdf5'), 'w') 
     for k in sky_data.keys():
         f.create_dataset(k, data=np.concatenate(sky_data[k], axis=0)) 
+    f.create_dataset('wave', data=wave)
     f.close() 
     return None
 
