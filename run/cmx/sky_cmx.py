@@ -58,10 +58,15 @@ def compile_skies():
         _tileid, _date, _exp, _spec = _cmx 
         f_coadd = os.path.join(dir_coadd, 'coadd-%i-%i-%i-%s.fits' %
                 (_tileid,_date, _spec, str(_exp).zfill(8)))
-        f_cframe = lambda band: os.path.join(dir_redux, 'exposures', str(_date), str(_exp).zfill(8),
+        dir_exp = os.path.join(dir_redux, 'exposures', str(_date), str(_exp).zfill(8)) 
+
+        f_cframe = lambda band: os.path.join(dir_exp, 
                 'cframe-%s%i-%s.fits' % (band, _spec, str(_exp).zfill(8)))
-        f_sky = lambda band: os.path.join(dir_redux, 'exposures', str(_date), str(_exp).zfill(8),
+        f_sky = lambda band: os.path.join(dir_exp, 
                 'sky-%s%i-%s.fits' % (band, _spec, str(_exp).zfill(8)))
+        f_calib = lambda band: os.path.join(dir_exp,
+                'fluxcalib-%s%i-%s.fits' % (band, _spec, str(_exp).zfill(8)))
+
         
         if not os.path.isfile(f_coadd): continue 
         coadd       = fitsio.read(f_coadd)
@@ -71,6 +76,9 @@ def compile_skies():
         sky_b       = fitsio.read(f_sky('b'))
         sky_r       = fitsio.read(f_sky('r'))
         sky_z       = fitsio.read(f_sky('z'))
+        calib_b     = fitsio.read(f_calib('b'))
+        calib_r     = fitsio.read(f_calib('r'))
+        calib_z     = fitsio.read(f_calib('z'))
 
         if i == 0: 
             wave_b = fitsio.read(f_cframe('b'), ext=3)
@@ -108,9 +116,9 @@ def compile_skies():
         sky_data['flux_r'].append(cframe_r[good_sky,:]) 
         sky_data['flux_z'].append(cframe_z[good_sky,:]) 
         
-        sky_data['sky_b'].append(sky_b[good_sky,:]) 
-        sky_data['sky_r'].append(sky_r[good_sky,:]) 
-        sky_data['sky_z'].append(sky_z[good_sky,:]) 
+        sky_data['sky_b'].append(sky_b[good_sky,:] * (calib_b[good_sky,:] > 0) / (calib_b[good_sky,:] + (calib_b[good_sky,:] == 0))) 
+        sky_data['sky_r'].append(sky_r[good_sky,:] * (calib_r[good_sky,:] > 0) / (calib_r[good_sky,:] + (calib_r[good_sky,:] == 0))) 
+        sky_data['sky_z'].append(sky_z[good_sky,:] * (calib_z[good_sky,:] > 0) / (calib_z[good_sky,:] + (calib_z[good_sky,:] == 0))) 
 
         sky_data['airmass'].append(_airmass)
         sky_data['moon_ill'].append(np.repeat(_moon_ill, len(_airmass))) 
