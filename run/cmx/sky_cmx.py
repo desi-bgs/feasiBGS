@@ -10,6 +10,7 @@ import glob
 import fitsio
 import numpy as np 
 
+from desispec.io import read_frame
 from desitarget.cmx import cmx_targetmask
 # -- astorpy -- 
 import astropy.units as u
@@ -62,6 +63,8 @@ def compile_skies():
 
         f_cframe = lambda band: os.path.join(dir_exp, 
                 'cframe-%s%i-%s.fits' % (band, _spec, str(_exp).zfill(8)))
+        f_frame = lambda band: os.path.join(dir_exp, 
+                'frame-%s%i-%s.fits' % (band, _spec, str(_exp).zfill(8)))
         f_sky = lambda band: os.path.join(dir_exp, 
                 'sky-%s%i-%s.fits' % (band, _spec, str(_exp).zfill(8)))
         f_calib = lambda band: os.path.join(dir_exp,
@@ -88,7 +91,12 @@ def compile_skies():
         is_good = (coadd['FIBERSTATUS'] == 0)
         is_sky  = (coadd['CMX_TARGET'] & cmx_targetmask.cmx_mask.mask('SKY')) != 0 
         good_sky = is_good & is_sky
+
+        frame_b = read_frame(f_frame('b'))
+        exptime = frame_b.meta['EXPTIME'] 
+
         print('--- %i, %i, %i, %i ---' % (_tileid, _date, _exp, _spec))
+        print('%.f exptime' % exptime)
         print('%i sky fibers' % np.sum(is_sky)) 
         print('%i good sky fibers' % np.sum(good_sky))
 
@@ -111,6 +119,7 @@ def compile_skies():
         sky_data['expid'].append(np.repeat(_exp, len(_airmass))) 
         sky_data['spectrograph'].append(np.repeat(_spec, len(_airmass)))
         sky_data['mjd'].append(np.repeat(mjd_mid, len(_airmass)))
+        sky_data['exptime'].append(np.repeat(exptime, len(_airmass)))
         # store fluxes 
         sky_data['flux_b'].append(cframe_b[good_sky,:]) 
         sky_data['flux_r'].append(cframe_r[good_sky,:]) 
