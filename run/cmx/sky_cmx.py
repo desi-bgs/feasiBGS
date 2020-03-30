@@ -52,7 +52,7 @@ def compile_skies():
     sky_data = {} 
     for k in ['airmass', 'moon_ill', 'moon_alt', 'moon_sep', 'sun_alt',
             'sun_sep', 'flux_b', 'flux_r', 'flux_z', 'sky_b', 'sky_r', 'sky_z',
-            'tileid', 'date', 'expid', 'spectrograph', 'mjd']:  
+            'tileid', 'date', 'expid', 'spectrograph', 'mjd', 'transparency', 'exptime']:  
         sky_data[k] = [] 
 
     for i, _cmx in enumerate(cmx): 
@@ -108,6 +108,13 @@ def compile_skies():
         
         # median MJD of GFA data 
         mjd_mid = np.median(gfa['MJD'][m_gfa])
+        # median transparency from GFA data
+        transp = gfa['TRANSPARENCY'][m_gfa]
+        not_nan = np.isfinite(transp)
+        if np.sum(not_nan) > 0: 
+            transp_mid = np.median(transp[not_nan])
+        else: 
+            transp_mid = 1.
         
         # these values more or less agree with the GFA values 
         _airmass, _moon_ill, _moon_alt, _moon_sep, _sun_alt, _sun_sep = \
@@ -119,6 +126,7 @@ def compile_skies():
         sky_data['expid'].append(np.repeat(_exp, len(_airmass))) 
         sky_data['spectrograph'].append(np.repeat(_spec, len(_airmass)))
         sky_data['mjd'].append(np.repeat(mjd_mid, len(_airmass)))
+        sky_data['transparency'].append(np.repeat(transp_mid, len(_airmass)))
         sky_data['exptime'].append(np.repeat(exptime, len(_airmass)))
         # store fluxes 
         sky_data['flux_b'].append(cframe_b[good_sky,:]) 
