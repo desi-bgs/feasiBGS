@@ -35,7 +35,7 @@ mpl.rcParams['legend.frameon'] = False
 if 'NERSC_HOST' in os.environ: 
     dir_srp = os.path.join(UT.dat_dir(), 'srp')
     dir_cmx = '/global/cfs/cdirs/desi/users/chahah/bgs_exp_coadd/'
-    dir_zcomp = '/global/cscratch1/sd/chahah/feasibgs/cmx/zcomp_sims/'
+    dir_zcomp = '/global/cfs/cdirs/desi/users/chahah/cmx/zcomp_sims/'
 else: 
     dir_srp = os.path.join(UT.dat_dir(), 'srp')
     dir_cmx = '/Users/ChangHoon/data/feasiBGS/cmx/'
@@ -125,6 +125,47 @@ def GALeg_G15_noisySpec5000():
         bkgd.set_xlabel('rest-frame wavelength [Angstrom]', labelpad=10, fontsize=25) 
         bkgd.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', labelpad=10, fontsize=25) 
         fig.savefig(_fexp.replace('.fits', '.png'), bbox_inches='tight') 
+    return None 
+
+
+def run_redrock(tileid, date, exp): 
+    ''' run redrock on spectral simulation generated from
+    GALeg_G15_noisySpec5000() above. 
+    '''
+    fspec = os.path.join(dir_zcomp, 
+            'bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.fits' % 
+            (tileid, date, expid))
+    frr     = os.path.join(dir_zcomp, 
+            'redrock.bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.h5' % 
+            (tileid, date, expid))
+    fzbest  = os.path.join(dir_zcomp, 
+            'zbest.bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.fits' % 
+
+    script = '\n'.join([
+        "#!/bin/bash", 
+        "#SBATCH -N 1", 
+        "#SBATCH -C haswell", 
+        "#SBATCH -q debug", 
+        '#SBATCH -J rr_%i' % exp,
+        '#SBATCH -o _rr_%i.o' % exp,
+        "#SBATCH -t 00:30:00", 
+        "", 
+        "export OMP_NUM_THREADS=1", 
+        "export OMP_PLACES=threads", 
+        "export OMP_PROC_BIND=spread", 
+        "", 
+        "", 
+        "conda activate desi", 
+        "", 
+        "srun -n 32 -c 2 --cpu-bind=cores rrdesi_mpi -o %s -z %s %s" % (frr, fzbest, fcoadd), 
+        ""]) 
+    # create the script.sh file, execute it and remove it
+    f = open('script.slurm','w')
+    f.write(script)
+    f.close()
+
+    os.system('sbatch script.slurm') 
+    os.system('rm script.slurm') 
     return None 
 
 
