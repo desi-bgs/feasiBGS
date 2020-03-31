@@ -19,7 +19,8 @@ from feasibgs import forwardmodel as FM
 # -- plotting -- 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-mpl.rcParams['text.usetex'] = True
+if 'NERSC_HOST' not in os.environ: 
+    mpl.rcParams['text.usetex'] = True
 mpl.rcParams['font.family'] = 'serif'
 mpl.rcParams['axes.linewidth'] = 1.5
 mpl.rcParams['axes.xmargin'] = 1
@@ -33,7 +34,7 @@ mpl.rcParams['legend.frameon'] = False
 
 
 if 'NERSC_HOST' in os.environ: 
-    dir_srp = os.path.join(UT.dat_dir(), 'srp')
+    dir_srp = '/global/cfs/cdirs/desi/users/chahah/cmx/zcomp_sims/'
     dir_cmx = '/global/cfs/cdirs/desi/users/chahah/bgs_exp_coadd/'
     dir_zcomp = '/global/cfs/cdirs/desi/users/chahah/cmx/zcomp_sims/'
 else: 
@@ -82,10 +83,12 @@ def GALeg_G15_noisySpec5000():
     wave = fspec['wave'][...]
     flux = fspec['flux'][...] 
     
-    for iexp in np.random.choice(np.arange(n_sample), size=5, replace=False):
+    #for iexp in np.random.choice(np.arange(n_sample), size=5, replace=False):
+    for iexp in np.arange(n_sample):
         _fexp = os.path.join(dir_zcomp,
                 'bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.fits' % 
                 (tileid[iexp], date[iexp], expid[iexp]))
+        if os.path.isfile(_fexp): continue 
         print('--- constructing %s ---' % _fexp) 
         print('t_exp=%.f' % texp[iexp])
         print('airmass=%.2f' % airmass[iexp])
@@ -140,7 +143,7 @@ def run_redrock(tileid, date, exp):
             (tileid, date, expid))
     fzbest  = os.path.join(dir_zcomp, 
             'zbest.bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.fits' % 
-
+            (tileid, date, expid))
     script = '\n'.join([
         "#!/bin/bash", 
         "#SBATCH -N 1", 
