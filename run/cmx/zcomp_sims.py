@@ -131,44 +131,53 @@ def GALeg_G15_noisySpec5000():
     return None 
 
 
-def run_redrock(tileid, date, exp): 
+def run_redrock(): 
     ''' run redrock on spectral simulation generated from
     GALeg_G15_noisySpec5000() above. 
     '''
-    fspec = os.path.join(dir_zcomp, 
-            'bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.fits' % 
-            (tileid, date, expid))
-    frr     = os.path.join(dir_zcomp, 
-            'redrock.bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.h5' % 
-            (tileid, date, expid))
-    fzbest  = os.path.join(dir_zcomp, 
-            'zbest.bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.fits' % 
-            (tileid, date, expid))
-    script = '\n'.join([
-        "#!/bin/bash", 
-        "#SBATCH -N 1", 
-        "#SBATCH -C haswell", 
-        "#SBATCH -q debug", 
-        '#SBATCH -J rr_%i' % exp,
-        '#SBATCH -o _rr_%i.o' % exp,
-        "#SBATCH -t 00:30:00", 
-        "", 
-        "export OMP_NUM_THREADS=1", 
-        "export OMP_PLACES=threads", 
-        "export OMP_PROC_BIND=spread", 
-        "", 
-        "", 
-        "conda activate desi", 
-        "", 
-        "srun -n 32 -c 2 --cpu-bind=cores rrdesi_mpi -o %s -z %s %s" % (frr, fzbest, fcoadd), 
-        ""]) 
-    # create the script.sh file, execute it and remove it
-    f = open('script.slurm','w')
-    f.write(script)
-    f.close()
+    # read in CMX BGS exposures
+    exps = cmx_exposures()
+    tileids     = exps['tileid']
+    dates       = exps['date']
+    expids      = exps['expid']
+    n_sample    = len(airmass) 
+    
+    for tileid, date, expid in zip(tileids, dates, expids): 
+        fspec = os.path.join(dir_zcomp, 
+                'bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.fits' % 
+                (tileid, date, expid))
+        frr     = os.path.join(dir_zcomp, 
+                'redrock.bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.h5' % 
+                (tileid, date, expid))
+        fzbest  = os.path.join(dir_zcomp, 
+                'zbest.bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.fits' % 
+                (tileid, date, expid))
+        script = '\n'.join([
+            "#!/bin/bash", 
+            "#SBATCH -N 1", 
+            "#SBATCH -C haswell", 
+            "#SBATCH -q debug", 
+            '#SBATCH -J rr_%i' % exp,
+            '#SBATCH -o _rr_%i.o' % exp,
+            "#SBATCH -t 00:30:00", 
+            "", 
+            "export OMP_NUM_THREADS=1", 
+            "export OMP_PLACES=threads", 
+            "export OMP_PROC_BIND=spread", 
+            "", 
+            "", 
+            "conda activate desi", 
+            "", 
+            "srun -n 32 -c 2 --cpu-bind=cores rrdesi_mpi -o %s -z %s %s" % (frr, fzbest, fcoadd), 
+            ""]) 
+        # create the script.sh file, execute it and remove it
+        f = open('script.slurm','w')
+        f.write(script)
+        f.close()
 
-    os.system('sbatch script.slurm') 
-    os.system('rm script.slurm') 
+        raise ValueError
+        os.system('sbatch script.slurm') 
+        os.system('rm script.slurm') 
     return None 
 
 
@@ -294,6 +303,5 @@ def zsuccess():
 
 
 if __name__=="__main__": 
-    GALeg_G15_noisySpec5000()
-    #GALeg_G15_noisySpec5000(t_fid=200.)
-    #zsuccess()
+    #GALeg_G15_noisySpec5000()
+    run_redrock()
