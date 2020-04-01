@@ -8,6 +8,7 @@ CMX sky data rather than sky model
 '''
 import os 
 import h5py 
+import glob 
 import fitsio 
 import numpy as np 
 import astropy.units as u 
@@ -233,7 +234,7 @@ def cmx_exposures():
         
         sky_uniq_exps['tileid'][_i] = sky_data['tileid'][_is_exp][0]
         sky_uniq_exps['date'][_i]   = sky_data['date'][_is_exp][0]
-        sky_uniq_exps['expid'][_i]  = _exp 
+        sky_uniq_exps['expid'][_i]  = _exp.astype(int)
         for k in ['airmass', 'moon_ill', 'moon_alt', 'moon_sep', 'sun_alt', 'sun_sep', 'exptime', 'transparency']:
             sky_uniq_exps[k][_i] = np.median(sky_data[k][_is_exp])
         
@@ -268,7 +269,7 @@ def zsuccess():
     exps = cmx_exposures()
     tileids     = exps['tileid']
     dates       = exps['date']
-    expids      = exps['expid']
+    expids      = exps['expid'].astype(int)
     n_sample    = len(expids) 
     
     ###########################################################################
@@ -283,37 +284,42 @@ def zsuccess():
         rr_sim = fitsio.read(frr_sim) # read redrock file of sim 
         
         # get spectographs for exposure 
-        fcoadds = glob.glob(os.path.join(dir_cmx, 'coadd-%s-%s-*-%s.hdf5' % 
-            (str(tileid), date, expid.zfill(8))))
+        fcoadds = glob.glob(os.path.join(dir_cmx, 'coadd-%i-%i-*-%s.fits' % 
+            (tileid, date, str(expid).zfill(8))))
         n_specs = [os.path.basename(fcoadd).split('-')[3] for fcoadd in fcoadds]
-        print(n_specs)
+        if len(n_specs) == 0: 
+            print('no coadds for %i, %i, %s' % (tileid, date,
+                str(expid).zfill(8)))
+            continue 
 
         r_mag_cmx, ztrue_cmx, rrock_cmx = [], [], [] 
         for n_spec in n_specs: 
             # compile rmag or w.e. from coadds
             fcoadd = os.path.join(dir_cmx, 
-                    'coadd-%s-%s-%s-%s.fits' % 
-                    (str(tileid), date, n_spec, expid.zfill(8)))
+                    'coadd-%i-%i-%s-%s.fits' % 
+                    (tileid, date, n_spec, str(expid).zfill(8)))
             coadd = fitsio.read(fcoadd)
             r_mag_cmx.append(22.5 - 2.5 * np.log10(coadd['FLUX_R']))
 
             # compile redshift truths
             fztrue = os.path.join(dir_cmx, 
-                    'ztrue-%s-%s-%s-%s.hdf5' % 
-                    (str(tileid), date, n_spec, expid.zfill(8)))
-            zt = hp5y.File(fztrue, 'r') 
+                    'ztrue-%i-%i-%s-%s.hdf5' % 
+                    (tileid, date, n_spec, str(expid).zfill(8)))
+            zt = h5py.File(fztrue, 'r') 
             ztrue_cmx.append(zt['ztrue'][...])
             # compile redrock fits
             frrock = os.path.join(dir_cmx, 
-                    'zbest-%s-%s-%s-%s.fits' % 
-                    (str(tileid), date, n_spec, expid.zfill(8)))
-            rrock_cmx.append(fitsio.read(frr_cmx))
+                    'zbest-%i-%i-%s-%s.fits' % 
+                    (tileid, date, n_spec, str(expid).zfill(8)))
+            rrock_cmx.append(fitsio.read(frrock))
 
         r_mag_cmx = np.concatenate(r_mag_cmx)
         ztrue_cmx = np.concatenate(ztrue_cmx)
-        rrock_cmx = np.concateenate(rrock_cmx, axis=0) 
+        rrock_cmx = np.concatenate(rrock_cmx, axis=0) 
 
         has_zt = (ztrue_cmx != -999.)
+        print('%i of %i targets with true redshifts' % (np.sum(has_zt),
+            len(ztrue_cmx)))
         #######################################################################
         fig = plt.figure(figsize=(5,5))
         sub = fig.add_subplot(111) 
@@ -339,8 +345,10 @@ def zsuccess():
         sub.set_ylabel(r'redrock $z$ success rate', fontsize=20)
         sub.set_ylim([0.6, 1.1])
         sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
-        fig.savefig(os.path.join(dir_zcomp, 'zsuccess.%s-%s-%s.zcomp_sim.png'),
-                bbox_inches='tight') 
+        fig.savefig(os.path.join(dir_zcomp, 
+            'zsuccess.%i-%i-%s.zcomp_sim.png' % 
+            (tileid, date, str(expid).zfill(8))), bbox_inches='tight') 
+        plt.close() 
     return None 
 
 
