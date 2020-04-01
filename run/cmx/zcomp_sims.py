@@ -281,15 +281,39 @@ def zsuccess():
         if not os.path.isfile(frr_sim): continue 
 
         rr_sim = fitsio.read(frr_sim) # read redrock file of sim 
-
-        # compile redrock fits for exposure (multiple spectographs) 
-        frr_s = glob.glob(os.path.join(dir_cmx, 'zbest-%s-%s-*-%s.fits' % 
+        
+        # get spectographs for exposure 
+        fcoadds = glob.glob(os.path.join(dir_cmx, 'coadd-%s-%s-*-%s.hdf5' % 
             (str(tileid), date, expid.zfill(8))))
-        print('%i spectographs' % len(frr_s))
-        rr_cmx = [] 
-        for frr_cmx in frr_s: 
-            rr_cmx.append(fitsio.read(frr_cmx)) # read redrock file of cmx 
-        rr_cmx = np.concateenate(rr_cmx, axis=0) 
+        n_specs = [os.path.basename(fcoadd).split('-')[3] for fcoadd in fcoadds]
+        print(n_specs)
+
+        r_mag_cmx, ztrue_cmx, rrock_cmx = [], [], [] 
+        for n_spec in n_specs: 
+            # compile rmag or w.e. from coadds
+            fcoadd = os.path.join(dir_cmx, 
+                    'coadd-%s-%s-%s-%s.fits' % 
+                    (str(tileid), date, n_spec, expid.zfill(8)))
+            coadd = fitsio.read(fcoadd)
+            r_mag_cmx.append(22.5 - 2.5 * np.log10(coadd['FLUX_R']))
+
+            # compile redshift truths
+            fztrue = os.path.join(dir_cmx, 
+                    'ztrue-%s-%s-%s-%s.hdf5' % 
+                    (str(tileid), date, n_spec, expid.zfill(8)))
+            zt = hp5y.File(fztrue, 'r') 
+            ztrue_cmx.append(zt['ztrue'][...])
+            # compile redrock fits
+            frrock = os.path.join(dir_cmx, 
+                    'zbest-%s-%s-%s-%s.fits' % 
+                    (str(tileid), date, n_spec, expid.zfill(8)))
+            rrock_cmx.append(fitsio.read(frr_cmx))
+
+        r_mag_cmx = np.concatenate(r_mag_cmx)
+        ztrue_cmx = np.concatenate(ztrue_cmx)
+        rrock_cmx = np.concateenate(rrock_cmx, axis=0) 
+
+        has_zt = (ztrue_cmx != -999.)
         #######################################################################
         fig = plt.figure(figsize=(5,5))
         sub = fig.add_subplot(111) 
@@ -302,7 +326,13 @@ def zsuccess():
         sub.errorbar(wmean, rate, err_rate, fmt='.C0', elinewidth=2, 
                 markersize=10)
         # CMX z-success 
-
+        _zsuc   = UT.zsuccess(rrock_cmx['Z'][has_zt], ztrue_cmx[has_zt],
+                rrock_cmx['ZWARN'][has_zt], deltachi2=rrock_cmx['DELTACHI2'][has_zt],
+                min_deltachi2=40.)
+        wmean, rate, err_rate = UT.zsuccess_rate(r_mag, _zsuc, range=[15,22], 
+                nbins=28, bin_min=10) 
+        sub.errorbar(wmean, rate, err_rate, fmt='.k', elinewidth=2, 
+                markersize=10)
         sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
         sub.set_xlabel(r'Legacy $r$ magnitude', fontsize=20)
         sub.set_xlim([16., 21.]) 
@@ -316,4 +346,5 @@ def zsuccess():
 
 if __name__=="__main__": 
     #GALeg_G15_noisySpec5000()
-    run_redrock()
+    #run_redrock()
+    zsuccess()
