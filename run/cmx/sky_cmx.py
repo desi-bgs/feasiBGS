@@ -57,6 +57,7 @@ def compile_skies():
 
     for i, _cmx in enumerate(cmx): 
         _tileid, _date, _exp, _spec = _cmx 
+        print('--- %i, %i, %i, %s ---' % (_tileid,_date, _spec, str(_exp).zfill(8)))
         f_coadd = os.path.join(dir_coadd, 'coadd-%i-%i-%i-%s.fits' %
                 (_tileid,_date, _spec, str(_exp).zfill(8)))
         dir_exp = os.path.join(dir_redux, 'exposures', str(_date), str(_exp).zfill(8)) 
@@ -70,8 +71,9 @@ def compile_skies():
         f_calib = lambda band: os.path.join(dir_exp,
                 'fluxcalib-%s%i-%s.fits' % (band, _spec, str(_exp).zfill(8)))
 
-        
-        if not os.path.isfile(f_coadd): continue 
+        if not os.path.isfile(f_coadd): 
+            print('... no coadd: %s' % os.path.basename(f_coadd))
+            continue 
         coadd       = fitsio.read(f_coadd)
         cframe_b    = fitsio.read(f_cframe('b'))
         cframe_r    = fitsio.read(f_cframe('r'))
@@ -103,6 +105,7 @@ def compile_skies():
         # match to GFA obs condition using NIGHT and EXPID
         m_gfa = ((gfa['NIGHT'] == int(_date)) & (gfa['EXPID'] == int(_exp)))
         if np.sum(m_gfa) == 0: 
+            print('... no match to GFA conditions')
             continue 
         assert (gfa['MJD'][m_gfa].max() - gfa['MJD'][m_gfa].min()) < 0.08333333333
         
