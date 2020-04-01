@@ -254,51 +254,63 @@ def zsuccess():
     ''' compare the redshift completeness of the completeness simulations
     versus the actual exposures 
     '''
+    ###########################################################################
     # get true redshifts and magnitude of the completness sims
+    ###########################################################################
     specfile = os.path.join(dir_srp, 'GALeg.g15.sourceSpec.5000.seed0.hdf5')
     fspec = h5py.File(specfile, 'r') 
     ztrue = fspec['zred'][...]
     r_mag = UT.flux2mag(fspec['legacy-photo']['flux_r'][...], method='log') 
 
-    f_rr = lambda tfid, iexp: os.path.join(dir_dat,
-            'GALeg.g15.bgsSpec.5000.seed0.exposures_surveysim_fork_150sv0p5.sample.seed0.tfid%i.exp%i.rr.fits'
-            % (tfid, iexp))
+    ###########################################################################
+    # read in CMX BGS exposures
+    ###########################################################################
+    exps = cmx_exposures()
+    tileids     = exps['tileid']
+    dates       = exps['date']
+    expids      = exps['expid']
+    n_sample    = len(expids) 
+    
+    ###########################################################################
+    # loop through expsoures and compare z success of sims to exposures 
+    ###########################################################################
+    for tileid, date, expid in zip(tileids, dates, expids): 
+        frr_sim = os.path.join(dir_zcomp, 
+                'zbest.bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.fits' % 
+                (tileid, date, expid))
+        if not os.path.isfile(frr_sim): continue 
 
-    fig = plt.figure(figsize=(20,10))
-    for iexp in range(8): 
-        sub = fig.add_subplot(2,4,iexp+1) 
+        rr_sim = fitsio.read(frr_sim) # read redrock file of sim 
+
+        # compile redrock fits for exposure (multiple spectographs) 
+        frr_s = glob.glob(os.path.join(dir_cmx, 'zbest-%s-%s-*-%s.fits' % 
+            (str(tileid), date, expid.zfill(8))))
+        print('%i spectographs' % len(frr_s))
+        rr_cmx = [] 
+        for frr_cmx in frr_s: 
+            rr_cmx.append(fitsio.read(frr_cmx)) # read redrock file of cmx 
+        rr_cmx = np.concateenate(rr_cmx, axis=0) 
+        #######################################################################
+        fig = plt.figure(figsize=(5,5))
+        sub = fig.add_subplot(111) 
         sub.plot([15., 22.], [1., 1.], c='k', ls='--', lw=2)
-        
-        _plts = [] 
-        for i, tfid in enumerate([130, 150, 200]): 
-            if not os.path.isfile(f_rr(tfid, iexp)): 
-                continue 
-
-            rr      = fitsio.read(f_rr(tfid, iexp)) # read redrock file
-            zrr     = rr['Z']
-            dchi2   = rr['DELTACHI2']
-            zwarn   = rr['ZWARN']
-            _zsuc   = UT.zsuccess(zrr, ztrue, zwarn, deltachi2=dchi2, min_deltachi2=40.)
-            wmean, rate, err_rate = UT.zsuccess_rate(r_mag, _zsuc, range=[15,22], nbins=28, bin_min=10) 
-
-            _plt = sub.errorbar(wmean, rate, err_rate, fmt='.C%i' % i, elinewidth=2, markersize=10)
-            _plts.append(_plt) 
+        # completeness sim z-success 
+        _zsuc   = UT.zsuccess(rr_sim['Z'], ztrue, rr_sim['ZWARN'],
+                deltachi2=rr_sim['DELTACHI2'], min_deltachi2=40.)
+        wmean, rate, err_rate = UT.zsuccess_rate(r_mag, _zsuc, range=[15,22], 
+                nbins=28, bin_min=10) 
+        sub.errorbar(wmean, rate, err_rate, fmt='.C0', elinewidth=2, 
+                markersize=10)
+        # CMX z-success 
 
         sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
+        sub.set_xlabel(r'Legacy $r$ magnitude', fontsize=20)
         sub.set_xlim([16., 21.]) 
-        if iexp < 4: sub.set_xticklabels([]) 
+        sub.set_ylabel(r'redrock $z$ success rate', fontsize=20)
         sub.set_ylim([0.6, 1.1])
-        if iexp in [0,4]: sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
-        else: sub.set_yticklabels([]) 
-    sub.legend(_plts, 
-            [r'$t_{\rm fid} = 130s$', r'$t_{\rm fid} = 150s$', r'$t_{\rm fid} = 200s$'], 
-            fontsize=25, loc='lower right') 
-    bkgd = fig.add_subplot(111, frameon=False)
-    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
-    bkgd.set_xlabel(r'Legacy DR7 $r$ magnitude', labelpad=10, fontsize=30)
-    bkgd.set_ylabel(r'redrock $z$ success rate', labelpad=10, fontsize=30)
-    fig.subplots_adjust(wspace=0.05, hspace=0.05)
-    fig.savefig(os.path.join(dir_dat, 'comp_sim.zsuccess.png'), bbox_inches='tight') 
+        sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
+        fig.savefig(os.path.join(dir_zcomp, 'zsuccess.%s-%s-%s.zcomp_sim.png'),
+                bbox_inches='tight') 
     return None 
 
 
