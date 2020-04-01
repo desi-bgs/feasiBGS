@@ -251,10 +251,11 @@ def cmx_exposures():
 
 
 def zsuccess(): 
-    ''' compare the redshift completeness 
+    ''' compare the redshift completeness of the completeness simulations
+    versus the actual exposures 
     '''
-    # get true redshifts 
-    specfile = os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.seed0.hdf5')
+    # get true redshifts and magnitude of the completness sims
+    specfile = os.path.join(dir_srp, 'GALeg.g15.sourceSpec.5000.seed0.hdf5')
     fspec = h5py.File(specfile, 'r') 
     ztrue = fspec['zred'][...]
     r_mag = UT.flux2mag(fspec['legacy-photo']['flux_r'][...], method='log') 
