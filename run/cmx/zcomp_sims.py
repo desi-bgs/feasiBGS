@@ -140,7 +140,7 @@ def run_redrock():
     tileids     = exps['tileid']
     dates       = exps['date']
     expids      = exps['expid']
-    n_sample    = len(airmass) 
+    n_sample    = len(expids) 
     
     for tileid, date, expid in zip(tileids, dates, expids): 
         fspec = os.path.join(dir_zcomp, 
@@ -156,9 +156,9 @@ def run_redrock():
             "#!/bin/bash", 
             "#SBATCH -N 1", 
             "#SBATCH -C haswell", 
-            "#SBATCH -q debug", 
-            '#SBATCH -J rr_%i' % exp,
-            '#SBATCH -o _rr_%i.o' % exp,
+            "#SBATCH -q regular", 
+            '#SBATCH -J rr_%i' % expid,
+            '#SBATCH -o _rr_%i.o' % expid,
             "#SBATCH -t 00:30:00", 
             "", 
             "export OMP_NUM_THREADS=1", 
@@ -168,14 +168,13 @@ def run_redrock():
             "", 
             "conda activate desi", 
             "", 
-            "srun -n 32 -c 2 --cpu-bind=cores rrdesi_mpi -o %s -z %s %s" % (frr, fzbest, fcoadd), 
+            "srun -n 32 -c 2 --cpu-bind=cores rrdesi_mpi -o %s -z %s %s" % (frr, fzbest, fspec), 
             ""]) 
         # create the script.sh file, execute it and remove it
         f = open('script.slurm','w')
         f.write(script)
         f.close()
 
-        raise ValueError
         os.system('sbatch script.slurm') 
         os.system('rm script.slurm') 
     return None 
