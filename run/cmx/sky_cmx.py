@@ -57,7 +57,7 @@ def compile_skies():
 
     for i, _cmx in enumerate(cmx): 
         _tileid, _date, _exp, _spec = _cmx 
-        print('--- %i, %i, %i, %s ---' % (_tileid,_date, _spec, str(_exp).zfill(8)))
+        print('--- %i, %i, %i, %i ---' % (_tileid, _date, _exp, _spec))
         f_coadd = os.path.join(dir_coadd, 'coadd-%i-%i-%i-%s.fits' %
                 (_tileid,_date, _spec, str(_exp).zfill(8)))
         dir_exp = os.path.join(dir_redux, 'exposures', str(_date), str(_exp).zfill(8)) 
@@ -97,11 +97,6 @@ def compile_skies():
         frame_b = read_frame(f_frame('b'))
         exptime = frame_b.meta['EXPTIME'] 
 
-        print('--- %i, %i, %i, %i ---' % (_tileid, _date, _exp, _spec))
-        print('%.f exptime' % exptime)
-        print('%i sky fibers' % np.sum(is_sky)) 
-        print('%i good sky fibers' % np.sum(good_sky))
-
         # match to GFA obs condition using NIGHT and EXPID
         m_gfa = ((gfa['NIGHT'] == int(_date)) & (gfa['EXPID'] == int(_exp)))
         if np.sum(m_gfa) == 0: 
@@ -123,6 +118,10 @@ def compile_skies():
         _airmass, _moon_ill, _moon_alt, _moon_sep, _sun_alt, _sun_sep = \
                 _get_obs_param(coadd['TARGET_RA'][good_sky],
                         coadd['TARGET_DEC'][good_sky], mjd_mid)
+
+        print('%.f exptime' % exptime)
+        print('%i sky fibers' % np.sum(is_sky)) 
+        print('%i good sky fibers' % np.sum(good_sky))
 
         sky_data['tileid'].append(np.repeat(_tileid, len(_airmass)))
         sky_data['date'].append(np.repeat(_date, len(_airmass)))

@@ -132,7 +132,7 @@ def GALeg_G15_noisySpec5000():
     return None 
 
 
-def run_redrock(): 
+def run_redrock(clobber=False): 
     ''' run redrock on spectral simulation generated from
     GALeg_G15_noisySpec5000() above. 
     '''
@@ -153,11 +153,14 @@ def run_redrock():
         fzbest  = os.path.join(dir_zcomp, 
                 'zbest.bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.fits' % 
                 (tileid, date, expid))
+        if os.path.isfile(fzbest) and not clobber: 
+            continue 
+        print('running redrock on %s' % os.path.basename(fspec))
         script = '\n'.join([
             "#!/bin/bash", 
             "#SBATCH -N 1", 
             "#SBATCH -C haswell", 
-            "#SBATCH -q regular", 
+            "#SBATCH -q debug", 
             '#SBATCH -J rr_%i' % expid,
             '#SBATCH -o _rr_%i.o' % expid,
             "#SBATCH -t 00:30:00", 
@@ -195,15 +198,15 @@ def cmx_exposures():
     for k in fsky.keys():
         sky_data[k] = fsky[k][...]
         
-    bad_seeing = (sky_data['tileid'] == 70502) | (sky_data['date'] == 20200314) #bad seeing on Feb 25 and 27
+    #bad_seeing = (sky_data['tileid'] == 70502) | (sky_data['date'] == 20200314) #bad seeing on Feb 25 and 27
 
-    exp_cuts = ~bad_seeing
+    #exp_cuts = ~bad_seeing
 
-    for k in sky_data.keys(): 
-        if 'wave' not in k: 
-            sky_data[k] = sky_data[k][exp_cuts]
-        else:
-            sky_data[k] = sky_data[k]
+    #for k in sky_data.keys(): 
+    #    if 'wave' not in k: 
+    #        sky_data[k] = sky_data[k][exp_cuts]
+    #    else:
+    #        sky_data[k] = sky_data[k]
        
     uniq_exps, i_uniq = np.unique(sky_data['expid'], return_index=True)
 
@@ -251,7 +254,7 @@ def cmx_exposures():
     return sky_uniq_exps
 
 
-def zsuccess(): 
+def zsuccess(deltachi2=40.): 
     ''' compare the redshift completeness of the completeness simulations
     versus the actual exposures 
     '''
@@ -275,11 +278,13 @@ def zsuccess():
     ###########################################################################
     # loop through expsoures and compare z success of sims to exposures 
     ###########################################################################
-    for tileid, date, expid in zip(tileids, dates, expids): 
+    for _i, tileid, date, expid in zip(range(n_sample), tileids, dates, expids): 
         frr_sim = os.path.join(dir_zcomp, 
                 'zbest.bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.fits' % 
                 (tileid, date, expid))
-        if not os.path.isfile(frr_sim): continue 
+        if not os.path.isfile(frr_sim): 
+            print('... no %s' % os.path.basename(frr_sim))
+            continue 
 
         rr_sim = fitsio.read(frr_sim) # read redrock file of sim 
         
@@ -318,7 +323,8 @@ def zsuccess():
         rrock_cmx = np.concatenate(rrock_cmx, axis=0) 
 
         has_zt = (ztrue_cmx != -999.)
-        print('%i of %i targets with true redshifts' % (np.sum(has_zt),
+        print('%i %i %i' % (tileid, date, expid))
+        print('     %i of %i targets with true redshifts' % (np.sum(has_zt),
             len(ztrue_cmx)))
         #######################################################################
         fig = plt.figure(figsize=(5,5))
@@ -326,7 +332,7 @@ def zsuccess():
         sub.plot([15., 22.], [1., 1.], c='k', ls='--', lw=2)
         # completeness sim z-success 
         _zsuc   = UT.zsuccess(rr_sim['Z'], ztrue, rr_sim['ZWARN'],
-                deltachi2=rr_sim['DELTACHI2'], min_deltachi2=40.)
+                deltachi2=rr_sim['DELTACHI2'], min_deltachi2=deltachi2)
         wmean, rate, err_rate = UT.zsuccess_rate(r_mag, _zsuc, range=[15,22], 
                 nbins=28, bin_min=10) 
         sub.errorbar(wmean, rate, err_rate, fmt='.C0', elinewidth=2, 
@@ -334,12 +340,27 @@ def zsuccess():
         # CMX z-success 
         _zsuc   = UT.zsuccess(rrock_cmx['Z'][has_zt], ztrue_cmx[has_zt],
                 rrock_cmx['ZWARN'][has_zt], deltachi2=rrock_cmx['DELTACHI2'][has_zt],
-                min_deltachi2=40.)
-        wmean, rate, err_rate = UT.zsuccess_rate(r_mag, _zsuc, range=[15,22], 
-                nbins=28, bin_min=10) 
+                min_deltachi2=deltachi2)
+        wmean, rate, err_rate = UT.zsuccess_rate(r_mag_cmx[has_zt], _zsuc, 
+                range=[15,22], nbins=28, bin_min=10) 
         sub.errorbar(wmean, rate, err_rate, fmt='.k', elinewidth=2, 
                 markersize=10)
         sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
+       
+        exp_info = '\n'.join([
+            'tile=%i, date=%i, exp=%i' % (tileid, date, expid),
+            'airmass=%.1f' % exps['airmass'][_i], 
+            'moon ill=%.2f, moon alt=%.f, moon sep=%.f' % 
+            (exps['moon_ill'][_i], exps['moon_alt'][_i], exps['moon_sep'][_i]), 
+            r'$t_{\rm exp}= %.f$, transparency=%.2f' % 
+            (exps['exptime'][_i], exps['transparency'][_i])])
+
+        sub.text(0.05, 0.05, exp_info, ha='left', va='bottom',
+                transform=sub.transAxes, fontsize=10)
+        
+        sub.text(0.95, 0.95, r'$\Delta \chi^2 = %.f$' % deltachi2, ha='right',
+                va='top', transform=sub.transAxes, fontsize=15)
+
         sub.set_xlabel(r'Legacy $r$ magnitude', fontsize=20)
         sub.set_xlim([16., 21.]) 
         sub.set_ylabel(r'redrock $z$ success rate', fontsize=20)

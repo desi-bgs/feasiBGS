@@ -189,7 +189,7 @@ def get_ztrue(tileid, date, exp, spec, clobber=False):
 
 
 if __name__=="__main__": 
-    bgs_minisv_tiles    = [70502, 70510] #[70500, 70502, 70510]
+    bgs_minisv_tiles    = [70500, 70502, 70510]
     bgs_sv0_tiles       = [66000, 66014, 66003]
     bgs_tiles = bgs_minisv_tiles + bgs_sv0_tiles 
     
@@ -202,4 +202,4 @@ if __name__=="__main__":
                 for spec in spectographs: 
                     #coadd(tile, date, exp, spec)
                     #rr_coadd(tile, date, exp, spec)
-                    get_ztrue(tile, date, exp, spec)
+                    get_ztrue(tile, date, exp, spec, clobber=True)
