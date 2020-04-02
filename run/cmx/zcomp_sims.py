@@ -214,7 +214,8 @@ def cmx_exposures():
     # get the median sky fluxes of all sky fibers
     sky_uniq_exps = {} 
     for k in ['tileid', 'date', 'expid', 'airmass', 'moon_ill', 'moon_alt',
-            'moon_sep', 'sun_alt', 'sun_sep', 'exptime', 'transparency']: 
+            'moon_sep', 'sun_alt', 'sun_sep', 'exptime', 'transparency', 
+            'transp_min', 'transp_max']: 
         sky_uniq_exps[k] = np.zeros(len(uniq_exps))
 
     sky_uniq_exps['wave_b'] = sky_data['wave_b']
@@ -238,7 +239,8 @@ def cmx_exposures():
         sky_uniq_exps['tileid'][_i] = sky_data['tileid'][_is_exp][0]
         sky_uniq_exps['date'][_i]   = sky_data['date'][_is_exp][0]
         sky_uniq_exps['expid'][_i]  = _exp.astype(int)
-        for k in ['airmass', 'moon_ill', 'moon_alt', 'moon_sep', 'sun_alt', 'sun_sep', 'exptime', 'transparency']:
+        for k in ['airmass', 'moon_ill', 'moon_alt', 'moon_sep', 'sun_alt', 'sun_sep', 'exptime', 
+                'transparency', 'transp_min', 'transp_max']:
             sky_uniq_exps[k][_i] = np.median(sky_data[k][_is_exp])
         
         sky_uniq_exps['sky_b'][_i] = np.median(sky_data['sky_b'][_is_exp], axis=0) / desi_fiber_area
@@ -352,8 +354,8 @@ def zsuccess(deltachi2=40.):
             'airmass=%.1f' % exps['airmass'][_i], 
             'moon ill=%.2f, moon alt=%.f, moon sep=%.f' % 
             (exps['moon_ill'][_i], exps['moon_alt'][_i], exps['moon_sep'][_i]), 
-            r'$t_{\rm exp}= %.f$, transparency=%.2f' % 
-            (exps['exptime'][_i], exps['transparency'][_i])])
+            r'$t_{\rm exp}= %.f$, %.2f < transparency < %.2f' % 
+            (exps['exptime'][_i], exps['transp_min'][_i], exps['transp_max'][_i])])
 
         sub.text(0.05, 0.05, exp_info, ha='left', va='bottom',
                 transform=sub.transAxes, fontsize=10)
