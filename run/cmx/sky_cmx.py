@@ -134,7 +134,7 @@ def compile_skies():
         sky_data['spectrograph'].append(np.repeat(_spec, len(_airmass)))
         sky_data['mjd'].append(np.repeat(mjd_mid, len(_airmass)))
         sky_data['transparency'].append(np.repeat(transp_mid, len(_airmass)))
-        sky_data['transp_miin'].append(np.repeat(transp_min, len(_airmass)))
+        sky_data['transp_min'].append(np.repeat(transp_min, len(_airmass)))
         sky_data['exptime'].append(np.repeat(exptime, len(_airmass)))
         # store fluxes 
         sky_data['flux_b'].append(cframe_b[good_sky,:]) 
