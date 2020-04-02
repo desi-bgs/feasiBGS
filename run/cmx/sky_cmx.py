@@ -53,7 +53,7 @@ def compile_skies():
     for k in ['airmass', 'moon_ill', 'moon_alt', 'moon_sep', 'sun_alt',
             'sun_sep', 'flux_b', 'flux_r', 'flux_z', 'sky_b', 'sky_r', 'sky_z',
             'tileid', 'date', 'expid', 'spectrograph', 'mjd', 'transparency',
-            'transp_min', 'exptime']:  
+            'transp_min', 'transp_max', 'exptime']:  
         sky_data[k] = [] 
 
     for i, _cmx in enumerate(cmx): 
@@ -112,9 +112,11 @@ def compile_skies():
         not_nan = np.isfinite(transp)
         if np.sum(not_nan) > 0: 
             transp_min = np.min(transp[not_nan])
+            transp_max = np.max(transp[not_nan])
             transp_mid = np.median(transp[not_nan])
         else: 
             transp_min = 0.
+            transp_max = 1.
             transp_mid = 1.
         
         # these values more or less agree with the GFA values 
@@ -125,8 +127,7 @@ def compile_skies():
         print('%.f exptime' % exptime)
         print('%i sky fibers' % np.sum(is_sky)) 
         print('%i good sky fibers' % np.sum(good_sky))
-        print('%.2f < transp < %.2f' % (transp[not_nan].min(),
-            transp[not_nan].max()))
+        print('%.2f < transp < %.2f' % (transp_min, transp_max)
 
         sky_data['tileid'].append(np.repeat(_tileid, len(_airmass)))
         sky_data['date'].append(np.repeat(_date, len(_airmass)))
@@ -135,6 +136,7 @@ def compile_skies():
         sky_data['mjd'].append(np.repeat(mjd_mid, len(_airmass)))
         sky_data['transparency'].append(np.repeat(transp_mid, len(_airmass)))
         sky_data['transp_min'].append(np.repeat(transp_min, len(_airmass)))
+        sky_data['transp_max'].append(np.repeat(transp_max, len(_airmass)))
         sky_data['exptime'].append(np.repeat(exptime, len(_airmass)))
         # store fluxes 
         sky_data['flux_b'].append(cframe_b[good_sky,:]) 
