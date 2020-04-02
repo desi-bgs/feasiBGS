@@ -509,6 +509,7 @@ class fakeDESIspec(object):
         wavemax = params['ccd']['z']['wavemax']
 
         if wave[0] > wavemin or wave[-1] < wavemax:
+            print('%f > %f or %f < %f' % (wave[0], wavemin, wave[-1], wavemax))
             raise ValueError
 
         wlim = (wavemin <= wave) & (wave <= wavemax) # wavelength limit 
