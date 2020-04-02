@@ -127,7 +127,7 @@ def compile_skies():
         print('%.f exptime' % exptime)
         print('%i sky fibers' % np.sum(is_sky)) 
         print('%i good sky fibers' % np.sum(good_sky))
-        print('%.2f < transp < %.2f' % (transp_min, transp_max)
+        print('%.2f < transp < %.2f' % (transp_min, transp_max))
 
         sky_data['tileid'].append(np.repeat(_tileid, len(_airmass)))
         sky_data['date'].append(np.repeat(_date, len(_airmass)))
