@@ -861,7 +861,8 @@ if __name__=="__main__":
     #surveysim_All('exposures_surveysim_fork_150sv0p4.fits') 
     #surveysim_Weird('exposures_surveysim_fork_150sv0p4.fits') 
 
-    extractBGS(os.path.join(dir_dat, 'exposures_surveysim_fork_150sv0p5.fits'))
+    #extractBGS(os.path.join(dir_dat, 'exposures_surveysim_fork_150sv0p5.fits'))
+    sample_surveysimExposures('exposures_surveysim_fork_150sv0p4.fits', seed=0)
     #sample_surveysimExposures('exposures_surveysim_fork_150sv0p5.fits', seed=0)
     #GALeg_bgsSpec(
     #        specfile='GALeg.g15.sourceSpec.3000.hdf5', 
