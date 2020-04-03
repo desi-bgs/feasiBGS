@@ -8,7 +8,7 @@ import os
 import numpy as np 
 # -- astropy -- 
 import astropy.units as u
-# -- feasibgs --
+# -- feasibgs -- https://github.com/changhoonhahn/feasiBGS
 from feasibgs import util as UT
 from feasibgs import skymodel as Sky
 # -- plotting -- 
