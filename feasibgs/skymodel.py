@@ -194,7 +194,7 @@ def Isky_parker_radecobs(ra, dec, obs_time):
     return Isky_parker(airmass, ecl_lat, gal_lat, gal_lon, tai, sun_alt, sun_sep, moon_phase, moon_ill, moon_alt, moon_sep)
 
 
-def _specsim_initialize(config): 
+def _specsim_initialize(config, model='regression'): 
     ''' hacked version of specsim.atmosphere.initialize, which initializes the 
     atmosphere model from configuration parameters.
     '''
@@ -228,7 +228,7 @@ def _specsim_initialize(config):
         moon = _Moon(
             config.wavelength, moon_spectrum, extinction_coefficient,
             atm_config.airmass, c['moon_zenith'], c['separation_angle'],
-            c['moon_phase'])
+            c['moon_phase'], model=model)
     else:
         moon = None
 
@@ -258,11 +258,13 @@ class _Moon(Moon):
     model with extra free parameters
     '''
     def __init__(self, wavelength, moon_spectrum, extinction_coefficient,
-            airmass, moon_zenith, separation_angle, moon_phase):
+            airmass, moon_zenith, separation_angle, moon_phase,
+            model='regression'):
         # initialize via super function 
         super().__init__(wavelength, moon_spectrum, extinction_coefficient,
                 airmass, moon_zenith, separation_angle, moon_phase)
-
+        
+        self.model = model
         # default KS coefficients 
         self.KS_CR = 10**5.36 # proportionality constant in the Rayleigh scattering function 
         # constants for the Mie scattering function term 
@@ -279,10 +281,19 @@ class _Moon(Moon):
         self._update_required = False
 
         # Calculate the V-band surface brightness of scattered moonlight.
-        self._scattered_V = krisciunas_schaefer_free(
-            self.obs_zenith, self.moon_zenith, self.separation_angle,
-            self.moon_phase, self.vband_extinction, self.KS_CR, self.KS_CM0,
-            self.KS_CM1, self.KS_M0, self.KS_M1, self.KS_M2)
+        if self.model == 'refit_ks': 
+            self._scattered_V = krisciunas_schaefer_free(
+                self.obs_zenith, self.moon_zenith, self.separation_angle,
+                self.moon_phase, self.vband_extinction, self.KS_CR, self.KS_CM0,
+                self.KS_CM1, self.KS_M0, self.KS_M1, self.KS_M2)
+        elif self.model == 'regression': 
+            self._scattered_V = _scattered_V_regression(
+                    self.airmass, 
+                    0.5 * (np.cos(np.pi * self.moon_phase) + 1.), 
+                    90 - self.moon_zenith, 
+                    self.separation_angle) 
+        else: 
+            raise NotImplementedError 
 
         # Calculate the wavelength-dependent extinction of moonlight
         # scattered once into the observed field of view.
@@ -296,6 +307,7 @@ class _Moon(Moon):
         # Renormalized the extincted spectrum to the correct V-band magnitude.
         raw_V = self._vband.get_ab_magnitude(
             self._surface_brightness, self._wavelength) * u.mag
+
         area = 1 * u.arcsec ** 2
         self._surface_brightness *= 10 ** (
             -(self._scattered_V * area - raw_V) / (2.5 * u.mag)) / area
@@ -353,6 +365,42 @@ class _Moon(Moon):
     def KS_M2(self, ks_m2):
         self._KS_M2 = ks_m2 
         self._update_required = True
+
+
+reg_model_coeffs = np.array([-1.72523347e-02, -1.31361477e+02,  6.63730935e+01,
+    -9.41030359e-02, 8.48961915e-01,  2.17497311e+02, -3.72597558e+02,
+    1.00758992e+00, 3.08696159e-01,  2.67636483e+02,  8.35770985e-03,
+    2.23588689e-01, 2.50034199e-03, -1.31082188e-02, -1.78405038e-02,
+    -1.33394254e+02, 3.59991736e+02, -1.20301999e+00, -1.15591783e+00,
+    -2.08943993e+02, 3.16669904e-01,  4.73848984e-01,  2.19641193e-03,
+    1.03678764e-02, 1.05647754e-02,  5.97639216e+01, -3.29778699e+00,
+    -3.53949915e+00, 1.15924972e-02,  2.26256920e-02,  1.10537908e-02,
+    -9.30849402e-05, -9.24348638e-05, 6.08290452e-05,  7.47429090e-05,
+    2.87743547e+01, -1.06004742e+02, 3.49781288e-01,  4.15966437e-01,
+    5.02510051e+01, 2.33158177e-01, -8.99504191e-02, -1.55945957e-03,
+    -1.67962218e-03, -1.48167087e-03, -6.79449418e+01,  9.24990594e-01,
+    1.74126599e+00, -6.98329328e-03, -1.67072349e-02, -9.48908504e-03,
+    1.71830097e-05, 1.53753423e-05, -1.20825222e-05, -1.10402948e-05,
+    -6.82883124e+00, 3.42104080e-01,  1.15313005e-01,  1.08055005e-02,
+    1.62673968e-02, 6.95873457e-03, -3.37508143e-05, -1.23513959e-04,
+    -7.94721140e-05, -1.98438188e-05,  3.43658925e-07,  8.88223639e-07,
+    5.96446942e-07, -1.29296893e-07, -1.62605517e-07]) 
+reg_model_intercept = 35.87660110628718
+
+
+def _scattered_V_regression(airmass, moon_frac, moon_alt, moon_sep):
+    ''' 4th degree polynomial regression fit to the V-band scattered moonlight
+    from BOSS and DESI CMX data. 
+    '''
+    theta = np.atleast_2d(np.array([airmass, moon_frac, moon_alt, moon_sep]).T)
+
+    combs = chain.from_iterable(combinations_with_replacement(range(4), i) 
+            for i in range(0, n_order+1))
+    theta_transform = np.empty((theta.shape[0], len(reg_model_coeffs)))
+    for i, comb in enumerate(combs):
+        theta_transform[:, i] = theta[:, comb].prod(1)
+
+    return np.dot(theta_transform, reg_model_coeffs.T) + reg_model_intercept
 
 
 def krisciunas_schaefer_free(obs_zenith, moon_zenith, separation_angle, moon_phase,
