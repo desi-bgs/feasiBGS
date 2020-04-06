@@ -14,5 +14,5 @@ setup(name = 'feasiBGS',
       requires = ['numpy', 'matplotlib', 'scipy'],
       provides = ['feasiBGS'],
       packages = ['feasibgs'],
-      scripts=['feasibgs/catalogs.py', 'feasibgs/forwardmodel.py', 'feasibgs/util.py']
+      scripts=['feasibgs/skymodel.py', 'feasibgs/catalogs.py', 'feasibgs/forwardmodel.py', 'feasibgs/util.py']
       )
