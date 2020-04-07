@@ -352,18 +352,30 @@ class GamaLegacy(Catalog):
     def _File(self, field, dr_gama=3, dr_legacy=7): 
         return ''.join([UT.dat_dir(), 'GAMAdr', str(dr_gama), '.', field, '.LEGACYdr', str(dr_legacy), '.v2.hdf5'])
 
-    def _Build(self, field, dr_gama=3, dr_legacy=7, sweep_dir=None, silent=True): 
+    def _Build(self, field, dr_gama=3, dr_legacy=7, silent=True): 
         ''' Get Legacy Survey photometry for objects in the GAMA DR`dr_gama`
         photo+spec objects from the sweep files. This is meant to run on nersc
         but you can also manually download the sweep files and specify the dir
         where the sweep files are located in. 
         '''
         if dr_legacy == 5: 
-            if sweep_dir is None: sweep_dir = '/global/project/projectdirs/cosmo/data/legacysurvey/dr5/sweep/5.0/'
-            tractor_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/'
+            sweep_n_dir = '/global/project/projectdirs/cosmo/data/legacysurvey/dr5/sweep/5.0/'
+            sweep_s_dir = '/global/project/projectdirs/cosmo/data/legacysurvey/dr5/sweep/5.0/'
+            tractor_n_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr5/tractor/'
         elif dr_legacy == 7: 
-            if sweep_dir is None: sweep_dir = '/global/project/projectdirs/cosmo/data/legacysurvey/dr7/sweep/7.1/'
-            tractor_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr7/tractor/'
+            sweep_n_dir = '/global/project/projectdirs/cosmo/data/legacysurvey/dr7/sweep/7.1/'
+            sweep_s_dir = '/global/project/projectdirs/cosmo/data/legacysurvey/dr7/sweep/7.1/'
+            tractor_n_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr7/tractor/'
+            tractor_s_dir='/global/project/projectdirs/cosmo/data/legacysurvey/dr7/tractor/'
+        elif dr_legacy == 8: 
+            sweep_n_dir = \
+                    '/global/project/projectdirs/cosmo/data/legacysurvey/dr8/north/sweep/8.0/'
+            sweep_s_dir = \
+                    '/global/project/projectdirs/cosmo/data/legacysurvey/dr8/south/sweep/8.0/'
+            tractor_n_dir = \
+                    '/global/project/projectdirs/cosmo/data/legacysurvey/dr8/north/tractor/'
+            tractor_s_dir = \
+                    '/global/project/projectdirs/cosmo/data/legacysurvey/dr7/south/tractor/'
 
         # read in the names of the sweep files 
         fsweep = ''.join([UT.dat_dir(), 'legacy/', field, '.sweep_list.dat'])
@@ -380,8 +392,11 @@ class GamaLegacy(Catalog):
         # loop through the files and only keep ones that spherematch with GAMA objects
         for i_f, f in enumerate(sweep_files): 
             # read in sweep object 
-            sweep = fits.open(os.path.join(sweep_dir, f.decode('unicode_escape')))[1].data
-            if not silent: print('matching %s' % os.path.join(sweep_dir, f.decode('unicode_escape'))) 
+            for sweep_dir in [sweep_n_dir, sweep_s_dir]: 
+                fsweep = os.path.join(sweep_dir, f.decode('unicode_escape'))
+                if os.path.isfile(fsweep): break  
+            sweep = fits.open(fsweep)[1].data
+            if not silent: print('matching %s' % fsweep)
         
             # spherematch the sweep objects with GAMA objects 
             if len(sweep['ra']) > len(gama_data['photo']['ra']):
@@ -437,7 +452,12 @@ class GamaLegacy(Catalog):
             #np.savetxt(f_nosweep, np.array([gama_data['photo']['ra'], gama_data['photo']['dec']]).T, header='RA, Dec')
 
         # read apfluxes from tractor catalogs 
-        apflux_dict = self._getTractorApflux(sweep_dict['brickname'], sweep_dict['objid'], tractor_dir=tractor_dir) 
+        try: 
+            apflux_dict = self._getTractorApflux(sweep_dict['brickname'], 
+                    sweep_dict['objid'], tractor_dir=tractor_n_dir) 
+        except ValueError: 
+            apflux_dict = self._getTractorApflux(sweep_dict['brickname'],
+                    sweep_dict['objid'], tractor_dir=tractor_s_dir) 
         assert apflux_dict['apflux_g'].shape[0] == len(sweep_dict['brickname']) 
 
         # save data to hdf5 file
