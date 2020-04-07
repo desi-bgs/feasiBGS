@@ -40,7 +40,6 @@ from desispec.resolution import Resolution
 from desispec.interpolation import resample_flux
 
 # -- local -- 
-from feasibgs import catalogs as Cat 
 from feasibgs import skymodel as Sky
 
 
@@ -92,6 +91,7 @@ class BGStree(object):
         ''' Given `catalogs.GamaLegacy` class object, return matches to  
         template. This is purely for convenience. 
         '''
+        from feasibgs import catalogs as Cat 
         # extract necessary meta data 
         redshift = gleg['gama-spec']['z']  # redshift
         # calculate ABSMAG k-correct to z=0.1 

@@ -5,6 +5,7 @@ import pickle
 import numpy as np 
 import pandas as pd 
 from scipy.interpolate import interp1d
+from itertools import chain, combinations_with_replacement
 # -- astropy --
 import astropy.units as u
 from astropy.time import Time
@@ -16,6 +17,47 @@ import specsim
 from specsim.atmosphere import Moon 
 # -- feasibgs -- 
 from . import util as UT 
+
+
+def Isky_regression(airmass, moonill, moonalt, moonsep, sunalt, sunsep):
+    ''' Sky surface brightness as a function of airmass, moon parameters, and
+    sun parameters. The sky surface brightness uses a regression model fit
+    using BOSS and DESI CMX sky fibers to predict V-band moonlight surface
+    brightness. This V-band magnitude is then used to scale up the dark time
+    sky.  
+
+    :param airmass: 
+        airmass 
+    :param moonill:  
+        moon illumination fraction: 0 - 1 
+    :param moonalt:  
+        moon altitude: 0 - 90 deg 
+    :param moonsep:  
+        moon separation angle: 0 - 180 deg 
+    :param sunalt:
+        sun altitude: 0 - 90 deg 
+    :param sunsep: 
+        sun separation: 0 - 90 deg 
+    :return specsim_wave, Isky: 
+        returns wavelength [Angstrom], sky surface brightness [$10^{-17} erg/cm^{2}/s/\AA/arcsec^2$]
+    '''
+    # initialize atmosphere model using hacked version of specsim.atmosphere.initialize 
+    specsim_sky     = _specsim_initialize('desi', model='regression')
+    specsim_wave    = specsim_sky._wavelength # Ang
+    specsim_sky.airmass = airmass
+    specsim_sky.moon.moon_phase = np.arccos(2.*moonill - 1)/np.pi
+    specsim_sky.moon.moon_zenith = (90. - moonalt) * u.deg
+    specsim_sky.moon.separation_angle = moonsep * u.deg
+    
+    Isky = specsim_sky.surface_brightness.value
+    
+    # twilight contribution 
+    if sunalt > -20.: 
+        w_twi, I_twi = _cI_twi(sunalt, sunsep, airmass)
+        I_twi /= np.pi
+        I_twi_interp = interp1d(10. * w_twi, I_twi, fill_value='extrapolate')
+        Isky += np.clip(I_twi_interp(specsim_wave), 0, None) 
+    return specsim_wave, Isky
 
 
 def Isky_newKS_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep):
@@ -45,7 +87,7 @@ def Isky_newKS_twi(airmass, moonill, moonalt, moonsep, sunalt, sunsep):
         returns wavelength [Angstrom] and sky surface brightness [$10^{-17} erg/cm^{2}/s/\AA/arcsec^2$]
     '''
     # initialize atmosphere model using hacked version of specsim.atmosphere.initialize 
-    specsim_sky     = _specsim_initialize('desi')
+    specsim_sky     = _specsim_initialize('desi', model='refit_ks')
     specsim_wave    = specsim_sky._wavelength # Ang
     specsim_sky.airmass = airmass
     specsim_sky.moon.moon_phase = np.arccos(2.*moonill - 1)/np.pi
@@ -290,8 +332,8 @@ class _Moon(Moon):
             self._scattered_V = _scattered_V_regression(
                     self.airmass, 
                     0.5 * (np.cos(np.pi * self.moon_phase) + 1.), 
-                    90 - self.moon_zenith, 
-                    self.separation_angle) 
+                    90 - self.moon_zenith.value, 
+                    self.separation_angle.value) * u.mag / u.arcsec**2
         else: 
             raise NotImplementedError 
 
@@ -395,7 +437,7 @@ def _scattered_V_regression(airmass, moon_frac, moon_alt, moon_sep):
     theta = np.atleast_2d(np.array([airmass, moon_frac, moon_alt, moon_sep]).T)
 
     combs = chain.from_iterable(combinations_with_replacement(range(4), i) 
-            for i in range(0, n_order+1))
+            for i in range(0, 5))
     theta_transform = np.empty((theta.shape[0], len(reg_model_coeffs)))
     for i, comb in enumerate(combs):
         theta_transform[:, i] = theta[:, comb].prod(1)
