@@ -246,8 +246,8 @@ if __name__=="__main__":
     if brightsky: name += '.brightsky'
 
     # check survey init
-    surveyinit()
+    #surveyinit()
     # run surveysim
-    run_surveysim(name, fconfig, twilight=twilight, brightsky=brightsky) 
+    #run_surveysim(name, fconfig, twilight=twilight, brightsky=brightsky) 
     # get summary statistics of surveysim run
     stats_surveysim(name)
