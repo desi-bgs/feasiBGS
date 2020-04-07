@@ -476,6 +476,9 @@ def check_fba():
     # all the fiberassign output files 
     f_fbas = glob.glob(os.path.join(dir_fba, 'fba_dr9sv.spec_truth.Mar2020',
         'fiberassign*.fits'))
+    # sarah's fiberassign files 
+    #f_fbas = glob.glob(os.path.join(dir_fba, 'fba_dr9sv.sarah', 
+    #    'fiberassign*.fits'))
 
     n_zero = 0
     n_nosky = 0 
@@ -534,6 +537,7 @@ def check_fba():
             bgs_targetclass(tile['SV1_BGS_TARGET'])
     print('---------------------------------')
     print('total n_bgs = %i' % n_bgs)
+    print('total n_bgs = %i' % np.sum(tile['SV1_BGS_TARGET'] != 0))
     print('                       nobj frac (expected frac)')  
     print('     ------------------------------------')  
     print('     BGS Bright          %i %.3f, %.3f-%.3f (0.45)' % (n_bgs_bright, n_bgs_bright/n_bgs, np.min(__n_bgs_bright), np.max(__n_bgs_bright)))
@@ -543,6 +547,13 @@ def check_fba():
     print('     BGS Low Q.          %i %.3f, %.3f-%.3f (0.05)' % (n_bgs_lowq, n_bgs_lowq/n_bgs, np.min(__n_bgs_lowq), np.max(__n_bgs_lowq)))
     print('     SKY                 %i' % (np.mean(__n_sky)))
     tbl.append('---------------------------------') 
+    print('     BGS Bright          %i' % np.sum((tile['SV1_BGS_TARGET'] & 2**0) != 0))
+    print('     BGS Faint           %i' % np.sum((tile['SV1_BGS_TARGET'] & 2**1) != 0))
+    print('     BGS Ext.Faint       %i' % np.sum((tile['SV1_BGS_TARGET'] & 2**2) != 0))
+    print('     BGS Fib.Mag         %i' % np.sum((tile['SV1_BGS_TARGET'] & 2**4) != 0))
+    print('     BGS Low Q.          %i' % np.sum((tile['SV1_BGS_TARGET'] & 2**3) != 0))
+
+
     tbl.append('\t'.join([
         'TOTAL', 
         '%i' % n_bgs, 
@@ -644,5 +655,5 @@ if __name__=="__main__":
 
     #_dr8_skies_cutouts()
 
-    run_fiberassign()
+    #run_fiberassign()
     check_fba()
