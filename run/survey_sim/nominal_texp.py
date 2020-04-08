@@ -239,7 +239,7 @@ def run_redrock(fspec, clobber=False):
         "#!/bin/bash", 
         "#SBATCH -N 1", 
         "#SBATCH -C haswell", 
-        "#SBATCH -q premium", 
+        "#SBATCH -q regular", 
         '#SBATCH -J rr_%s' % name,
         '#SBATCH -o _rr_%s.o' % name,
         "#SBATCH -t 01:00:00", 
@@ -260,6 +260,98 @@ def run_redrock(fspec, clobber=False):
 
     os.system('sbatch script.slurm') 
     os.system('rm script.slurm') 
+    return None 
+
+
+def compare_zsuccess(deltachi2=40.): 
+    ''' compare the redshift success rates for the different observing
+    conditions and nominal exposure times 
+    '''
+    tnoms = [130., 150., 180.]
+    # read in 8 sampled bright exposures
+    exps = Table.read(os.path.join(_dir, 'bgs_exps.8random.fits'))
+    airmass     = exps['AIRMASS']
+    moon_ill    = exps['moon_ill']
+    moon_alt    = exps['moon_alt']
+    moon_sep    = exps['moon_sep']
+    sun_alt     = exps['sun_alt']
+    sun_sep     = exps['sun_sep']
+    seeing      = exps['SEEING']
+    transp      = exps['TRANSP']
+    exp_factor  = exps['exposure_factor'] 
+    n_exps      = len(airmass) 
+
+    # read true redshifts and r magnitude 
+    spec = h5py.File(os.path.join(UT.dat_dir(), 'survey_sim', 
+        'GALeg.g15.sourceSpec.5000.seed0.hdf5'), 'r') 
+    ztrue = spec['zred'][...]
+    r_mag = UT.flux2mag(spec['legacy-photo']['flux_r'][...], method='log') 
+
+    fig = plt.figure(figsize=(20,10))
+    for iexp in range(n_exps): 
+        sub = fig.add_subplot(2,4,iexp+1) 
+        sub.plot([15., 22.], [1., 1.], c='k', ls='--', lw=2)
+    
+        zsucc_bright, zsucc_faint, _plts = [], [], [] 
+        for i, tnom in enumerate(tnoms): 
+            # read in redrock output
+            rr = Table.read(os.path.join(UT.dat_dir(), 'survey_sim',
+                    'zbest.comp_sim.tnom%.f.exp%i.fits' % (tnom, iexp)), 
+                    hdu=1)
+            _zsuc   = UT.zsuccess(rr['Z'], ztrue, rr['ZWARN'],
+                    deltachi2=rr['DELTACHI2'], min_deltachi2=deltachi2)
+            wmean, rate, err_rate = UT.zsuccess_rate(r_mag, _zsuc,
+                    range=[15,22], nbins=28, bin_min=10) 
+
+            _plt = sub.errorbar(wmean, rate, err_rate, 
+                    fmt='.C%i' % i, elinewidth=2, markersize=10)
+            _plts.append(_plt) 
+
+            # redshift success for bright and faint samples
+            # for now lets assume that we get all the redshifts for r < 18
+            # objects 
+            _zsuc[r_mag < 18.] = True
+
+            bright = (r_mag < 19.5) 
+            zsucc_bright.append(100 *
+                    float(np.sum(_zsuc[bright]))/float(np.sum(bright)))
+            faint = (r_mag < 20.) 
+            zsucc_faint.append(100 *
+                    float(np.sum(_zsuc[faint]))/float(np.sum(faint)))
+        
+        obs_cond = '\n'.join([
+            r'$f_{\rm exp}=%.1f\times$' % exp_factor[iexp], 
+            'airmass=%.2f, seeing=%.2f' % (airmass[iexp], seeing[iexp]), 
+            'moon ill=%.2f, alt=%.f, sep=%.f' % (moon_ill[iexp], moon_alt[iexp], moon_sep[iexp]),
+            'sun alt=%.f, sep=%.f' % (sun_alt[iexp], sun_sep[iexp])])
+        sub.text(0.02, 0.02, obs_cond, ha='left', va='bottom',
+                transform=sub.transAxes, fontsize=10)
+        for i in range(len(tnoms)): 
+            sub.text(19.5, 0.9-0.025*i, '%.1f' % zsucc_bright[i], color='C%i' % i, 
+                    ha='right', va='bottom', fontsize=10)
+            sub.text(20., 0.9-0.025*i, '%.1f' % zsucc_faint[i], color='C%i' % i, 
+                    ha='right', va='bottom', fontsize=10)
+
+        sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
+        sub.vlines(20.0, 0., 1.2, color='k', linestyle=':', linewidth=1)
+        sub.set_xlim([16., 21.]) 
+        sub.set_xticks([17, 18, 19, 20, 21]) 
+        if iexp < 4: sub.set_xticklabels([]) 
+        sub.set_ylim([0.6, 1.1])
+        sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
+        if iexp not in [0,4]: sub.set_yticklabels([]) 
+
+    sub.legend(_plts, 
+            [r'$t_{\rm nom} = %.fs$' % tnom for tnom in tnoms], 
+            fontsize=15, handletextpad=0.1, loc='lower right') 
+    bkgd = fig.add_subplot(111, frameon=False)
+    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    bkgd.set_xlabel(r'Legacy DR7 $r$ magnitude', labelpad=10, fontsize=30)
+    bkgd.set_ylabel(r'redrock $z$ success rate', labelpad=10, fontsize=30)
+    fig.subplots_adjust(wspace=0.05, hspace=0.05)
+    fig.savefig(os.path.join(_dir, 'figs',
+        'tnom.compare_zsuccess.dchi2_%.f.png' % deltachi2), 
+        bbox_inches='tight') 
     return None 
 
 
@@ -311,4 +403,6 @@ def _get_obs_param(tileid, mjd):
 
 if __name__=="__main__": 
     #compile_exposures()
-    construct_comp_sims(150.)
+    #for tnom in [130., 150., 180., 200.]:
+    #    construct_comp_sims(tnom)
+    compare_zsuccess(deltachi2=40.)
