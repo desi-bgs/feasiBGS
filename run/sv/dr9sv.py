@@ -13,7 +13,7 @@ from astropy.table import Table
 from pydl.pydlutils.spheregroup import spherematch
 # -- desitarget --
 from desitarget.targets import calc_priority, main_cmx_or_sv, set_obsconditions
-from desitarget.sv1.sv1_targetmask import bgs_mask
+from desitarget.sv1.sv1_targetmask import desi_mask, bgs_mask, mws_mask
 # -- plotting -- 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -32,7 +32,7 @@ mpl.rcParams['legend.frameon'] = False
 
 
 dir_dat = '/global/cscratch1/sd/chahah/feasibgs/survey_validation/'
-dir_fba = '/global/cfs/cdirs/desi/users/chahah/'
+dir_cfs = '/global/cfs/cdirs/desi/users/chahah/'
 if not os.path.isdir(dir_dat): 
     dir_dat = '/Users/ChangHoon/data/feasiBGS/survey_validation/'
 
@@ -430,19 +430,28 @@ def _dr8_skies_cutouts():
 ######################################################################
 # fiberassign 
 ######################################################################
-def run_fiberassign(): 
+def run_fiberassign(sky_supp=False): 
     ''' generate script for running fiberassign (for posterity) and run it
     '''
     assert os.environ['NERSC_HOST'] == 'cori'
+    
+    if not sky_supp: 
+        dir_out = '/global/cfs/cdirs/desi/users/chahah/fba_dr9sv.spec_truth.Mar2020'
+    else: 
+        dir_out = '/global/cfs/cdirs/desi/users/chahah/fba_dr9sv.spec_truth.sky_supp'
 
-    dir_out = '/global/cfs/cdirs/desi/users/chahah/fba_dr9sv.spec_truth.Mar2020'
     dir_mtl = '/global/cfs/cdirs/desi/users/chahah/mtl_mar2020'
-
 
     fmtls = glob.glob(os.path.join(dir_mtl, 'mtl*fits'))
     fskies = glob.glob(os.path.join('/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/', 
         'skies*.fits'))
     fskies += [os.path.join(dir_mtl, 'dr8_skies_cutout.fits')]
+
+    if sky_supp: 
+        fsupps = glob.glob(os.path.join(
+            '/global/cfs/cdirs/desi/target/catalogs/dr9sv/0.37.0/skies/skies-supp', 
+            'skies*.fits'))
+        fskies += fsupps
 
     scrpt = '\n'.join([
         '#!/bin/bash', 
@@ -455,8 +464,7 @@ def run_fiberassign():
         '', 
         'mkdir ${odir}', 
         'rm ${odir}/*.fits', 
-        '', 
-        'export DESI_LOGLEVEL=DEBUG', 
+        '', #'export DESI_LOGLEVEL=DEBUG', 
         'fba_run --targets %s --sky %s --footprint ${tfile} --standards_per_petal 20 --sky_per_petal 80 --write_all_targets --dir ${odir} --overwrite | tee log.o' % (' '.join(fmtls), ' '.join(fskies)),
         '', 
         'fba_merge_results --targets %s --dir ${odir}' % (' '.join(fmtls + fskies))
@@ -470,12 +478,16 @@ def run_fiberassign():
     return None 
 
 
-def check_fba(): 
+def check_fba(sky_supp=False): 
     ''' test target densities in the fiberassign output of DR9SV 
     '''
     # all the fiberassign output files 
-    f_fbas = glob.glob(os.path.join(dir_fba, 'fba_dr9sv.spec_truth.Mar2020',
-        'fiberassign*.fits'))
+    if not sky_supp: 
+        dir_fba = os.path.join(dir_cfs, 'fba_dr9sv.spec_truth.Mar2020')
+    else: 
+        dir_fba = os.path.join(dir_cfs, 'fba_dr9sv.spec_truth.sky_supp')
+
+    f_fbas = glob.glob(os.path.join(dir_fba, 'fiberassign*.fits'))
     # sarah's fiberassign files 
     #f_fbas = glob.glob(os.path.join(dir_fba, 'fba_dr9sv.sarah', 
     #    'fiberassign*.fits'))
@@ -483,7 +495,8 @@ def check_fba():
     n_zero = 0
     n_nosky = 0 
     tbl = ['\t'.join(['TILEID', 'SV1_BGS_TARGET', 'BGS_BRIGHT (0.45)', 'BGS_FAINT (0.25)'
-        'BGS_FAINT_EXT (0.125)', 'BGS_FIBMAG (0.125)', 'BGS_LOWQ (0.05)'])]
+        'BGS_FAINT_EXT (0.125)', 'BGS_FIBMAG (0.125)', 'BGS_LOWQ (0.05)',
+        'MWS', 'STD', 'SKY', 'BAD', 'BLANK'])]
     __n_bgs_bright, __n_bgs_faint, __n_bgs_extfaint, __n_bgs_fibmag, __n_bgs_lowq, __n_sky = [], [], [], [], [], [] 
     for i, f in enumerate(f_fbas): 
         # read in tile
@@ -495,8 +508,41 @@ def check_fba():
 
         _n_bgs, _n_bgs_bright, _n_bgs_faint, _n_bgs_extfaint, _n_bgs_fibmag, _n_bgs_lowq = \
                 bgs_targetclass(tile_i['SV1_BGS_TARGET'])
+        _n_mws = np.sum(tile_i['SV1_MWS_TARGET'].astype(bool))
+        _n_std = np.sum(~tile_i['SV1_MWS_TARGET'].astype(bool) & (tile_i['SV1_DESI_TARGET'] &
+                desi_mask.mask('STD_FAINT|STD_WD|STD_BRIGHT')).astype(bool))
         _n_sky = np.sum(tile_i['OBJTYPE'] == 'SKY')
-        
+        _n_bad = np.sum(tile_i['OBJTYPE'] == 'BAD')
+        _n_blank = np.sum(tile_i['OBJTYPE'] == '') 
+
+        if _n_bgs + _n_mws + _n_std + _n_sky + _n_bad + _n_blank < 5000: 
+            print('--- %s ---' % f.split('-')[-1].split('.')[0]) 
+            notdesi = ~(tile_i['SV1_DESI_TARGET'].astype(bool))
+            notbgs = ~(tile_i['SV1_BGS_TARGET'].astype(bool))
+            notmws = ~(tile_i['SV1_MWS_TARGET'].astype(bool))
+            notsky = (tile_i['OBJTYPE'] != 'SKY') 
+            notbad = (tile_i['OBJTYPE'] != 'BAD') 
+            print(5000 - (_n_bgs + _n_mws + _n_std + _n_sky + _n_bad)) 
+            print(np.sum(notdesi & notbgs & notmws))
+            print(np.sum(notdesi & notbgs & notmws & notsky & notbad))
+            print(tile_i['OBJTYPE'][notdesi & notbgs & notmws & notsky &
+                notbad] )
+
+            raise ValueError
+
+        #not_any = ((tile_i['OBJTYPE'] != 'SKY') & 
+        #        (tile_i['OBJTYPE'] != 'BAD') & 
+        #        (tile_i['SV1_BGS_TARGET'] == 0) & 
+        #        (tile_i['SV1_MWS_TARGET'] == 0))
+
+        ##print(tile_i['SV1_DESI_TARGET'][not_any])
+        #for i in range(58): 
+        #    if np.sum((tile_i['SV1_DESI_TARGET'][not_any] &
+        #        desi_mask.mask(i)).astype(bool)) > 0: 
+        #        print('%i %s' % 
+        #                (np.sum((tile_i['SV1_DESI_TARGET'][not_any] & desi_mask.mask(i)).astype(bool)), 
+        #                    desi_mask.bitname(i)))
+
         __n_bgs_bright.append(_n_bgs_bright/_n_bgs)
         __n_bgs_faint.append(_n_bgs_faint/_n_bgs)
         __n_bgs_extfaint.append(_n_bgs_extfaint/_n_bgs)
@@ -513,7 +559,8 @@ def check_fba():
         print('     BGS Ext.Faint       %i %.3f (0.125)' % (_n_bgs_extfaint, _n_bgs_extfaint/_n_bgs))
         print('     BGS Fib.Mag         %i %.3f (0.125)' % (_n_bgs_fibmag, _n_bgs_fibmag/_n_bgs))
         print('     BGS Low Q.          %i %.3f (0.05)' % (_n_bgs_lowq, _n_bgs_lowq/_n_bgs))
-        print('     SKY                 %i' % (_n_sky)) 
+        print('     SKY                 %i' % _n_sky) 
+        print('     BAD                 %i' % _n_bad)
         __n_sky.append(_n_sky) 
 
         tbl.append('\t'.join([
@@ -523,8 +570,13 @@ def check_fba():
             '%i (%.3f)' % (_n_bgs_faint, _n_bgs_faint/_n_bgs),
             '%i (%.3f)' % (_n_bgs_extfaint, _n_bgs_extfaint/_n_bgs),
             '%i (%.3f)' % (_n_bgs_fibmag, _n_bgs_fibmag/_n_bgs),
-            '%i (%.3f)' % (_n_bgs_lowq, _n_bgs_lowq/_n_bgs)]))
-
+            '%i (%.3f)' % (_n_bgs_lowq, _n_bgs_lowq/_n_bgs),
+            '%i' % _n_mws,
+            '%i' % _n_std,
+            '%i' % _n_sky, 
+            '%i' % _n_bad, 
+            '%i' % _n_blank]))
+        
         # tiles with no sky targets 
         if _n_sky == 0: n_nosky += 1
         # tiles with no BGS targets 
@@ -535,6 +587,12 @@ def check_fba():
 
     n_bgs, n_bgs_bright, n_bgs_faint, n_bgs_extfaint, n_bgs_fibmag, n_bgs_lowq = \
             bgs_targetclass(tile['SV1_BGS_TARGET'])
+    n_mws = np.sum(tile['SV1_MWS_TARGET'].astype(bool))
+    n_std = np.sum((tile['SV1_DESI_TARGET'] &
+            desi_mask.mask('STD_FAINT|STD_WD|STD_BRIGHT')).astype(bool))
+    n_sky = np.sum(tile['OBJTYPE'] == 'SKY')
+    n_bad = np.sum(tile['OBJTYPE'] == 'BAD')
+    n_blank = np.sum(tile['OBJTYPE'] == '')
     print('---------------------------------')
     print('total n_bgs = %i' % n_bgs)
     print('total n_bgs = %i' % np.sum(tile['SV1_BGS_TARGET'] != 0))
@@ -561,9 +619,14 @@ def check_fba():
         '%i (%.3f)' % (n_bgs_faint, n_bgs_faint/n_bgs),
         '%i (%.3f)' % (n_bgs_extfaint, n_bgs_extfaint/n_bgs),
         '%i (%.3f)' % (n_bgs_fibmag, n_bgs_fibmag/n_bgs),
-        '%i (%.3f)' % (n_bgs_lowq, n_bgs_lowq/n_bgs)]))
-    
-    ftbl = os.path.join(dir_fba, 'fba_dr9sv.spec_truth.Mar2020', 'fba_table.dat')
+        '%i (%.3f)' % (n_bgs_lowq, n_bgs_lowq/n_bgs),
+        '%i' % n_mws,
+        '%i' % n_std,
+        '%i' % n_sky,
+        '%i' % n_bad, 
+        '%i' % n_blank]))
+
+    ftbl = os.path.join(dir_fba, 'fba_table.dat')
     f = open(ftbl,'w')
     f.write('\n'.join(tbl))
     f.close() 
@@ -656,4 +719,6 @@ if __name__=="__main__":
     #_dr8_skies_cutouts()
 
     #run_fiberassign()
-    check_fba()
+    #run_fiberassign(sky_supp=True)
+    check_fba(sky_supp=False)
+    check_fba(sky_supp=True)
