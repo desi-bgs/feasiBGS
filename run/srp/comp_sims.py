@@ -19,7 +19,8 @@ from feasibgs import forwardmodel as FM
 # -- plotting -- 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-mpl.rcParams['text.usetex'] = True
+if 'NERSC_HOST' not in os.environ.keys(): 
+    mpl.rcParams['text.usetex'] = True
 mpl.rcParams['font.family'] = 'serif'
 mpl.rcParams['axes.linewidth'] = 1.5
 mpl.rcParams['axes.xmargin'] = 1
@@ -32,8 +33,8 @@ mpl.rcParams['ytick.major.width'] = 1.5
 mpl.rcParams['legend.frameon'] = False
 
 
-dir_dat = os.path.join(UT.dat_dir(), 'srp')
-
+#dir_dat = os.path.join(UT.dat_dir(), 'srp')
+dir_dat = '/global/cfs/cdirs/desi/users/chahah/bgs_spec_sims/'
 
 
 def GALeg_G15_sourceSpec5000(seed=0): 
@@ -202,6 +203,18 @@ def GALeg_G15_noisySpec5000(t_fid=150.):
 def zsuccess(): 
     ''' compare the redshift completeness 
     '''
+    # read in 8 sampled bright time exposures
+    fexps       = h5py.File(os.path.join(dir_dat, 'exposures_surveysim_fork_150sv0p5.sample.seed0.hdf5'), 'r')
+    airmass     = fexps['airmass'][...]
+    moon_ill    = fexps['moon_ill'][...]
+    moon_alt    = fexps['moon_alt'][...]
+    moon_sep    = fexps['moon_sep'][...]
+    sun_alt     = fexps['sun_alt'][...]
+    sun_sep     = fexps['sun_sep'][...]
+    seeing      = fexps['seeing'][...]
+    transp      = fexps['transp'][...]
+    n_sample    = len(airmass) 
+
     # get true redshifts 
     specfile = os.path.join(dir_dat, 'GALeg.g15.sourceSpec.5000.seed0.hdf5')
     fspec = h5py.File(specfile, 'r') 
@@ -231,6 +244,14 @@ def zsuccess():
 
             _plt = sub.errorbar(wmean, rate, err_rate, fmt='.C%i' % i, elinewidth=2, markersize=10)
             _plts.append(_plt) 
+
+        obs_cond = '\n'.join([
+            r'$f_{\rm exp} =%.1f' % fexps['texp_total'][...][iexp] / 150., 
+            'airmass=%.2f, seeing=%.2f' % (airmass[iexp], seeing[iexp]), 
+            'moon ill=%.2f, alt=%.f, sep=%.f' % (moon_ill[iexp], moon_alt[iexp], moon_sep[iexp]),
+            'sun alt=%.f, sep=%.f' % (sun_alt[iexp], sun_sep[iexp])])
+        sub.text(0.02, 0.02, obs_cond, ha='left', va='bottom',
+                transform=sub.transAxes, fontsize=10)
 
         sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
         sub.set_xlim([16., 21.]) 
