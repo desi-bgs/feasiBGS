@@ -26,15 +26,15 @@ conda activate desi_surveysim_branch
 #python $DIR/survey_sim.py default config_default.yaml True
 
 # 130
-#python $DIR/survey_sim.py 130s_skybranch_v2 config_130s.yaml False True
-#python $DIR/survey_sim.py 130s_skybranch_v2 config_130s.yaml True True
+python $DIR/survey_sim.py 130s_skybranch_v3 config_130s.yaml False True
+#python $DIR/survey_sim.py 130s_skybranch_v3 config_130s.yaml True True
 
 # 150s 
-#python $DIR/survey_sim.py 150s_skybranch_v2 config_150s.yaml False True
-#python $DIR/survey_sim.py 150s_skybranch_v2 config_150s.yaml True True
+#python $DIR/survey_sim.py 150s_skybranch_v3 config_150s.yaml False True
+#python $DIR/survey_sim.py 150s_skybranch_v3 config_150s.yaml True True
 
 # 200s 
-#python $DIR/survey_sim.py 200s_skybranch_v2 config_200s.yaml False True
-python $DIR/survey_sim.py 200s_skybranch_v2 config_200s.yaml True True
+#python $DIR/survey_sim.py 200s_skybranch_v3 config_200s.yaml False True
+#python $DIR/survey_sim.py 200s_skybranch_v3 config_200s.yaml True True
 
 #conda deactivate 

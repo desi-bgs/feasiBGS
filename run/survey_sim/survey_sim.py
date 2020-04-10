@@ -98,6 +98,8 @@ def stats_surveysim(name):
 
     # plot survey completion as a function of time 
     fig, sub = stats.plot() 
+    sub[1].text(0.98, 0.98, name.upper(), ha='right', va='top',
+                transform=sub[1].transAxes, fontsize=20)
     fig.savefig(os.path.join(_dir, 'figs', '%s.completion.png' % name),
             bbox_inches='tight') 
     plt.close() 
