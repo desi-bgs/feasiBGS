@@ -38,6 +38,7 @@ if 'NERSC_HOST' in os.environ:
     dir_srp = '/global/cfs/cdirs/desi/users/chahah/cmx/zcomp_sims/'
     dir_cmx = '/global/cfs/cdirs/desi/users/chahah/bgs_exp_coadd/'
     dir_zcomp = '/global/cfs/cdirs/desi/users/chahah/cmx/zcomp_sims/'
+    dir_coadd = '/global/cfs/cdirs/desi/users/chahah/bgs_exp_coadd/'
 else: 
     dir_srp = os.path.join(UT.dat_dir(), 'srp')
     dir_cmx = '/Users/ChangHoon/data/feasiBGS/cmx/'
@@ -375,7 +376,121 @@ def zsuccess(deltachi2=40.):
     return None 
 
 
+def compare_spectra(): 
+    ''' compare completeness simulations constructed from real sky flux to
+    coadd spectra of similar color and magnitude 
+    '''
+    # read in CMX BGS exposures
+    exps = cmx_exposures()
+    tileid      = exps['tileid']
+    date        = exps['date']
+    expid       = exps['expid']
+    airmass     = exps['airmass']
+    moon_ill    = exps['moon_ill']
+    moon_alt    = exps['moon_alt']
+    moon_sep    = exps['moon_sep']
+    sun_alt     = exps['sun_alt']
+    sun_sep     = exps['sun_sep']
+    transp      = exps['transparency']
+    texp        = exps['exptime'] 
+    n_sample    = len(airmass) 
+    
+    # assume seeing is 1.
+    seeing      = np.ones(n_sample) 
+
+    # read in sky brightness 
+    wave_sky    = exps['wave']
+    sky_sbright = exps['sky'] # 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
+
+    print('%i BGS CMX exposures' % n_sample)
+    
+    # read in noiseless spectra
+    specfile = os.path.join(dir_srp, 'GALeg.g15.sourceSpec.5000.seed0.hdf5')
+    fspec = h5py.File(specfile, 'r') 
+    wave = fspec['wave'][...]
+    flux = fspec['flux'][...] 
+    gmag = UT.flux2mag(fspec['legacy-photo']['flux_g'][...], method='log') 
+    rmag = UT.flux2mag(fspec['legacy-photo']['flux_r'][...], method='log') 
+
+    # pick a galaxy with r~19.
+    r19 = np.arange(len(rmag))[(rmag > 18.9) & (rmag < 19.1)]
+    i_rand = np.random.choice(r19, replace=False) 
+    i_color = gmag[i_rand] - rmag[i_rand]
+    i_rmag = rmag[i_rand]
+    
+    for iexp in np.arange(n_sample):
+        # read in coadds
+        fcoadds = glob.glob(os.path.join(dir_coadd,
+            'coadd-%i-%i-*-%s.fits' % 
+            (tileid[iexp], date[iexp], str(int(expid[iexp])).zfill(8))))
+        
+        for i, fcoadd in enumerate(fcoadds): 
+            coadd = fitsio.read(fcoadd)
+            coadd_wave = fitsio.read(fcoadd, ext=2)
+            coadd_flux = fitsio.read(fcoadd, ext=3) 
+            if i == 0: 
+                coadds = coadd
+                coadds_flux = coadd_flux
+            else:
+                coadds = np.concatenate([coadds, coadd]) 
+                coadds_flux = np.concatenate([coadds_flux, coadd_flux]) 
+
+        # pick similar brightness and color galaxies 
+        coadds_gmag = UT.flux2mag(coadds['FLUX_G'], method='log') 
+        coadds_rmag = UT.flux2mag(coadds['FLUX_R'], method='log') 
+        
+        similar = np.arange(len(coadds))[(
+            (coadds_rmag > i_rmag - 0.05) & 
+            (coadds_rmag < i_rmag + 0.05) & 
+            (coadds_gmag - coadds_rmag > i_color - 0.05) & 
+            (coadds_gmag - coadds_rmag < i_color + 0.05) & 
+            (np.sum(coadds_flux, axis=1) > 0))]
+        assert np.sum(similar) > 0 
+        i_coadd = np.random.choice(similar, replace=False)  
+        print(i_rmag, i_color) 
+        print(coadds_rmag[i_coadd], 
+                coadds_gmag[i_coadd] - coadds_rmag[i_coadd])
+
+        # read completeness sim 
+        fsim = os.path.join(dir_zcomp,
+                'bgs_cmx.%i-%i-%i.GALeg.g15.5000.seed0.fits' % 
+                (tileid[iexp], date[iexp], expid[iexp]))
+        sim = UT.readDESIspec(fsim)
+
+        # --- some Q/A plots --- 
+        fig = plt.figure(figsize=(10,10))
+        # --- plot sky brightness --- 
+        sub = fig.add_subplot(211) 
+        sub.plot(wave_sky, sky_sbright[iexp], c='C1') 
+        sub.text(0.05, 0.95, 
+                'texp=%.f, airmass=%.2f\nmoon ill=%.2f, alt=%.f, sep=%.f\nsun alt=%.f, sep=%.f\nseeing=%.1f, transp=%.1f' % 
+                (texp[iexp], airmass[iexp], moon_ill[iexp], moon_alt[iexp], moon_sep[iexp], 
+                    sun_alt[iexp], sun_sep[iexp], seeing[iexp], transp[iexp]), 
+                ha='left', va='top', transform=sub.transAxes, fontsize=15)
+        sub.legend(loc='upper right', frameon=True, fontsize=20) 
+        sub.set_xlim([3e3, 1e4]) 
+        sub.set_ylim([0., 20.]) 
+
+        # --- compare spectra --- 
+        sub = fig.add_subplot(212)
+        sub.plot(coadd_wave, coadds_flux[i_coadd], c='k', label='cmx spectra') 
+        for band in ['b', 'r', 'z']: 
+            sub.plot(sim['wave_%s' % band], sim['flux_%s' % band][i_rand],
+                    c='C1', label='sim') 
+        sub.plot(wave, flux[i_rand], c='k', ls=':', lw=1)
+        sub.set_xlim([3e3, 1e4]) 
+        sub.set_ylim([0., 15.]) 
+        bkgd = fig.add_subplot(111, frameon=False) 
+        bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+        bkgd.set_xlabel('rest-frame wavelength [Angstrom]', labelpad=10, fontsize=25) 
+        bkgd.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', labelpad=10, fontsize=25) 
+        fig.savefig(fsim.replace('.fits', '.comparison.png'), bbox_inches='tight') 
+    return None 
+
+
+
 if __name__=="__main__": 
     #GALeg_G15_noisySpec5000()
     #run_redrock()
-    zsuccess()
+    #zsuccess()
+    compare_spectra()
