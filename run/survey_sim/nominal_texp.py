@@ -14,6 +14,8 @@ redshift success (L2.X.5 requirement).
 
 Notes: 
 * make sure that z success is consistent for the different exposures.
+* April 8, 2020: updated to v3 surveysim output after exposure factors were
+updated to poly+ridge regression and 7000A fits 
 
 
 '''
@@ -58,12 +60,11 @@ os.environ['DESISURVEY_OUTPUT'] = os.path.join(os.environ['CSCRATCH'],
 
 
 def compile_exposures(): 
-    ''' compile 8 BGS exposures from v2 survey strategy simulations. Generates
+    ''' compile 8 BGS exposures from v3 survey strategy simulations. Generates
     a plot of the observing conditions for all BGS exposures and 
     '''
     # 150s nominal exposure time with twilight 
-    name = '150s_skybranch_v2.twilight.brightsky'
-    tfid = 150.
+    name = '150s_skybranch_v3.twilight.brightsky'
 
     # read in exposures surveysim output  
     f_exp = os.path.join(os.environ['DESISURVEY_OUTPUT'], 
@@ -98,7 +99,7 @@ def compile_exposures():
     exps['sun_sep']     = np.array(sun_sep[i_rand])
     exps['exposure_factor'] = np.array(f_exp[i_rand])
     # write out exposures 
-    exps.write(os.path.join(_dir, 'bgs_exps.8random.fits'))
+    exps.write(os.path.join(_dir, 'bgs_exps.8random.v3.fits'))
 
     # plot random exposures 
     fig = plt.figure(figsize=(20,5))
@@ -129,12 +130,45 @@ def compile_exposures():
     return None 
 
 
-def construct_comp_sims(tnom): 
+def source_spectra():  
+    ''' source spectra for the nominal exposure time calculations 
+    
+    notes
+    -----
+    * 5000 spectra takes too long to run so lets just take the first 1000
+    spectra
+    '''
+    # read in noiseless spectra
+    specfile = os.path.join(UT.dat_dir(), 'survey_sim', 'GALeg.g15.sourceSpec.5000.seed0.hdf5')
+    fspec = h5py.File(specfile, 'r') 
+
+    spec_sub = h5py.File(os.path.join(UT.dat_dir(), 'survey_sim', 
+        'GALeg.g15.sourceSpec.1000.seed0.hdf5'), 'w') 
+    
+    spec_sub.create_dataset('wave', data=fspec['wave'][...]) 
+    spec_sub.create_dataset('absmag_ugriz', data=fspec['absmag_ugriz'][...][:,:1000]) 
+    for k in ['r_mag_apflux', 'r_mag_gama', 'flux', 'zred']: 
+        assert fspec[k][...].shape[0] == 5000
+        spec_sub.create_dataset(k, data=fspec[k][...][:1000]) 
+
+    for k in ['gama-kcorr-z0.0', 'gama-kcorr-z0.1', 'gama-photo', 'gama-spec',
+            'legacy-photo']: 
+        grp = spec_sub.create_group(k) 
+        for kk in fspec[k].keys(): 
+            assert fspec[k][kk][...].shape[0] == 5000
+            grp.create_dataset(kk, data=fspec[k][kk][...][:1000])
+
+    fspec.close() 
+    spec_sub.close() 
+    return None 
+    
+
+def construct_comp_sims(tnom, clobber=False): 
     ''' Construct BGS spectral simulations for 5000 galaxies in the GAMA G15 field using
     observing conditions sampled from surveysim output exposures.
     '''
     # read in 8 sampled bright exposures
-    exps = Table.read(os.path.join(_dir, 'bgs_exps.8random.fits'))
+    exps = Table.read(os.path.join(_dir, 'bgs_exps.8random.v3.fits'))
     airmass     = exps['AIRMASS']
     moon_ill    = exps['moon_ill']
     moon_alt    = exps['moon_alt']
@@ -150,23 +184,23 @@ def construct_comp_sims(tnom):
     Iskies = [] 
     for i in range(n_exps): 
         wave_sky, Isky  = Sky.Isky_regression(airmass[i], moon_ill[i], moon_alt[i], moon_sep[i], sun_alt[i], sun_sep[i]) 
-        Iskies.append(Isky * 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second) 
+        Iskies.append(Isky) # 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second
     Iskies = np.array(Iskies) 
     
     # scale up the exposure times
     texp = exp_factor * tnom 
         
     # read in noiseless spectra
-    specfile = os.path.join(UT.dat_dir(), 'survey_sim', 'GALeg.g15.sourceSpec.5000.seed0.hdf5')
+    specfile = os.path.join(UT.dat_dir(), 'survey_sim', 'GALeg.g15.sourceSpec.1000.seed0.hdf5')
     fspec = h5py.File(specfile, 'r') 
     wave = fspec['wave'][...]
     flux = fspec['flux'][...] 
     
     for iexp in range(len(airmass)):
         _fexp = os.path.join(UT.dat_dir(), 'survey_sim', 
-                'comp_sim.tnom%.f.exp%i.fits' % (tnom, iexp))
+                'comp_sim.tnom%.f.exp%i.v3.fits' % (tnom, iexp))
 
-        if not os.path.isfile(_fexp):
+        if not os.path.isfile(_fexp) or clobber:
             print('--- constructing %s ---' % _fexp) 
             print('\tt_exp=%.f (factor %.fx)' % (texp[iexp],exp_factor[iexp]))
             print('\tairmass=%.2f, seeing=%.2f' % (airmass[iexp], seeing[iexp]))
@@ -215,7 +249,7 @@ def construct_comp_sims(tnom):
             plt.close()
 
         # run redrock 
-        run_redrock(_fexp, clobber=False)
+        run_redrock(_fexp, clobber=clobber)
 
     return None 
 
@@ -242,7 +276,7 @@ def run_redrock(fspec, clobber=False):
         "#SBATCH -q regular", 
         '#SBATCH -J rr_%s' % name,
         '#SBATCH -o _rr_%s.o' % name,
-        "#SBATCH -t 01:00:00", 
+        "#SBATCH -t 00:10:00", 
         "", 
         "export OMP_NUM_THREADS=1", 
         "export OMP_PLACES=threads", 
@@ -263,13 +297,83 @@ def run_redrock(fspec, clobber=False):
     return None 
 
 
+def compare_spectra(): 
+    ''' compare a number of randomly chosen spectra with different tnom 
+    '''
+    # read in 8 sampled bright exposures
+    exps = Table.read(os.path.join(_dir, 'bgs_exps.8random.v3.fits'))
+    airmass     = exps['AIRMASS']
+    moon_ill    = exps['moon_ill']
+    moon_alt    = exps['moon_alt']
+    moon_sep    = exps['moon_sep']
+    sun_alt     = exps['sun_alt']
+    sun_sep     = exps['sun_sep']
+    seeing      = exps['SEEING']
+    transp      = exps['TRANSP']
+    exp_factor  = exps['exposure_factor'] 
+    n_exps      = len(airmass) 
+    
+    # calculate v2 sky brightness 
+    Iskies = [] 
+    for i in range(n_exps): 
+        wave_sky, Isky  = Sky.Isky_regression(airmass[i], moon_ill[i], moon_alt[i], moon_sep[i], sun_alt[i], sun_sep[i]) 
+        Iskies.append(Isky * 1e-17 * u.erg / u.angstrom / u.arcsec**2 / u.cm**2 / u.second) 
+    Iskies = np.array(Iskies) 
+
+    # read in noiseless spectra
+    specfile = os.path.join(UT.dat_dir(), 'survey_sim', 'GALeg.g15.sourceSpec.5000.seed0.hdf5')
+    fspec = h5py.File(specfile, 'r') 
+    wave = fspec['wave'][...]
+    flux = fspec['flux'][...] 
+
+    # pick 5 random galaxies 
+    np.random.seed(0) 
+    i_rand = np.random.choice(np.arange(flux.shape[0]), size=5, replace=False)
+    
+    tnoms = [130., 150., 180., 200.]
+
+    for igal in i_rand: 
+        fig = plt.figure(figsize=(20,24)) 
+        for iexp in range(n_exps): 
+            sub = fig.add_subplot(n_exps, 2, 2*iexp+1) 
+            for _i, tnom in enumerate(tnoms): 
+                spec = UT.readDESIspec(os.path.join(UT.dat_dir(), 'survey_sim',
+                    'comp_sim.tnom%.f.exp%i.v3.fits' % (tnom, iexp)))
+                sub.plot(spec['wave_b'], spec['flux_b'][igal,:], c='C%i' % _i) 
+                sub.plot(spec['wave_r'], spec['flux_r'][igal,:], c='C%i' % _i) 
+                sub.plot(spec['wave_z'], spec['flux_z'][igal,:], c='C%i' % _i) 
+                sub.plot(wave, flux[igal,:], c='k', ls='--') 
+            sub.set_xlim(3600, 9800) 
+            sub.set_ylim(-1., 5)
+
+            # plot sky model surface brightness 
+            sub1 = fig.add_subplot(n_exps, 2, 2*iexp+2) 
+            sub1.plot(wave_sky, Iskies[iexp]*1e17, c='C0') 
+            sub1.set_xlim(3600, 9800) 
+            sub1.set_ylim(-1., 20)
+
+            obs_cond = '\n'.join([
+                r'$f_{\rm exp}=%.1f\times$' % exp_factor[iexp], 
+                'airmass=%.2f, seeing=%.2f' % (airmass[iexp], seeing[iexp]), 
+                'moon ill=%.2f, alt=%.f, sep=%.f' % (moon_ill[iexp], moon_alt[iexp], moon_sep[iexp]),
+                'sun alt=%.f, sep=%.f' % (sun_alt[iexp], sun_sep[iexp])])
+            sub1.text(0.98, 0.98, obs_cond, ha='right', va='top',
+                    transform=sub1.transAxes, fontsize=10)
+        sub.set_xlabel('wavelength', fontsize=15) 
+        sub1.set_xlabel('wavelength', fontsize=15) 
+
+        fig.savefig(os.path.join(UT.dat_dir(), 'survey_sim',
+            'comp_sim.gal%i.spectra.v3.png' % igal), bbox_inches='tight') 
+    return None 
+
+
 def compare_zsuccess(deltachi2=40.): 
     ''' compare the redshift success rates for the different observing
     conditions and nominal exposure times 
     '''
-    tnoms = [130., 150., 180.]
+    tnoms = [110., 130., 150., 180.]
     # read in 8 sampled bright exposures
-    exps = Table.read(os.path.join(_dir, 'bgs_exps.8random.fits'))
+    exps = Table.read(os.path.join(_dir, 'bgs_exps.8random.v3.fits'))
     airmass     = exps['AIRMASS']
     moon_ill    = exps['moon_ill']
     moon_alt    = exps['moon_alt']
@@ -283,7 +387,7 @@ def compare_zsuccess(deltachi2=40.):
 
     # read true redshifts and r magnitude 
     spec = h5py.File(os.path.join(UT.dat_dir(), 'survey_sim', 
-        'GALeg.g15.sourceSpec.5000.seed0.hdf5'), 'r') 
+        'GALeg.g15.sourceSpec.1000.seed0.hdf5'), 'r') 
     ztrue = spec['zred'][...]
     r_mag = UT.flux2mag(spec['legacy-photo']['flux_r'][...], method='log') 
 
@@ -292,12 +396,15 @@ def compare_zsuccess(deltachi2=40.):
         sub = fig.add_subplot(2,4,iexp+1) 
         sub.plot([15., 22.], [1., 1.], c='k', ls='--', lw=2)
     
-        zsucc_bright, zsucc_faint, _plts = [], [], [] 
+        _plts = []
         for i, tnom in enumerate(tnoms): 
             # read in redrock output
-            rr = Table.read(os.path.join(UT.dat_dir(), 'survey_sim',
-                    'zbest.comp_sim.tnom%.f.exp%i.fits' % (tnom, iexp)), 
-                    hdu=1)
+            frr = os.path.join(UT.dat_dir(), 'survey_sim',
+                    'zbest.comp_sim.tnom%.f.exp%i.v3.fits' % (tnom, iexp))
+            if not os.path.isfile(frr): continue 
+            rr = Table.read(frr, hdu=1)
+            if len(rr['Z']) != 1000: continue 
+
             _zsuc   = UT.zsuccess(rr['Z'], ztrue, rr['ZWARN'],
                     deltachi2=rr['DELTACHI2'], min_deltachi2=deltachi2)
             wmean, rate, err_rate = UT.zsuccess_rate(r_mag, _zsuc,
@@ -313,12 +420,15 @@ def compare_zsuccess(deltachi2=40.):
             _zsuc[r_mag < 18.] = True
 
             bright = (r_mag < 19.5) 
-            zsucc_bright.append(100 *
-                    float(np.sum(_zsuc[bright]))/float(np.sum(bright)))
+            zsucc_bright = 100 * float(np.sum(_zsuc[bright]))/float(np.sum(bright))
             faint = (r_mag < 20.) 
-            zsucc_faint.append(100 *
-                    float(np.sum(_zsuc[faint]))/float(np.sum(faint)))
+            zsucc_faint = 100 * float(np.sum(_zsuc[faint]))/float(np.sum(faint))
         
+            sub.text(19.5, 0.85-0.025*i, '%.1f' % zsucc_bright, color='C%i' % i, 
+                    ha='right', va='bottom', fontsize=10)
+            sub.text(20., 0.85-0.025*i, '%.1f' % zsucc_faint, color='C%i' % i, 
+                    ha='right', va='bottom', fontsize=10)
+
         obs_cond = '\n'.join([
             r'$f_{\rm exp}=%.1f\times$' % exp_factor[iexp], 
             'airmass=%.2f, seeing=%.2f' % (airmass[iexp], seeing[iexp]), 
@@ -326,11 +436,6 @@ def compare_zsuccess(deltachi2=40.):
             'sun alt=%.f, sep=%.f' % (sun_alt[iexp], sun_sep[iexp])])
         sub.text(0.02, 0.02, obs_cond, ha='left', va='bottom',
                 transform=sub.transAxes, fontsize=10)
-        for i in range(len(tnoms)): 
-            sub.text(19.5, 0.9-0.025*i, '%.1f' % zsucc_bright[i], color='C%i' % i, 
-                    ha='right', va='bottom', fontsize=10)
-            sub.text(20., 0.9-0.025*i, '%.1f' % zsucc_faint[i], color='C%i' % i, 
-                    ha='right', va='bottom', fontsize=10)
 
         sub.vlines(19.5, 0., 1.2, color='k', linestyle=':', linewidth=1)
         sub.vlines(20.0, 0., 1.2, color='k', linestyle=':', linewidth=1)
@@ -343,7 +448,7 @@ def compare_zsuccess(deltachi2=40.):
 
     sub.legend(_plts, 
             [r'$t_{\rm nom} = %.fs$' % tnom for tnom in tnoms], 
-            fontsize=15, handletextpad=0.1, loc='lower right') 
+            fontsize=12, handletextpad=0., loc='lower right', frameon=True) 
     bkgd = fig.add_subplot(111, frameon=False)
     bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
     bkgd.set_xlabel(r'Legacy DR7 $r$ magnitude', labelpad=10, fontsize=30)
@@ -401,8 +506,59 @@ def _get_obs_param(tileid, mjd):
     return isbgs, airmass, moon_ill, moon_alt, moon_sep, sun_alt, sun_sep
 
 
+def _sky_comparison(): 
+    ''' compare v2 sky surface brightness to older version of sky model because
+    the the redshift success rates I"m getting are far too high.
+    '''
+    dir_dat = '/global/cfs/cdirs/desi/users/chahah/bgs_spec_sims/'
+
+    # read in 8 sampled bright time exposures
+    fexps       = h5py.File(os.path.join(dir_dat, 'exposures_surveysim_fork_150sv0p5.sample.seed0.hdf5'), 'r')
+    airmass     = fexps['airmass'][...]
+    moon_ill    = fexps['moon_ill'][...]
+    moon_alt    = fexps['moon_alt'][...]
+    moon_sep    = fexps['moon_sep'][...]
+    sun_alt     = fexps['sun_alt'][...]
+    sun_sep     = fexps['sun_sep'][...]
+    seeing      = fexps['seeing'][...]
+    transp      = fexps['transp'][...]
+    n_sample    = len(airmass) 
+    
+    fig = plt.figure(figsize=(10,24))
+    for i in range(n_sample): 
+        # read in sky brightness 
+        wave_sky    = fexps['wave'][...]
+        sky_sbright = fexps['sky'][...][i]
+        
+        # calculate v2 sky brightness 
+        _wave_sky, Isky  = Sky.Isky_regression(airmass[i], moon_ill[i], moon_alt[i], moon_sep[i], sun_alt[i], sun_sep[i]) 
+
+        sub = fig.add_subplot(n_sample, 1, i+1)
+        sub.plot(wave_sky, sky_sbright, c='k') 
+        sub.plot(_wave_sky, Isky, c='C1') 
+        sub.set_xlim(3600, 9800) 
+        sub.set_ylim(0., 20)
+            
+        obs_cond = '\n'.join([
+            'airmass=%.2f, seeing=%.2f' % (airmass[i], seeing[i]), 
+            'moon ill=%.2f, alt=%.f, sep=%.f' % (moon_ill[i], moon_alt[i], moon_sep[i]),
+            'sun alt=%.f, sep=%.f' % (sun_alt[i], sun_sep[i])])
+        sub.text(0.98, 0.98, obs_cond, ha='right', va='top',
+                transform=sub.transAxes, fontsize=10)
+    fig.savefig(os.path.join(_dir, 'figs', 'tnom.sky_comparison.png'), bbox_inches='tight') 
+    plt.close()
+    return None 
+
+
 if __name__=="__main__": 
     #compile_exposures()
+    #source_spectra()
     #for tnom in [130., 150., 180., 200.]:
-    #    construct_comp_sims(tnom)
+    #construct_comp_sims(110., clobber=True)
+    #construct_comp_sims(130., clobber=True)
+    #construct_comp_sims(150., clobber=True)
+    #construct_comp_sims(180., clobber=True)
+    #construct_comp_sims(200.)
+    #compare_spectra()
     compare_zsuccess(deltachi2=40.)
+    #_sky_comparison() 
