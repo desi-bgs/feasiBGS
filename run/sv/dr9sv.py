@@ -36,10 +36,12 @@ dir_cfs = '/global/cfs/cdirs/desi/users/chahah/'
 if not os.path.isdir(dir_dat): 
     dir_dat = '/Users/ChangHoon/data/feasiBGS/survey_validation/'
 
+f_svfields = 'BGS_SV_30_3x_superset60_Apr2020v2.fits'
+
 ######################################################################
 # constructing MTLs
 ######################################################################
-def mtl_dr9sv(seed=0): 
+def mtl_dr9sv(seed=0, clobber=False): 
     ''' make MTL using DR9SV imaging 
     '''
     np.random.seed(seed)
@@ -47,7 +49,7 @@ def mtl_dr9sv(seed=0):
     # compile sv tiles 
     #########################################################################
     # read SV tiles 
-    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Apr2020.fits')) # new SV tiles
+    sv = fitsio.read(os.path.join(dir_dat, f_svfields)) # new SV tiles
     print('%i BGS SV tiles' % len(sv['RA']))
     # get SV tiles *outside* of the DR9 SV imaging region 
     in_dr9 = _in_DR9_SVregion(sv['RA'], sv['DEC'])
@@ -56,19 +58,24 @@ def mtl_dr9sv(seed=0):
     # compile targets and match to truth table and SN host 
     #########################################################################
     # read targets from DR9SV and DR8 cut out 
-    ftargets = ['sv1-targets-dr9-hp-X.fits', 'sv1-targets-dr8.sv_cutout.fits']
+    ftargets = [
+            'sv1-targets-dr9-hp-X.spec_truth.sn_host.fits', 
+            'sv1-targets-dr8.sv_cutout.spec_truth.sn_host.fits'
+            ]
     ntargets = len(ftargets)
 
     for i, _ftarget in enumerate(ftargets): 
-        ftarget = os.path.join(dir_dat, 'sv.spec_truth', 
-                _ftarget.replace('.fits', '.spec_truth.sn_host.fits'))
-        if not os.path.isfile(ftarget): 
+        ftarget = os.path.join(dir_dat, 'sv.spec_truth', _ftarget)
+        if not os.path.isfile(ftarget) or clobber: 
             # read target files with truth tables 
             _f = os.path.join(dir_dat, 'sv.spec_truth', 
-                _ftarget.replace('.fits', '.spec_truth.fits'))
-            if not os.path.isfile(_f):  
-                print('... matching %s to truth table' % _ftarget) 
-                _target = fitsio.read(os.path.join(dir_dat, _ftarget)) 
+                _ftarget.replace('.spec_truth.sn_host.fits', '.spec_truth.fits'))
+            __f = os.path.join(dir_dat, 'sv.spec_truth', 
+                _ftarget.replace('.spec_truth.sn_host.fits', '.fits'))
+
+            if not os.path.isfile(_f) or clobber:  
+                print('... matching %s to truth table' % __f) 
+                _target = fitsio.read(os.path.join(dir_dat, __f)) 
                 target = match2spectruth(_target)
                 fitsio.write(_f, target, clobber=True)
             else: 
@@ -367,13 +374,10 @@ def bgs_targetclass(bitmask_bgs):
 
 
 def check_targets_dr9sv(): 
-    ''' combine dr8 target files for SV tiles that are outside of the dr9sv
-    region. 
-    
-    * April 9, 2020: Turns out some of the BGS SV fields are chopped up! 
+    '''
     '''
     # read SV tiles 
-    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Apr2020.fits')) # new SV tiles
+    sv = fitsio.read(os.path.join(dir_dat, f_svfields)) # new SV tiles
     print('%i BGS SV tiles' % len(sv['RA']))
 
     ftargets = ['sv1-targets-dr9-hp-X.fits', 'sv1-targets-dr8.sv_cutout.fits']
@@ -382,6 +386,7 @@ def check_targets_dr9sv():
     # plot confirming coverage
     fig = plt.figure(figsize=(10,7))
     sub = fig.add_subplot(111)
+    targs = [] 
     for i, _ftarget in enumerate(ftargets): 
         ftarget = os.path.join(dir_dat, 'sv.spec_truth', 
                 _ftarget.replace('.fits', '.spec_truth.sn_host.fits'))
@@ -389,6 +394,7 @@ def check_targets_dr9sv():
         targ = fitsio.read(ftarget)
 
         sub.scatter(targ['RA'][::100], targ['DEC'][::100], c='k')  
+        targs.append(targ)
 
     for ra, dec in zip(sv['RA'], sv['DEC']): 
         circ = plt.Circle((ra, dec), 1.6275, fill=False, edgecolor='C1',
@@ -400,6 +406,25 @@ def check_targets_dr9sv():
     sub.set_ylim(-40., 85)
     fig.savefig(os.path.join(dir_dat, 'sv.spec_truth', 
             'check_dr9sv_targets.png'), bbox_inches='tight') 
+
+    # plot confirming coverage tile by tile 
+    fig = plt.figure(figsize=(20,12))
+    bkgd = fig.add_subplot(111, frameon=False)
+    for i, ra, dec in zip(range(len(sv['RA'])), sv['RA'], sv['DEC']): 
+        sub = fig.add_subplot(6,10,i+1)
+        for targ in targs: 
+            sub.scatter(targ['RA'][::100], targ['DEC'][::100], c='k', s=1) 
+        circ = plt.Circle((ra, dec), 1.6275, fill=False, edgecolor='C1',
+                linewidth=3)
+        sub.add_artist(circ)
+        sub.set_xlim(ra - 2.5, ra + 2.5) 
+        sub.set_ylim(dec - 2.5, dec + 2.5) 
+
+    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    bkgd.set_xlabel(r'RA', labelpad=7, fontsize=25)
+    bkgd.set_ylabel(r'DEC', labelpad=7, fontsize=25)
+    fig.savefig(os.path.join(dir_dat, 'sv.spec_truth', 
+            'check_dr9sv_targets.tile_by_tile.png'), bbox_inches='tight') 
     return None 
 
 
@@ -428,7 +453,7 @@ def check_mtl_dr9sv():
         mtls.append(mtl) 
 
     # read SV tiles 
-    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Apr2020.fits')) # new SV tiles
+    sv = fitsio.read(os.path.join(dir_dat, f_svfields))
 
     # plot confirming coverage
     fig = plt.figure(figsize=(10,5))
@@ -446,6 +471,25 @@ def check_mtl_dr9sv():
     sub.set_ylim(-40., 85)
     fig.savefig(os.path.join(dir_dat, 'mtl', 'mtl_dr9sv_check.png'), 
             bbox_inches='tight') 
+
+    # plot confirming coverage tile by tile 
+    fig = plt.figure(figsize=(20,12))
+    bkgd = fig.add_subplot(111, frameon=False)
+    for i, ra, dec in zip(range(len(sv['RA'])), sv['RA'], sv['DEC']): 
+        sub = fig.add_subplot(6,10,i+1)
+        for mtl in mtls: 
+            sub.scatter(mtl['RA'][::100], mtl['DEC'][::100], c='k', s=1) 
+        circ = plt.Circle((ra, dec), 1.6275, fill=False, edgecolor='C1',
+                linewidth=3)
+        sub.add_artist(circ)
+        sub.set_xlim(ra - 2.5, ra + 2.5) 
+        sub.set_ylim(dec - 2.5, dec + 2.5) 
+
+    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    bkgd.set_xlabel(r'RA', labelpad=7, fontsize=25)
+    bkgd.set_ylabel(r'DEC', labelpad=7, fontsize=25)
+    fig.savefig(os.path.join(dir_dat, 'mtl', 'mtl_dr9sv_check.tile_by_tile.png'), 
+            bbox_inches='tight') 
     return None 
 
 
@@ -456,7 +500,7 @@ def _dr8_target_cutouts():
     * April 9, 2020: Turns out some of the BGS SV fields are chopped up! 
     '''
     # read SV tiles 
-    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Apr2020.fits')) # new SV tiles
+    sv = fitsio.read(os.path.join(dir_dat, f_svfields)) # new SV tiles
     print('%i BGS SV tiles' % len(sv['RA']))
     # get SV tiles *outside* of the DR9 SV imaging region 
     in_dr9 = _in_DR9_SVregion(sv['RA'], sv['DEC'])
@@ -482,7 +526,7 @@ def _dr8_target_cutouts():
         fpix = os.path.join(dir_dat, 'sv.spec_truth', 
                 'sv1-targets-dr8-hp-%i.spec_truth.sn_host.fits' % ipix)
         if not os.path.isfile(fpix): 
-            ftarg = fpix.replace('.spec_truth.sn_host.fits', '.fits')
+            ftarg = os.path.join(dir_dat, 'sv1-targets-dr8-hp-%i.fits' % ipix)
             ftrue = fpix.replace('.spec_truth.sn_host.fits', '.spec_truth.fits')
 
             if not os.path.isfile(ftrue): 
@@ -537,7 +581,7 @@ def _dr8_target_cutouts():
 def _dr8_skies_cutouts(): 
     ''' compiled skies file for BGS SV tiles outside of the dr9sv regions 
     '''
-    sv = fitsio.read(os.path.join(dir_dat, 'BGS_SV_30_3x_superset60_Apr2020.fits')) # new SV tiles
+    sv = fitsio.read(os.path.join(dir_dat, f_svfields)) # new SV tiles
     in_dr9 = _in_DR9_SVregion(sv['RA'], sv['DEC'])
     print("%i tiles outside of DR9SV" % (np.sum(~in_dr9)))
 
@@ -595,7 +639,7 @@ def run_fiberassign(sky_supp=False):
         'export DESIMODEL="/global/cscratch1/sd/chahah/feasibgs/desimodel_0.12.0"', 
         '', 
         'odir="%s"' % dir_out, 
-        'tfile="/global/cfs/cdirs/desi/users/chahah/BGS_SV_30_3x_superset60_Apr2020.fits"', 
+        'tfile="%s"' % os.path.join(dir_dat, f_svfields), 
         '', 
         'export OMP_NUM_THREADS=32', 
         '', 
@@ -780,6 +824,68 @@ def check_fba(sky_supp=False):
     ##sub.set_ylim(22., 26) 
     #sub.set_ylim(-30., 80.)#tile['TARGET_DEC'].min(), tile['TARGET_DEC'].max())
     #fig.savefig(os.path.join(dir_dat, 'fba_dr9sv.spec_truth.Apr2020', 'fiberassign_outliers.png'), bbox_inches='tight') 
+
+    # plot targets tile by tile by tile 
+    fig = plt.figure(figsize=(18,14))
+    bkgd = fig.add_subplot(111, frameon=False)
+    
+    for i, f in enumerate(f_fbas): 
+        # read in tile
+        tile_i = fitsio.read(f)
+        print('--------') 
+        print(f)
+
+        bitmask_bgs = tile_i['SV1_BGS_TARGET']
+
+        bgs             = bitmask_bgs.astype(bool)
+        bgs_bright      = (bitmask_bgs & bgs_mask.mask('BGS_BRIGHT')).astype(bool)
+        bgs_faint       = (bitmask_bgs & bgs_mask.mask('BGS_FAINT')).astype(bool)
+        bgs_extfaint    = (bitmask_bgs & bgs_mask.mask('BGS_FAINT_EXT')).astype(bool) # extended faint
+        bgs_fibmag      = (bitmask_bgs & bgs_mask.mask('BGS_FIBMAG')).astype(bool) # fiber magnitude limited
+        bgs_lowq        = (bitmask_bgs & bgs_mask.mask('BGS_LOWQ')).astype(bool) # low quality
+        sky             = (tile_i['OBJTYPE'] == 'SKY')
+        unassigned      = (tile_i['FA_TARGET'] == 0)
+
+        print('%i sky fibers' % np.sum(sky))
+        print('%i unassigned fibers' % np.sum(unassigned)) 
+        
+        ra, dec = tile_i['TARGET_RA'], tile_i['TARGET_DEC']
+        # plot tile 
+        sub = fig.add_subplot(7,9,i+1)
+        sub.scatter(ra, dec, c='k', s=0.1)
+        sub.scatter(ra[bgs_bright], dec[bgs_bright], c='C1', s=0.2, 
+                label='BGS BRIGHT') 
+        sub.scatter(ra[bgs_faint], dec[bgs_faint], c='C2', s=0.2, 
+                label='BGS FAINT') 
+        sub.scatter(ra[bgs_extfaint], dec[bgs_extfaint], c='C4', s=0.2, 
+                label='BGS EXTFAINT') 
+        sub.scatter(ra[bgs_fibmag], dec[bgs_fibmag], c='C5', s=0.2, 
+                label='BGS FIBMAG') 
+        sub.scatter(ra[bgs_lowq], dec[bgs_lowq], c='C6', s=0.2, 
+                label='BGS LOWQ') 
+        sub.scatter(ra[sky], dec[sky], c='C0', s=0.2, label='Sky')
+        sub.scatter(ra[unassigned], dec[unassigned], c='r', s=0.1,
+                label='unassigned') 
+
+        sub.set_xlim(ra.min()-0.2, ra.max()+0.2)
+        sub.set_ylim(dec.min()-0.2, dec.max()+0.2)
+    sub = fig.add_subplot(7,9,i+2)
+    sub.scatter([0], [0], c='k', s=1)
+    sub.scatter([0], [0], c='C1', s=2, label='BGS BRIGHT') 
+    sub.scatter([0], [0], c='C2', s=2, label='BGS FAINT') 
+    sub.scatter([0], [0], c='C3', s=2, label='BGS EXTFAINT') 
+    sub.scatter([0], [0], c='C4', s=2, label='BGS FIBMAG') 
+    sub.scatter([0], [0], c='C5', s=2, label='BGS LOWQ') 
+    sub.scatter([0], [0], c='C0', s=2, label='Sky')
+    sub.scatter([0], [0], c='r', s=1, label='unassigned') 
+    sub.set_xticklabels([])
+    sub.set_yticklabels([])
+    sub.legend(loc='upper left', markerscale=5, handletextpad=0., fontsize=7)
+    bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
+    bkgd.set_xlabel(r'RA', labelpad=7, fontsize=25)
+    bkgd.set_ylabel(r'DEC', labelpad=7, fontsize=25)
+    fig.savefig(os.path.join(dir_fba, 
+        'check_fba.tile_by_tile.png'), bbox_inches='tight') 
     return None 
 
 
@@ -910,12 +1016,12 @@ if __name__=="__main__":
     # construct MTL
     #_dr8_target_cutouts()
     #check_targets_dr9sv() 
-    mtl_dr9sv(seed=0)
-    check_mtl_dr9sv()
+    #mtl_dr9sv(seed=0)#, clobber=True)
+    #check_mtl_dr9sv()
 
-    _dr8_skies_cutouts()
-    run_fiberassign()
-    run_fiberassign(sky_supp=True)
-    #check_fba(sky_supp=False)
+    #_dr8_skies_cutouts()
+    #run_fiberassign()
+    #run_fiberassign(sky_supp=True)
+    check_fba(sky_supp=False)
     #check_fba(sky_supp=True)
     #low_BGS_target(sky_supp=False)
