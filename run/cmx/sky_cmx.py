@@ -1,7 +1,10 @@
 #!/bin/python
 '''
 
-script to validate the BGS sky model
+
+compile CMX sky data  by correcting for throughput and 
+converting to surface brightness 
+
 
 '''
 import os 
@@ -10,10 +13,16 @@ import glob
 import fitsio
 import numpy as np 
 
-from desispec.io import read_frame
+import desisim.simexp
+import specsim.instrument
+from specsim.simulator import Simulator
+
+from desispec.io import read_sky
+from desimodel.io import load_throughput
 from desitarget.cmx import cmx_targetmask
 # -- astorpy -- 
 import astropy.units as u
+import astropy.constants as const
 from astropy.time import Time
 from astropy.coordinates import EarthLocation, SkyCoord, AltAz, get_sun, get_moon
 
@@ -25,6 +34,21 @@ kpno = EarthLocation.of_site('kitt peak')
 
 dir_redux = "/global/cfs/cdirs/desi/spectro/redux/daily" 
 dir_coadd = '/global/cfs/cdirs/desi/users/chahah/bgs_exp_coadd/'
+
+wave = np.arange(3523., 9923., 0.8) 
+config = desisim.simexp._specsim_config_for_wave(wave, dwave_out=0.8, specsim_config_file='desi')
+
+instrument = specsim.instrument.initialize(config, True)
+
+plate_scale = config.load_table(config.instrument.plate_scale, ['radius', 'radial_scale', 'azimuthal_scale'], interpolate=False)
+radial_fiber_size = (0.5 * instrument.fiber_diameter /plate_scale['radial_scale'])
+azimuthal_fiber_size = (0.5 * instrument.fiber_diameter / plate_scale['azimuthal_scale'])
+
+mean_fiber_area = np.mean(np.pi*radial_fiber_size * azimuthal_fiber_size)
+print('mean fiber_area = %f' % mean_fiber_area.value) 
+
+desi = Simulator(config, num_fibers=1)
+sbunit = desi.atmosphere.surface_brightness.unit
 
 
 def compile_skies(): 
@@ -51,52 +75,45 @@ def compile_skies():
 
     sky_data = {} 
     for k in ['airmass', 'moon_ill', 'moon_alt', 'moon_sep', 'sun_alt',
-            'sun_sep', 'flux_b', 'flux_r', 'flux_z', 'sky_b', 'sky_r', 'sky_z',
+            'sun_sep', 'sky_sb_b', 'sky_sb_r', 'sky_sb_z',
             'tileid', 'date', 'expid', 'spectrograph', 'mjd', 'transparency',
             'transp_min', 'transp_max', 'exptime']:  
         sky_data[k] = [] 
 
     for i, _cmx in enumerate(cmx): 
         _tileid, _date, _exp, _spec = _cmx 
+
         print('--- %i, %i, %i, %i ---' % (_tileid, _date, _exp, _spec))
+
         f_coadd = os.path.join(dir_coadd, 'coadd-%i-%i-%i-%s.fits' %
                 (_tileid,_date, _spec, str(_exp).zfill(8)))
-        dir_exp = os.path.join(dir_redux, 'exposures', str(_date), str(_exp).zfill(8)) 
 
-        f_cframe = lambda band: os.path.join(dir_exp, 
-                'cframe-%s%i-%s.fits' % (band, _spec, str(_exp).zfill(8)))
-        f_frame = lambda band: os.path.join(dir_exp, 
-                'frame-%s%i-%s.fits' % (band, _spec, str(_exp).zfill(8)))
+        dir_exp = os.path.join(dir_redux, 'exposures', str(_date), str(_exp).zfill(8)) 
         f_sky = lambda band: os.path.join(dir_exp, 
                 'sky-%s%i-%s.fits' % (band, _spec, str(_exp).zfill(8)))
-        f_calib = lambda band: os.path.join(dir_exp,
-                'fluxcalib-%s%i-%s.fits' % (band, _spec, str(_exp).zfill(8)))
 
         if not os.path.isfile(f_coadd): 
             print('... no coadd: %s' % os.path.basename(f_coadd))
             continue 
+    
+        # read coadd and sky data. coadd data is used to determine good sky
+        # fibers
         coadd       = fitsio.read(f_coadd)
-        cframe_b    = fitsio.read(f_cframe('b'))
-        cframe_r    = fitsio.read(f_cframe('r'))
-        cframe_z    = fitsio.read(f_cframe('z'))
-        sky_b       = fitsio.read(f_sky('b'))
-        sky_r       = fitsio.read(f_sky('r'))
-        sky_z       = fitsio.read(f_sky('z'))
-        calib_b     = fitsio.read(f_calib('b'))
-        calib_r     = fitsio.read(f_calib('r'))
-        calib_z     = fitsio.read(f_calib('z'))
+
+        sky_b       = read_sky(f_sky('b'))
+        sky_r       = read_sky(f_sky('r'))
+        sky_z       = read_sky(f_sky('z'))
+
+        exptime     = sky_b.header['EXPTIME']
 
         if i == 0: 
-            wave_b = fitsio.read(f_cframe('b'), ext=3)
-            wave_r = fitsio.read(f_cframe('r'), ext=3)
-            wave_z = fitsio.read(f_cframe('z'), ext=3)
+            wave_b = sky_b.wave 
+            wave_r = sky_r.wave 
+            wave_z = sky_z.wave 
 
         is_good = (coadd['FIBERSTATUS'] == 0)
         is_sky  = (coadd['CMX_TARGET'] & cmx_targetmask.cmx_mask.mask('SKY')) != 0 
         good_sky = is_good & is_sky
-
-        frame_b = read_frame(f_frame('b'))
-        exptime = frame_b.meta['EXPTIME'] 
 
         # match to GFA obs condition using NIGHT and EXPID
         m_gfa = ((gfa['NIGHT'] == int(_date)) & (gfa['EXPID'] == int(_exp)))
@@ -138,15 +155,13 @@ def compile_skies():
         sky_data['transp_min'].append(np.repeat(transp_min, len(_airmass)))
         sky_data['transp_max'].append(np.repeat(transp_max, len(_airmass)))
         sky_data['exptime'].append(np.repeat(exptime, len(_airmass)))
-        # store fluxes 
-        sky_data['flux_b'].append(cframe_b[good_sky,:]) 
-        sky_data['flux_r'].append(cframe_r[good_sky,:]) 
-        sky_data['flux_z'].append(cframe_z[good_sky,:]) 
+    
+        # sky surface brightness
+        sky_data['sky_sb_b'].append(convert_sky_rate(sky_b, good_sky, exptime, 'b'))
+        sky_data['sky_sb_r'].append(convert_sky_rate(sky_r, good_sky, exptime, 'r')) 
+        sky_data['sky_sb_z'].append(convert_sky_rate(sky_z, good_sky, exptime, 'z'))
         
-        sky_data['sky_b'].append(sky_b[good_sky,:] * (calib_b[good_sky,:] > 0) / (calib_b[good_sky,:] + (calib_b[good_sky,:] == 0))) 
-        sky_data['sky_r'].append(sky_r[good_sky,:] * (calib_r[good_sky,:] > 0) / (calib_r[good_sky,:] + (calib_r[good_sky,:] == 0))) 
-        sky_data['sky_z'].append(sky_z[good_sky,:] * (calib_z[good_sky,:] > 0) / (calib_z[good_sky,:] + (calib_z[good_sky,:] == 0))) 
-
+        # observing conditions 
         sky_data['airmass'].append(_airmass)
         sky_data['moon_ill'].append(np.repeat(_moon_ill, len(_airmass))) 
         sky_data['moon_alt'].append(np.repeat(_moon_alt, len(_airmass))) 
@@ -154,8 +169,7 @@ def compile_skies():
         sky_data['sun_alt'].append(np.repeat(_sun_alt, len(_airmass))) 
         sky_data['sun_sep'].append(_sun_sep) 
 
-    f = h5py.File(os.path.join(dir_coadd, 
-        'sky_fibers.coadd_gfa.minisv2_sv0.hdf5'), 'w') 
+    f = h5py.File(os.path.join(dir_coadd, 'sky_fibers.cmx.v1.hdf5'), 'w') 
     for k in sky_data.keys():
         f.create_dataset(k, data=np.concatenate(sky_data[k], axis=0)) 
     f.create_dataset('wave_b', data=wave_b)
@@ -163,6 +177,23 @@ def compile_skies():
     f.create_dataset('wave_z', data=wave_z)
     f.close() 
     return None
+
+
+def convert_sky_rate(inc, good_sky, _exptime, band):
+    # The incident rate is in phot per 0.8A wavelength bin.
+    # Convert to surface brightness units (sbunit) suitable as input to specsim.
+    _wave = inc.wave * u.Angstrom
+    dwave = np.gradient(_wave)
+    
+    ephot = (const.h * const.c / _wave / u.ph).to(u.erg / u.ph)
+    etendue = (instrument.effective_area * mean_fiber_area).to(u.cm ** 2 * u.arcsec ** 2)
+    
+    # Calculate surface brightness on the 0.8A reduction grid.
+    surfbrightness = ((inc.flux[good_sky,:] * u.ph / (_exptime * u.s)) / dwave * ephot / etendue).to(sbunit)
+    
+    # correct for throughput 
+    through = load_throughput(band).hardware_throughput(inc.wave)
+    return surfbrightness / through 
 
 
 def _get_obs_param(ra, dec, mjd):
