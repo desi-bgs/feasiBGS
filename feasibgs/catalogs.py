@@ -10,7 +10,6 @@ import h5py
 from astropy.io import fits 
 from astropy.table import Table as aTable
 from astropy.cosmology import FlatLambdaCDM
-from pydl.pydlutils.spheregroup import spherematch
 # -- local --
 from . import util as UT
 
@@ -358,6 +357,7 @@ class GamaLegacy(Catalog):
         but you can also manually download the sweep files and specify the dir
         where the sweep files are located in. 
         '''
+        from pydl.pydlutils.spheregroup import spherematch
         if dr_legacy == 5: 
             sweep_n_dir = '/global/project/projectdirs/cosmo/data/legacysurvey/dr5/sweep/5.0/'
             sweep_s_dir = '/global/project/projectdirs/cosmo/data/legacysurvey/dr5/sweep/5.0/'

@@ -529,7 +529,7 @@ class fakeDESIspec(object):
                 print('the following galaxies have negative num_source_electrons')
                 print(np.arange(tbl.shape[1])[neg])
                 table['num_source_electrons'][:,neg] = 0. #np.zeros(tbl.shape[0])
-        
+
         # put in random noise 
         random_state = np.random.RandomState(seed)
         if not nonoise: 
@@ -542,12 +542,15 @@ class fakeDESIspec(object):
         for camera in sim.instrument.cameras:
             R = Resolution(camera.get_output_resolution_matrix())
             resolution[camera.name] = np.tile(R.to_fits_array(), [nspec, 1, 1])
-    
+
+        # imperfect sky subtraction    
         skyscale = skyerr * random_state.normal(size=sim.num_fibers)
 
         for table in sim.camera_output :
             wave = table['wavelength'].astype(float)
             flux = (table['observed_flux']+table['random_noise_electrons']*table['flux_calibration']).T.astype(float)
+
+            # imperfect sky subtraction 
             if np.any(skyscale):
                 flux += ((table['num_sky_electrons']*skyscale)*table['flux_calibration']).T.astype(float)
             
@@ -703,54 +706,15 @@ class SimulatorHacked(Simulator):
         nwlen = len(wavelength)
 
         # Position each fiber.
-        if focal_positions is not None:
-            if len(focal_positions) != self.num_fibers:
-                raise ValueError(
-                    'Expected {0:d} focal_positions.'.format(self.num_fibers))
-            try:
-                focal_positions = focal_positions.to(u.mm)
-            except (AttributeError, u.UnitConversionError):
-                raise ValueError('Invalid units for focal_positions.')
-            self.focal_x, self.focal_y = focal_positions.T
-            on_sky = False
-            if self.verbose:
-                print('Fibers positioned with focal_positions array.')
-        elif sky_positions is not None:
-            if len(sky_positions) != self.num_fibers:
-                raise ValueError(
-                    'Expected {0:d} sky_positions.'.format(self.num_fibers))
-            self.focal_x, self.focal_y = self.observation.locate_on_focal_plane(
-                sky_positions, self.instrument)
-            on_sky = True
-            if self.verbose:
-                print('Fibers positioned with sky_positions array.')
-        elif self.source.focal_xy is not None:
-            self.focal_x, self.focal_y = np.tile(
-                self.source.focal_xy, [self.num_fibers, 1]).T
-            on_sky = False
-            if self.verbose:
-                print('All fibers positioned at config (x,y).')
-        elif self.source.sky_position is not None:
-            focal_x, focal_y = self.observation.locate_on_focal_plane(
-                self.source.sky_position, self.instrument)
-            self.focal_x = np.tile(focal_x, [self.num_fibers])
-            self.focal_y = np.tile(focal_y, [self.num_fibers])
-            on_sky = True
-            if self.verbose:
-                print('All fibers positioned at config (ra,dec).')
-        else:
-            raise RuntimeError('No fiber positioning info available.')
-
-        if on_sky:
-            # Set the observing airmass in the atmosphere model using
-            # Eqn.3 of Krisciunas & Schaefer 1991.
-            obs_zenith = 90 * u.deg - self.observation.boresight_altaz.alt
-            obs_airmass = (1 - 0.96 * np.sin(obs_zenith) ** 2) ** -0.5
-            self.atmosphere.airmass = obs_airmass
-            if self.verbose:
-                print('Calculated alt={0:.1f} az={1:.1f} airmass={2:.3f}'
-                      .format(self.observation.boresight_altaz.alt,
-                              self.observation.boresight_altaz.az, obs_airmass))
+        assert focal_positions is not None
+        if len(focal_positions) != self.num_fibers:
+            raise ValueError(
+                'Expected {0:d} focal_positions.'.format(self.num_fibers))
+        try:
+            focal_positions = focal_positions.to(u.mm)
+        except (AttributeError, u.UnitConversionError):
+            raise ValueError('Invalid units for focal_positions.')
+        self.focal_x, self.focal_y = focal_positions.T
 
         # Check that all sources are within the field of view.
         focal_r = np.sqrt(self.focal_x ** 2 + self.focal_y ** 2)
@@ -769,13 +733,6 @@ class SimulatorHacked(Simulator):
         self.fiber_area = np.pi * radial_fiber_size * azimuthal_fiber_size
 
         # Get the source fluxes incident on the atmosphere.
-        if source_fluxes is None:
-            source_fluxes = self.source.flux_out.to(
-                source_flux.unit)[np.newaxis, :]
-        elif source_fluxes.shape != (self.num_fibers, nwlen):
-            print('source_flux shape', source_fluxes.shape)
-            print('(%i, %i)' % (self.num_fibers, nwlen))
-            raise ValueError('Invalid shape for source_fluxes.')
         try:
             source_flux[:] = source_fluxes.to(source_flux.unit).T
         except AttributeError:
@@ -795,7 +752,6 @@ class SimulatorHacked(Simulator):
             print(source_flux.shape)
             print(sky_surface_brightness.shape)
             raise ValueError
-        #assert source_flux.shape[0] == sky_surface_brightness.shape[0] 
 
         # Calculate the sky flux entering a fiber from input 
         # sky surface_brightness  
@@ -860,10 +816,6 @@ class SimulatorHacked(Simulator):
             # Copy the read noise in units of electrons.
             read_noise_electrons[:] = (
                 camera.read_noise_per_bin[:, np.newaxis].to(u.electron).value)
-
-        if not self.camera_output:
-            # All done since no camera output was requested.
-            return
 
         # Loop over cameras to calculate their individual responses
         # with resolution applied and downsampling to output pixels.
