@@ -39,6 +39,168 @@ mpl.rcParams['legend.frameon'] = False
 dir = '/global/cscratch1/sd/chahah/feasibgs/cmx/survey_sims/'
 
 
+def validate_spectral_pipeline(): 
+    ''' validate the spectral pipeline by 
+    1. constructing spectra from fiber acceptance fraction scaled smoothed CMX
+       spectra with CMX sky surface brightness 
+    2. compare noise levels to CMX observations 
+    '''
+    from scipy.signal import medfilt
+    import desisim.simexp
+    import specsim.instrument
+    from desitarget.cmx import cmx_targetmask
+
+    np.random.seed(0) 
+
+    tileid = 70502
+    date = 20200225
+    expid = 52113
+    ispec = 0
+    
+    dir_gfa = '/global/cfs/cdirs/desi/users/ameisner/GFA/conditions'
+    dir_redux = "/global/cfs/cdirs/desi/spectro/redux/daily"
+    dir_coadd = '/global/cfs/cdirs/desi/users/chahah/bgs_exp_coadd/'
+    
+    # get sky surface brightness by correcting for the throughput on the CMX
+    # sky data 
+    f_sky = lambda band: os.path.join(dir_redux, 
+            'exposures', str(date), str(expid).zfill(8),
+            'sky-%s%i-%s.fits' % (band, ispec, str(expid).zfill(8)))
+    sky_b = desispec.io.read_sky(f_sky('b')) 
+    sky_r = desispec.io.read_sky(f_sky('r')) 
+    sky_z = desispec.io.read_sky(f_sky('z')) 
+
+    wave, sky_electrons = bs_coadd(
+            [sky_b.wave, sky_r.wave, sky_z.wave], 
+            [sky_b.flux, sky_r.flux, sky_z.flux]) 
+
+    # exposure time
+    _frame = desispec.io.read_frame(f_sky('b').replace('sky-', 'frame-'))
+    exptime = _frame.meta['EXPTIME']
+    print('exp.time = %.fs' % exptime) 
+
+    # get which are good fibers from coadd file
+    f_coadd = os.path.join(dir_coadd, 'coadd-%i-%i-%i-%s.fits' % (tileid, date, ispec, str(expid).zfill(8)))
+    coadd = fitsio.read(f_coadd)
+
+    is_good = (coadd['FIBERSTATUS'] == 0)
+    is_sky  = (coadd['CMX_TARGET'] & cmx_targetmask.cmx_mask.mask('SKY')) != 0
+    good_sky = is_good & is_sky
+    
+    # get throughput for the cameras 
+    config = desisim.simexp._specsim_config_for_wave(wave, dwave_out=0.8, specsim_config_file='desi')
+    instrument = specsim.instrument.initialize(config, True)
+    throughput = np.amax([instrument.cameras[0].throughput, instrument.cameras[1].throughput, instrument.cameras[2].throughput], axis=0)
+
+    desi_fiber_area = 1.862089 # fiber area 
+
+    # calculate sky brightness
+    sky_bright = np.median(sky_electrons[good_sky,:], axis=0) / throughput / instrument.photons_per_bin / exptime * 1e17
+
+    # get fiber acceptance fraction and airmass  
+    gfa = fitsio.read(os.path.join(dir_gfa,
+        'offline_all_guide_ccds_thru_20200315.fits')) 
+    isexp = (gfa['EXPID'] == expid)
+    fibloss = gfa['TRANSPARENCY'][isexp] * gfa['FIBER_FRACFLUX'][isexp]
+    fibloss = np.median(fibloss[~np.isnan(fibloss)])
+    print('fiber loss = (TRANSP) x (FFRAC) = %f' % fibloss) 
+    airmass = np.median(gfa['AIRMASS'][isexp]) 
+    print('airmass = %.2f' % airmass) 
+
+    # select BGS spectra
+    coadd_wave = fitsio.read(f_coadd, ext=2)
+    coadd_flux = fitsio.read(f_coadd, ext=3)
+    coadd_ivar = fitsio.read(f_coadd, ext=4)
+
+    is_BGS  = (coadd['CMX_TARGET'] & cmx_targetmask.cmx_mask.mask('SV0_BGS')) != 0
+    gal_cut = is_BGS & (np.sum(coadd_flux, axis=1) != 0)
+    igals = np.random.choice(np.arange(len(gal_cut))[gal_cut], size=5,
+            replace=False)
+
+    igals = np.arange(len(coadd['FIBER']))[coadd['FIBER'] == 143]
+    
+    for igal in igals: 
+        # source flux is the smoothed CMX spetra
+        source_flux = np.clip(np.interp(wave, coadd_wave,
+            medfilt(coadd_flux[igal,:], 101)), 0, None) 
+
+        # simulate the exposures using the spectral simulation pipeline  
+        fdesi = FM.fakeDESIspec()
+        bgs = fdesi.simExposure(
+                wave, 
+                np.atleast_2d(source_flux * fibloss), # scale by fiber acceptance fraction 
+                exptime=exptime, 
+                airmass=airmass, 
+                Isky=[wave, sky_bright], 
+                dwave_out=0.8, 
+                filename=None) 
+    
+        # barebone specsim pipeline for comparison 
+        from specsim.simulator import Simulator
+        desi = Simulator(config, num_fibers=1)
+        desi.observation.exposure_time = exptime * u.s
+        desi.atmosphere._surface_brightness_dict[desi.atmosphere.condition] = \
+                np.interp(desi.atmosphere._wavelength, wave, sky_bright) * \
+                desi.atmosphere.surface_brightness.unit
+        desi.atmosphere._extinct_emission = False
+        desi.atmosphere._moon = None 
+        desi.atmosphere.airmass = airmass # high airmass
+
+        desi.simulate(source_fluxes=np.atleast_2d(source_flux) * 1e-17 * desi.simulated['source_flux'].unit, 
+            fiber_acceptance_fraction=np.tile(fibloss,
+                np.atleast_2d(source_flux).shape))
+
+        random_state = np.random.RandomState(0)
+        desi.generate_random_noise(random_state, use_poisson=True)
+
+        scale=1e17
+
+        waves, fluxes, ivars, ivars_electron = [], [], [], [] 
+        for table in desi.camera_output:
+            _wave = table['wavelength'].astype(float)
+            _flux = (table['observed_flux']+table['random_noise_electrons']*table['flux_calibration']).T.astype(float)
+            _flux = _flux * scale
+
+            _ivar = table['flux_inverse_variance'].T.astype(float)
+            _ivar = _ivar / scale**2
+
+            waves.append(_wave)
+            fluxes.append(_flux[0])
+            ivars.append(_ivar[0])
+
+        fig = plt.figure(figsize=(15,10))
+        sub = fig.add_subplot(211)
+        sub.plot(coadd_wave, coadd_flux[igal,:] * fibloss, c='C0', lw=1,
+                label='(coadd flux) x (fib.loss)')
+        for i_b, band in enumerate(['b', 'r', 'z']): 
+            lbl = None
+            if band == 'b': lbl = 'spectral sim.'
+            sub.plot(bgs.wave[band], bgs.flux[band][0], c='C1', lw=1,
+                    label=lbl)
+            sub.plot(waves[i_b], fluxes[i_b] *fibloss, c='C2', lw=1, ls=':')
+        sub.plot(wave, source_flux * fibloss, c='k', lw=1, ls='--', 
+                label='source flux')
+        sub.legend(loc='upper right', frameon=True, fontsize=20)
+        sub.set_xlim(3600, 9800)
+        sub.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', fontsize=25) 
+        sub.set_ylim(-1., 5.)
+        
+        sub = fig.add_subplot(212)
+        sub.plot(coadd_wave, coadd_ivar[igal,:] * fibloss**-2, c='C0', lw=1,
+                label=r'(coadd ivar) / (fib.loss$)^2$')
+        for i_b, band in enumerate(['b', 'r', 'z']): 
+            sub.plot(bgs.wave[band], bgs.ivar[band][0], c='C1', lw=1)
+            sub.plot(waves[i_b], ivars[i_b] * fibloss**-2, c='C2', lw=1, ls=':')
+        sub.legend(loc='upper right', frameon=True, fontsize=20)
+        sub.set_xlabel('wavelength [$A$]', fontsize=20)
+        sub.set_xlim(3600, 9800)
+        sub.set_ylabel('ivar', fontsize=25) 
+        sub.set_ylim(0., None)
+        fig.savefig(os.path.join(dir, 'valid.spectral_pipeline.exp%i.%i.png' % (expid, igal)),
+            bbox_inches='tight') 
+    return None 
+
+
 def tnom(dchi2=40.):
     ''' Calculate z-success rate for nominal dark time exposure with different
     tnom exposure times. For each tnom, use the z-success rate to determine
@@ -142,7 +304,6 @@ def tnom(dchi2=40.):
             bbox_inches='tight') 
     return None 
     
-
 
 def texp_factor_wavelength(): 
     ''' Q: Should the exposure time correction factor be determined by sky
@@ -453,4 +614,5 @@ def bs_coadd(waves, sbrights):
 
 if __name__=="__main__": 
     #texp_factor_wavelength()
-    tnom()
+    #tnom()
+    validate_spectral_pipeline()
