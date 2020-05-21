@@ -11,6 +11,7 @@ updates
 '''
 import os 
 import h5py 
+import fitsio
 import numpy as np 
 import astropy.units as u 
 # -- feasibgs --
@@ -38,6 +39,111 @@ mpl.rcParams['legend.frameon'] = False
 dir = '/global/cscratch1/sd/chahah/feasibgs/cmx/survey_sims/'
 
 
+def tnom(dchi2=40.):
+    ''' Calculate z-success rate for nominal dark time exposure with different
+    tnom exposure times. For each tnom, use the z-success rate to determine
+    r_lim, the r magnitude that gets 95% completeness. 
+    '''
+    np.random.seed(0) 
+    
+    # nominal exposure times
+    texps = [100 + 10 * i for i in range(11)]
+   
+    # true redshift and r-magnitude 
+    _, _, meta = source_spectra() 
+    ztrue = meta['zred']  # true redshifts 
+    r_mag = meta['r_mag'] 
+    r_fib = meta['r_mag_apflux']
+
+    # generate spectra for nominal dark sky exposures and run redrock 
+    frr_noms = [] 
+    for texp in texps: 
+        spec_nom = nomdark_spectra(texp) 
+        # run redrock on nominal dark sky exposure spectra 
+        frr_nom = run_redrock(
+                os.path.join(dir, 'exp_spectra.nominal_dark.%.fs.fits' % texp), 
+                overwrite=False)
+        frr_noms.append(frr_nom) 
+
+    raise ValueError
+    rmags = np.linspace(17, 20, 31)
+
+    fig = plt.figure(figsize=(6,6))
+    sub = fig.add_subplot(111)
+    sub.plot([16, 21], [1., 1.], c='k', ls=':') 
+    
+    # for each tnom, calculate rlim from the z-sucess rates 
+    for i, texp, frr_nom in zip(range(len(texps)), texps, frr_noms): 
+        # read redrock output and calculate z-success 
+        rr_nom = fitsio.read(frr_nom) 
+        zs_nom = UT.zsuccess(rr_nom['Z'], ztrue, rr_nom['ZWARN'],
+                deltachi2=rr_nom['DELTACHI2'], min_deltachi2=dchi2)
+    
+        # ignore redshift failtures for bright r < 18.2 galaxies, since this is
+        # likely an issue with the emission line 
+        zs_nom[r_mag < 18.2] = True
+
+        # determine rlim 
+        zs_rmag = [] 
+        for _r in rmags: 
+            brighter = (r_mag < _r) 
+            zs_rmag.append(np.sum(zs_nom[brighter]) / np.sum(brighter))
+
+        rlim = np.min(rmags[(np.array(zs_rmag) < 0.95) & (rmags > 18)])
+
+        wmean, rate, err_rate = UT.zsuccess_rate(r_mag, zs_nom, range=[15,22], 
+                nbins=28, bin_min=10) 
+        sub.errorbar(wmean, rate, err_rate, fmt='.C%i' % i, 
+                elinewidth=2, markersize=10, 
+                label=r'%.fs; $r_{\rm lim}=%.1f$' % (texp, rlim))
+
+        print('--- tnom = %.fs ---' % texp) 
+        print('  total z-success = %.2f' % (np.sum(zs_nom)/float(len(zs_nom))))
+        print('  95% complete rlim = %.1f' % rlim) 
+    
+    sub.text(19., 1.05, r'$\Delta \chi^2 = %.f$' % dchi2, fontsize=20)
+    sub.legend(loc='lower left', ncol=3, handletextpad=0.1, fontsize=15)
+    sub.set_xlabel(r'Legacy $r$ magnitude', fontsize=20)
+    sub.set_xlim([16., 20.5]) 
+    sub.set_ylabel(r'redrock $z$ success rate', fontsize=20)
+    sub.set_ylim([0.6, 1.1])
+    sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
+    fig.savefig(os.path.join(dir, 'zsuccess.tnom.png'),
+            bbox_inches='tight') 
+
+    fig = plt.figure(figsize=(6,6))
+    sub = fig.add_subplot(111)
+    sub.plot([16, 21], [1., 1.], c='k', ls=':') 
+    
+    # nominal exposure z-success rate as a function of fiber magnitude 
+    for i, texp, frr_nom in zip(range(len(texps)), texps, frr_noms): 
+        # read redrock output and calculate z-success 
+        rr_nom = fitsio.read(frr_nom) 
+        zs_nom = UT.zsuccess(rr_nom['Z'], ztrue, rr_nom['ZWARN'],
+                deltachi2=rr_nom['DELTACHI2'], min_deltachi2=dchi2)
+    
+        # ignore redshift failtures for bright r < 18.2 galaxies, since this is
+        # likely an issue with the emission line 
+        zs_nom[r_mag < 18.2] = True
+
+        wmean, rate, err_rate = UT.zsuccess_rate(r_fib, zs_nom, range=[15,22], 
+                nbins=28, bin_min=10) 
+        sub.errorbar(wmean, rate, err_rate, fmt='.C%i' % i, 
+                elinewidth=2, markersize=10, label=r'%.fs' % texp)
+
+    sub.text(19., 1.05, r'$\Delta \chi^2 = %.f$' % dchi2, fontsize=20)
+    sub.legend(loc='lower left', ncol=3, handletextpad=0.1, fontsize=15)
+    sub.set_xlabel(r'Legacy $r$ fiber magnitude', fontsize=20)
+    sub.set_xlim([16., 20.5]) 
+    sub.set_ylabel(r'redrock $z$ success rate', fontsize=20)
+    sub.set_ylim([0.6, 1.1])
+    sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
+    fig.savefig(os.path.join(dir, 'zsuccess.tnom.r_fib.png'),
+            bbox_inches='tight') 
+    return None 
+    
+
+
 def texp_factor_wavelength(): 
     ''' Q: Should the exposure time correction factor be determined by sky
     surface brightness ratio at 5000A or 6500A? 
@@ -57,8 +163,9 @@ def texp_factor_wavelength():
     Whichever redshift success rate is coser to the nominal dark exposure z
     success rate will determine the exposure factor
     '''
+    np.random.seed(0) 
     # generate spectra for nominal dark sky exposure as reference
-    spec_nom = nomdark_spectra() 
+    spec_nom = nomdark_spectra(150) 
     # run redrock on nominal dark sky exposure spectra 
     frr_nom = run_redrock(os.path.join(dir, 'exp_spectra.nominal_dark.150s.fits'), overwrite=False)
     
@@ -69,7 +176,6 @@ def texp_factor_wavelength():
     bright = (skies['sky_ratio_b'] > 3) 
     expids = np.random.choice(np.unique(skies['expid'][bright]), size=5,
             replace=False) 
-    print('%i CMX exposures')
 
     # generate exposure spectra for select CMX sky surface brightnesses with
     # exposure times scaled by (1) sky ratio at 5000A (2) sky ratio at 6500A
@@ -114,18 +220,18 @@ def texp_factor_wavelength():
         sub = fig.add_subplot(111)
         sub.plot(Isky[0], Isky[1], c='C0', lw=0.5) 
         for band in ['b', 'r', 'z']: 
-            sub.scatter(spec_nom.wave[band], spec_nom.flux[band][0,:], c='k', s=1) 
+            sub.plot(spec_nom.wave[band], spec_nom.flux[band][0,:], c='k', lw=1) 
         for band in ['b', 'r', 'z']: 
-            sub.scatter(spec_b.wave[band], spec_b.flux[band][0,:], c='C0', s=1) 
+            sub.plot(spec_b.wave[band], spec_b.flux[band][0,:], c='C0', lw=1) 
         for band in ['b', 'r', 'z']: 
-            sub.scatter(spec_r.wave[band], spec_r.flux[band][0,:], c='C1', s=1) 
+            sub.plot(spec_r.wave[band], spec_r.flux[band][0,:], c='C1', lw=1) 
         sub.set_xlabel('wavelength', fontsize=20) 
         sub.set_xlim(3.6e3, 9.8e3) 
         sub.set_ylabel('flux', fontsize=20) 
+        sub.set_ylim(0., 10.) 
         fig.savefig(_fspec_b.replace('fexp_b.fits', 'fexp_br.png'),
                 bbox_inches='tight') 
         plt.close() 
-    raise ValueError
     
     _, _, meta = source_spectra() 
     ztrue = meta['zred']  # true redshifts 
@@ -141,15 +247,17 @@ def texp_factor_wavelength():
 
     fig = plt.figure(figsize=(6,6))
     sub = fig.add_subplot(111)
-
+    sub.plot([16, 21], [1., 1.], c='k', ls=':') 
     wmean, rate, err_rate = UT.zsuccess_rate(r_mag, zs_nom, range=[15,22], 
             nbins=28, bin_min=10) 
-    sub.errorbar(wmean, rate, err_rate, fmt='.k', elinewidth=2, markersize=10)
+    _plt_nom = sub.errorbar(wmean, rate, err_rate, fmt='.k', elinewidth=2, markersize=10)
 
     zs_b, zs_r = [], []  
     for expid in expids:
-        rr_b = fitsio.read(os.path.join(dir, 'zbest.exp_spectra.exp%i.fexp_b.fits')) 
-        rr_r = fitsio.read(os.path.join(dir, 'zbest.exp_spectra.exp%i.fexp_r.fits')) 
+        rr_b = fitsio.read(os.path.join(dir,
+            'zbest.exp_spectra.exp%i.fexp_b.fits' % expid)) 
+        rr_r = fitsio.read(os.path.join(dir,
+            'zbest.exp_spectra.exp%i.fexp_r.fits' % expid)) 
 
         _zs_b = UT.zsuccess(rr_b['Z'], ztrue, rr_b['ZWARN'],
                 deltachi2=rr_b['DELTACHI2'], min_deltachi2=dchi2)
@@ -162,11 +270,10 @@ def texp_factor_wavelength():
 
         wmean, rate, err_rate = UT.zsuccess_rate(r_mag, _zs_b, range=[15,22], 
                 nbins=28, bin_min=10) 
-        sub.plot(wmean, rate, c='C0')
+        _plt_b, = sub.plot(wmean, rate, c='C0')
         wmean, rate, err_rate = UT.zsuccess_rate(r_mag, _zs_r, range=[15,22], 
                 nbins=28, bin_min=10) 
-        sub.plot(wmean, rate, c='C1')
-
+        _plt_r, = sub.plot(wmean, rate, c='C1')
     zs_b = np.concatenate(zs_b) 
     zs_r = np.concatenate(zs_r) 
     print('-----------------------')
@@ -174,8 +281,13 @@ def texp_factor_wavelength():
     print('fexp_b z-success = %.2f ' % (np.sum(zs_b)/float(len(zs_b))))
     print('fexp_r z-success = %.2f ' % (np.sum(zs_r)/float(len(zs_r))))
 
+    sub.text(19., 1.05, r'$\Delta \chi^2 = %.f$' % dchi2, fontsize=20)
+    sub.legend([_plt_nom, _plt_b, _plt_r], 
+            ['nominal dark 150s', r'CMX exp. $f_{\rm exp}[5000A]$',
+                r'CMX exp. $f_{\rm exp}[6500A]$'], 
+            loc='lower left', handletextpad=0.1, fontsize=15)
     sub.set_xlabel(r'Legacy $r$ magnitude', fontsize=20)
-    sub.set_xlim([16., 21.]) 
+    sub.set_xlim([16., 20.5]) 
     sub.set_ylabel(r'redrock $z$ success rate', fontsize=20)
     sub.set_ylim([0.6, 1.1])
     sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
@@ -217,11 +329,11 @@ def source_spectra():
     return wave_s, flux_s, meta
 
 
-def nomdark_spectra(): 
+def nomdark_spectra(texp): 
     ''' spectra observed during nominal dark sky for 150s. This will
     serve as the reference spectra for a number of tests. 
     '''
-    fexp = os.path.join(dir, 'exp_spectra.nominal_dark.150s.fits') 
+    fexp = os.path.join(dir, 'exp_spectra.nominal_dark.%.fs.fits' % texp) 
 
     if os.path.isfile(fexp): 
         bgs = desispec.io.read_spectra(fexp) 
@@ -247,14 +359,14 @@ def nomdark_spectra():
         bgs = fdesi.simExposure(
                 wave_s, 
                 flux_s, 
-                exptime=150., 
+                exptime=texp, 
                 airmass=1.1, 
                 Isky=Isky, 
                 filename=fexp) 
     return bgs 
 
 
-def exp_spectra(Isky, exptime, airmass, fexp): 
+def exp_spectra(Isky, exptime, airmass, fexp, overwrite=False): 
     ''' spectra observed at the specified 
     - sky surface brightness 
     - exposure time 
@@ -295,9 +407,9 @@ def run_redrock(fspec, overwrite=False):
             "#!/bin/bash", 
             "#SBATCH -N 1", 
             "#SBATCH -C haswell", 
-            "#SBATCH -q debug", 
-            '#SBATCH -J rr_%s' % os.path.basename(fspec)[:5],
-            '#SBATCH -o _rr_%s.o' % os.path.basename(fspec)[:5],
+            "#SBATCH -q regular", 
+            '#SBATCH -J rr_%s' % os.path.basename(fspec).replace('.fits', ''),
+            '#SBATCH -o _rr_%s.o' % os.path.basename(fspec).replace('.fits', ''),
             "#SBATCH -t 00:30:00", 
             "", 
             "export OMP_NUM_THREADS=1", 
@@ -340,4 +452,5 @@ def bs_coadd(waves, sbrights):
 
 
 if __name__=="__main__": 
-    texp_factor_wavelength()
+    #texp_factor_wavelength()
+    tnom()
