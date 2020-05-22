@@ -134,7 +134,7 @@ class BGSsourceSpectra(GALAXY):
 
         super(BGSsourceSpectra, self).__init__(objtype='BGS', minwave=3600.0, maxwave=10000.0, 
                 cdelt=0.2, wave=self.wave, colorcuts_function=None, normfilter_south='decam2014-r', 
-                normline=None, add_SNeIa=False, baseflux=None, basewave=None, basemeta=None)
+                normline=None, baseflux=None, basewave=None, basemeta=None)
 
     def Spectra(self, r_mag, zred, vdisp, seed=None, templateid=None, emflux=None, mag_em=None, silent=True):
         '''
@@ -465,7 +465,7 @@ class fakeDESIspec(object):
         pass
 
     def simExposure(self, wave, flux, airmass=1.0, exptime=1000, seeing=1.1, 
-            seed=1, skyerr=0.0, Isky=None, nonoise=False, filename=None): 
+            seed=1, skyerr=0.0, Isky=None, nonoise=False, dwave_out=0.8, filename=None): 
         ''' simulate exposure for input source flux(wavelength). keyword arguments (airmass, seeing) 
         specify a number of observational conditions. These are used to calculate the extinction
         factor. The sky surface brightness is dictated by `skyconditions` kwarg. 
@@ -519,7 +519,8 @@ class fakeDESIspec(object):
         flux = flux[:,wlim]*flux_unit
 
         sim = self._simulate_spectra(wave, flux, fibermap=frame_fibermap, Isky=Isky, 
-                obsconditions=obvs_dict, redshift=None, seed=seed, psfconvolve=True)
+                obsconditions=obvs_dict, redshift=None, dwave_out=dwave_out,
+                seed=seed, psfconvolve=True)
 
         for table in sim.camera_output :
             tbl = table['num_source_electrons']
