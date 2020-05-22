@@ -16,6 +16,7 @@ import numpy as np
 import astropy.units as u 
 # -- feasibgs --
 from feasibgs import util as UT
+from feasibgs import catalogs as Cat
 from feasibgs import forwardmodel as FM 
 # -- desihub -- 
 import desispec.io 
@@ -201,8 +202,138 @@ def validate_spectral_pipeline():
     return None 
 
 
-def validate_cmx_zsuccess_specsim_discrepancy(): 
-    ''' currently we know that the spectral simulation pipeline does not fuly
+def validate_spectral_pipeline_source(): 
+    ''' compare the fiber flux scaled source spectra from spectral simulations
+    pipeline to fiber loss corrected cframes CMX data for overlapping GAMA G12
+    galaxies.
+    '''
+    import glob 
+    from desitarget.cmx import cmx_targetmask
+    from pydl.pydlutils.spheregroup import spherematch
+
+    np.random.seed(0) 
+
+    tileid  = 70502  #[66014, 70502] #66014 is with low transparency
+    date    = 20200225
+    expids  = [52112, 52113, 52114, 52115, 52116]
+    
+    dir_gfa = '/global/cfs/cdirs/desi/users/ameisner/GFA/conditions'
+    dir_redux = "/global/cfs/cdirs/desi/spectro/redux/daily"
+    dir_coadd = '/global/cfs/cdirs/desi/users/chahah/bgs_exp_coadd/'
+
+    # read in GAMA + Legacy catalo g 
+    cata = Cat.GamaLegacy()
+    g12 = cata.Read('g12', dr_gama=3, dr_legacy=7) 
+
+    g12_ra  = g12['legacy-photo']['ra']
+    g12_dec = g12['legacy-photo']['dec']
+    Ng12 = len(g12_ra)
+    
+    # match GAMA galaxies to templates 
+    bgs3 = FM.BGStree()
+    template_match = bgs3._GamaLegacy(g12)
+    hasmatch = (template_match != -999)
+    
+    # ra/dec cut for GAMA so we only keep ones near the tile
+    cut_gama = ((g12_ra > 174.0) & (g12_ra < 186.0) & (g12_dec > -3.0) & (g12_dec < 2.0) & hasmatch)
+    g12_ra  = g12_ra[cut_gama]
+    g12_dec = g12_dec[cut_gama] 
+    g12_z   = g12['gama-spec']['z'][cut_gama] 
+
+    g12_rfib        = UT.flux2mag(g12['legacy-photo']['apflux_r'][:,1])[cut_gama]
+    g12_rmag_gama   = g12['gama-photo']['r_model'][cut_gama] # r-band magnitude from GAMA (SDSS) photometry
+
+    print('%i galaxies in GAMA G12 + Legacy' % len(g12_ra)) 
+
+    # match coadd objects to G12+legacy catalog based on RA and Dec
+    for expid in expids: 
+        print('--- %i ---' % expid) 
+        # get fiber acceptance fraction for exposure from GFA
+        gfa = fitsio.read(os.path.join(dir_gfa,
+            'offline_all_guide_ccds_thru_20200315.fits')) 
+        isexp = (gfa['EXPID'] == expid)
+        fibloss = gfa['TRANSPARENCY'][isexp] * gfa['FIBER_FRACFLUX'][isexp]
+        fibloss = np.median(fibloss[~np.isnan(fibloss)])
+        print('  fiber loss = (TRANSP) x (FFRAC) = %f' % fibloss) 
+    
+        # spectrographs available for the exposure
+        ispecs = np.sort([int(os.path.basename(fframe).split('-')[1].replace('z', '')) 
+                for fframe in glob.glob(os.path.join(dir_redux, 
+                    'exposures', str(date), str(expid).zfill(8),
+                    'frame-z*.fits'))])
+    
+        match_gama, coadd_fluxes = [], []
+        for ispec in ispecs:  
+            # select BGS galaxies from the coadds 
+            f_coadd = os.path.join(dir_coadd, 'coadd-%i-%i-%i-%s.fits' % (tileid, date, ispec, str(expid).zfill(8)))
+            coadd = fitsio.read(f_coadd)
+            coadd_wave = fitsio.read(f_coadd, ext=2)
+            coadd_flux = fitsio.read(f_coadd, ext=3)
+
+            is_BGS  = (coadd['CMX_TARGET'] & cmx_targetmask.cmx_mask.mask('SV0_BGS')) != 0
+            gal_cut = is_BGS & (np.sum(coadd_flux, axis=1) != 0)
+            
+            # select ones that are in GAMA by matching RA and Dec 
+            match = spherematch(g12_ra, g12_dec, 
+                    coadd['TARGET_RA'][gal_cut], coadd['TARGET_DEC'][gal_cut], 
+                    0.000277778)
+            m_gama = match[0] 
+            m_coadd = match[1] 
+            match_gama.append(match[0]) 
+            coadd_fluxes.append(coadd_flux[gal_cut,:][m_coadd]) 
+
+        match_gama = np.concatenate(match_gama) 
+        print('  %i matches to G12' % len(match_gama))
+
+        # generate spectra for the following overlapping galaxies
+        gama_samp = np.arange(Ng12)[cut_gama][match_gama]
+
+        s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=15000) 
+
+        emline_flux = s_bgs.EmissionLineFlux(g12, index=gama_samp, dr_gama=3, silent=True) # emission lines from GAMA 
+
+        s_flux, s_wave, magnorm_flag = s_bgs.Spectra(
+                g12_rfib[match_gama], 
+                g12_z[match_gama],
+                np.repeat(100.0, len(match_gama)),
+                seed=1, 
+                templateid=template_match[gama_samp],
+                emflux=emline_flux, 
+                mag_em=g12_rmag_gama[match_gama]
+                )
+
+
+        raise ValueError
+        fig = plt.figure(figsize=(15,15))
+
+        for i, igal in enumerate(igals):
+            sub = fig.add_subplot(3,1,i+1)
+
+            sub.plot(coadd_wave, coadd_flux[gal_cut,:][igal,:], c='C0', label='coadd') 
+
+            for band in ['b', 'r', 'z']: 
+                sub.plot(sim.wave[band], sim.flux[band][igal,:] / fibloss, c='C1',
+                        label='sim / fib.loss') 
+
+            sub.set_xlim(3600, 9800)
+            if i < 2: sub.set_xticklabels([]) 
+            if i == 1: sub.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', fontsize=25) 
+            sub.set_ylim(-1., None)
+        sub.legend(loc='upper right', handletextpad=0.1, fontsize=20)
+        sub.set_xlabel('wavelength', fontsize=25) 
+        fig.savefig(os.path.join(dir, 
+            'valid.spectral_pipeline_zsuccess_flux.exp%i.petal%i.png' %
+            (expid, ispec)), bbox_inches='tight') 
+        plt.close() 
+
+    return None 
+
+
+def validate_cmx_zsuccess_specsim_discrepancy(dchi2=40.): 
+    ''' This ended up being a useless test because the smoothed CMX spectra
+    that I was using as the source spectra has no features to fit the redshfits!
+    
+    currently we know that the spectral simulation pipeline does not fuly
     reproduce the noise level of CMX spectra even when we use the smoothed out
     fiber loss corrected CMX spectra as input. This script is to check whether
     this discrepancy significantly impacts the redshift success rates. 
@@ -213,6 +344,7 @@ def validate_cmx_zsuccess_specsim_discrepancy():
       source spectra + CMX sky) 
 
     VI is currently available for tile 66033 and night 20200315. 
+        
     '''
     import glob 
     from scipy.signal import medfilt
@@ -233,9 +365,11 @@ def validate_cmx_zsuccess_specsim_discrepancy():
 
     fvi = os.path.join('/global/cfs/cdirs/desi/sv/vi/TruthTables/',
             'truth_table_BGS_v1.2.csv') 
-    vi_id, ztrue, qa_flag = np.loadtxt(fvi, delimiter=',', skiprows=1, unpack=True, 
+    vi_id, ztrue, qa_flag = np.genfromtxt(fvi, delimiter=',', skip_header=1, unpack=True, 
             usecols=[0, 2, 3]) 
     good_z = (qa_flag >= 2.5) 
+    vi_id = vi_id[good_z].astype(int)
+    ztrue = ztrue[good_z]
 
     for expid in expids: 
         print('--- %i ---' % expid) 
@@ -253,7 +387,14 @@ def validate_cmx_zsuccess_specsim_discrepancy():
                 for fframe in glob.glob(os.path.join(dir_redux, 
                     'exposures', str(date), str(expid).zfill(8),
                     'frame-z*.fits'))])
-        targetids = []
+
+        # exposure time
+        _frame = desispec.io.read_frame(os.path.join(dir_redux, 
+                    'exposures', str(date), str(expid).zfill(8),
+                    'frame-b%i-%s.fits' % (ispecs[0], str(expid).zfill(8))))
+        exptime = _frame.meta['EXPTIME']
+        print('  exp.time = %.fs' % exptime) 
+
         for ispec in ispecs: 
             print('  petal %i' % ispec) 
             fexp = os.path.join(dir, 'sim_cmx_spectra.exp%i.petal%i.texp%.fs.fits'
@@ -262,14 +403,14 @@ def validate_cmx_zsuccess_specsim_discrepancy():
             # get target id 
             f_coadd = os.path.join(dir_coadd, 'coadd-%i-%i-%i-%s.fits' % (tileid, date, ispec, str(expid).zfill(8)))
             coadd = fitsio.read(f_coadd)
+            coadd_wave = fitsio.read(f_coadd, ext=2)
+            coadd_flux = fitsio.read(f_coadd, ext=3)
             
             is_BGS  = (coadd['CMX_TARGET'] & cmx_targetmask.cmx_mask.mask('SV0_BGS')) != 0
             gal_cut = is_BGS & (np.sum(coadd_flux, axis=1) != 0)
             igals = np.arange(len(gal_cut))[gal_cut]
             print('  %i BGS galaxies' % np.sum(gal_cut)) 
-    
-            targetid = coadd['TARGETID'][gal_cut] 
-            targetids.append(targetid) 
+
             if os.path.isfile(fexp): continue
 
             # get sky surface brightness for petal
@@ -283,11 +424,6 @@ def validate_cmx_zsuccess_specsim_discrepancy():
             wave, sky_electrons = bs_coadd(
                     [sky_b.wave, sky_r.wave, sky_z.wave], 
                     [sky_b.flux, sky_r.flux, sky_z.flux]) 
-
-            # exposure time
-            _frame = desispec.io.read_frame(f_sky('b').replace('sky-', 'frame-'))
-            exptime = _frame.meta['EXPTIME']
-            print('  exp.time = %.fs' % exptime) 
 
             # get which are good fibers from coadd file
             is_good = (coadd['FIBERSTATUS'] == 0)
@@ -303,11 +439,6 @@ def validate_cmx_zsuccess_specsim_discrepancy():
 
             # calculate sky brightness
             sky_bright = np.median(sky_electrons[good_sky,:], axis=0) / throughput / instrument.photons_per_bin / exptime * 1e17
-
-            # select BGS spectra
-            coadd_wave = fitsio.read(f_coadd, ext=2)
-            coadd_flux = fitsio.read(f_coadd, ext=3)
-            coadd_ivar = fitsio.read(f_coadd, ext=4)
 
             # source flux is the smoothed CMX spetra
             source_flux = np.zeros((len(igals), len(wave)))
@@ -328,12 +459,163 @@ def validate_cmx_zsuccess_specsim_discrepancy():
 
             frr = run_redrock(fexp, overwrite=False)
 
-        # read in single exposure coadd and redrock output 
+        for ispec in ispecs: 
+            print('  petal %i' % ispec) 
 
-        # match VI target id to sim exposure target ids 
+            # get target id 
+            f_coadd = os.path.join(dir_coadd, 'coadd-%i-%i-%i-%s.fits' % (tileid, date, ispec, str(expid).zfill(8)))
+            coadd = fitsio.read(f_coadd)
+            coadd_wave = fitsio.read(f_coadd, ext=2)
+            coadd_flux = fitsio.read(f_coadd, ext=3)
+            coadd_ivar = fitsio.read(f_coadd, ext=4)
+            
+            is_BGS  = (coadd['CMX_TARGET'] & cmx_targetmask.cmx_mask.mask('SV0_BGS')) != 0
+            gal_cut = is_BGS & (np.sum(coadd_flux, axis=1) != 0)
+
+            fexp = os.path.join(dir, 'sim_cmx_spectra.exp%i.petal%i.texp%.fs.fits'
+                    % (expid, ispec, exptime)) 
+            sim = desispec.io.read_spectra(fexp) 
+            
+            # randomly check 3 galaxies 
+            igals = np.random.choice(np.arange(np.sum(gal_cut)), size=3, replace=False)
+
+            fig = plt.figure(figsize=(15,15))
+    
+            for i, igal in enumerate(igals):
+                sub = fig.add_subplot(3,1,i+1)
+
+                sub.plot(coadd_wave, coadd_flux[gal_cut,:][igal,:], c='C0', label='coadd') 
+
+                for band in ['b', 'r', 'z']: 
+                    sub.plot(sim.wave[band], sim.flux[band][igal,:] / fibloss, c='C1',
+                            label='sim / fib.loss') 
+
+                sub.set_xlim(3600, 9800)
+                if i < 2: sub.set_xticklabels([]) 
+                if i == 1: sub.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', fontsize=25) 
+                sub.set_ylim(-1., None)
+            sub.legend(loc='upper right', handletextpad=0.1, fontsize=20)
+            sub.set_xlabel('wavelength', fontsize=25) 
+            fig.savefig(os.path.join(dir, 
+                'valid.spectral_pipeline_zsuccess_flux.exp%i.petal%i.png' %
+                (expid, ispec)), bbox_inches='tight') 
+            plt.close() 
+
+            fig = plt.figure(figsize=(15,15))
+    
+            for i, igal in enumerate(igals):
+                sub = fig.add_subplot(3,1,i+1)
+
+                sub.plot(coadd_wave, coadd_ivar[gal_cut,:][igal,:], c='C0', label='coadd') 
+
+                for band in ['b', 'r', 'z']: 
+                    sub.plot(sim.wave[band], sim.ivar[band][igal,:] *
+                            fibloss**2, c='C1', label='sim x (fib.loss$)^2$') 
+
+                sub.set_xlim(3600, 9800)
+                if i < 2: sub.set_xticklabels([]) 
+                if i == 1: sub.set_ylabel('ivar', fontsize=25) 
+                sub.set_ylim(0., None)
+            sub.legend(loc='upper right', handletextpad=0.1, fontsize=20)
+            sub.set_xlabel('wavelength', fontsize=25) 
+            fig.savefig(os.path.join(dir, 
+                'valid.spectral_pipeline_zsuccess_ivar.exp%i.petal%i.png' %
+                (expid, ispec)), bbox_inches='tight') 
+            plt.close() 
+
+        # read in single exposure coadd and redrock output 
+        for i, ispec in enumerate(ispecs): 
+            # get target id 
+            f_coadd = os.path.join(dir_coadd, 'coadd-%i-%i-%i-%s.fits' % (tileid, date, ispec, str(expid).zfill(8)))
+            coadd = fitsio.read(f_coadd)
+            coadd_flux = fitsio.read(f_coadd, ext=3)
+            
+            is_BGS  = (coadd['CMX_TARGET'] & cmx_targetmask.cmx_mask.mask('SV0_BGS')) != 0
+            gal_cut = is_BGS & (np.sum(coadd_flux, axis=1) != 0)
+    
+            targetid = coadd['TARGETID'][gal_cut] 
+            
+            # read coadd redrock fits
+            rr_coadd = fitsio.read(f_coadd.replace('coadd-', 'zbest-')) 
+            rr_coadd_z      = rr_coadd['Z'][gal_cut]
+            rr_coadd_zwarn  = rr_coadd['ZWARN'][gal_cut]
+            rr_coadd_dchi2  = rr_coadd['DELTACHI2'][gal_cut]
+
+            fexp = os.path.join(dir, 'sim_cmx_spectra.exp%i.petal%i.texp%.fs.fits'
+                    % (expid, ispec, exptime)) 
+            frr_sim = run_redrock(fexp, overwrite=False)
+
+            rr_sim = fitsio.read(frr_sim)
+            rr_sim_z        = rr_sim['Z']
+            rr_sim_zwarn    = rr_sim['ZWARN']
+            rr_sim_dchi2    = rr_sim['DELTACHI2'] 
+
+            # match VI to exposure based on target ids 
+            _, m_vi, m_sim = np.intersect1d(vi_id, targetid, return_indices=True) 
+            print('%i matches to VI' % len(m_vi))
+            print('  ', ztrue[m_vi][:5])
+            print('  ', rr_coadd_z[m_sim][:5])
+            print('  ', rr_sim_z[m_sim][:5])
+            
+            if i == 0: 
+                rmags           = [] 
+                ztrues          = [] 
+                rr_coadd_zs     = []
+                rr_coadd_zwarns = []
+                rr_coadd_dchi2s = []
+                rr_sim_zs       = []
+                rr_sim_zwarns   = []
+                rr_sim_dchi2s   = []
+            rmags.append(UT.flux2mag(coadd['FLUX_R'][gal_cut][m_sim], method='log')) 
+            ztrues.append(ztrue[m_vi])
+            rr_coadd_zs.append(rr_coadd_z[m_sim])
+            rr_coadd_zwarns.append(rr_coadd_zwarn[m_sim])
+            rr_coadd_dchi2s.append(rr_coadd_dchi2[m_sim])
+            rr_sim_zs.append(rr_sim_z[m_sim])
+            rr_sim_zwarns.append(rr_sim_zwarn[m_sim])
+            rr_sim_dchi2s.append(rr_sim_dchi2[m_sim])
+
+        rmags           = np.concatenate(rmags)
+        ztrues          = np.concatenate(ztrues)
+        rr_coadd_zs     = np.concatenate(rr_coadd_zs)
+        rr_coadd_zwarns = np.concatenate(rr_coadd_zwarns)
+        rr_coadd_dchi2s = np.concatenate(rr_coadd_dchi2s)
+        rr_sim_zs       = np.concatenate(rr_sim_zs)
+        rr_sim_zwarns   = np.concatenate(rr_sim_zwarns)
+        rr_sim_dchi2s   = np.concatenate(rr_sim_dchi2s)
+
+        zs_coadd = UT.zsuccess(rr_coadd_zs, ztrues, rr_coadd_zwarns,
+                deltachi2=rr_coadd_dchi2s, min_deltachi2=dchi2)
+        zs_sim = UT.zsuccess(rr_sim_zs, ztrues, rr_sim_zwarns,
+                deltachi2=rr_sim_dchi2s, min_deltachi2=dchi2)
+        print('coadd z-success %.2f' % (np.sum(zs_coadd)/float(len(zs_coadd))))
+        print('sim z-success %.2f' % (np.sum(zs_sim)/float(len(zs_sim))))
     
         # compare the two redshift success rates 
+        fig = plt.figure(figsize=(6,6))
+        sub = fig.add_subplot(111)
+    
+        sub.plot([16, 21], [1.0, 1.0], c='k', ls='--') 
+        wmean, rate, err_rate = UT.zsuccess_rate(rmags, zs_coadd, range=[15,22], 
+                nbins=28, bin_min=10) 
+        sub.errorbar(wmean, rate, err_rate, fmt='.C0', label='coadd')
+        wmean, rate, err_rate = UT.zsuccess_rate(rmags, zs_sim, range=[15,22], 
+                nbins=28, bin_min=10) 
+        sub.errorbar(wmean, rate, err_rate, fmt='.C1', label='specsim')
+        
+        sub.text(21., 1.05, r'$\Delta \chi^2 = %.f$' % dchi2, fontsize=20)
+        sub.legend(loc='lower left', ncol=3, handletextpad=0.1, fontsize=15)
+        sub.set_xlabel(r'Legacy $r$ fiber magnitude', fontsize=20)
+        sub.set_xlim(16, 20.5) 
 
+        sub.set_ylabel(r'redrock $z$ success rate', fontsize=20)
+        sub.set_ylim([0.6, 1.1])
+        sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
+
+        fig.savefig(os.path.join(dir, 
+            'valid.spectral_pipeline_zsuccess.exp%i.png' % expid),
+            bbox_inches='tight') 
+        plt.close()
     return None 
 
 
@@ -750,7 +1032,8 @@ def bs_coadd(waves, sbrights):
 
 if __name__=="__main__": 
     #texp_factor_wavelength()
-    tnom()
+    #tnom()
     #validate_spectral_pipeline()
+    validate_spectral_pipeline_source()
     #validate_cmx_zsuccess_specsim_discrepancy()
 
