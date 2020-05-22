@@ -201,6 +201,142 @@ def validate_spectral_pipeline():
     return None 
 
 
+def validate_cmx_zsuccess_specsim_discrepancy(): 
+    ''' currently we know that the spectral simulation pipeline does not fuly
+    reproduce the noise level of CMX spectra even when we use the smoothed out
+    fiber loss corrected CMX spectra as input. This script is to check whether
+    this discrepancy significantly impacts the redshift success rates. 
+
+    So we'll be comparing
+    - z-success rate of observe CMX exposure with VI truth table 
+    - z-success rate of simulated CMX exposure (smoothed fib.loss corrected
+      source spectra + CMX sky) 
+
+    VI is currently available for tile 66033 and night 20200315. 
+    '''
+    import glob 
+    from scipy.signal import medfilt
+    import desisim.simexp
+    import specsim.instrument
+    from desitarget.cmx import cmx_targetmask
+
+    np.random.seed(0) 
+
+    tileid = 66003 
+    date = 20200315
+    expids = [55654, 55655, 55656]
+    
+    dir_gfa = '/global/cfs/cdirs/desi/users/ameisner/GFA/conditions'
+    dir_redux = "/global/cfs/cdirs/desi/spectro/redux/daily"
+    dir_coadd = '/global/cfs/cdirs/desi/users/chahah/bgs_exp_coadd/'
+
+
+    fvi = os.path.join('/global/cfs/cdirs/desi/sv/vi/TruthTables/',
+            'truth_table_BGS_v1.2.csv') 
+    vi_id, ztrue, qa_flag = np.loadtxt(fvi, delimiter=',', skiprows=1, unpack=True, 
+            usecols=[0, 2, 3]) 
+    good_z = (qa_flag >= 2.5) 
+
+    for expid in expids: 
+        print('--- %i ---' % expid) 
+        # get fiber acceptance fraction and airmass  
+        gfa = fitsio.read(os.path.join(dir_gfa,
+            'offline_all_guide_ccds_thru_20200315.fits')) 
+        isexp = (gfa['EXPID'] == expid)
+        fibloss = gfa['TRANSPARENCY'][isexp] * gfa['FIBER_FRACFLUX'][isexp]
+        fibloss = np.median(fibloss[~np.isnan(fibloss)])
+        print('  fiber loss = (TRANSP) x (FFRAC) = %f' % fibloss) 
+        airmass = np.median(gfa['AIRMASS'][isexp]) 
+        print('  airmass = %.2f' % airmass) 
+
+        ispecs = np.sort([int(os.path.basename(fframe).split('-')[1].replace('z', '')) 
+                for fframe in glob.glob(os.path.join(dir_redux, 
+                    'exposures', str(date), str(expid).zfill(8),
+                    'frame-z*.fits'))])
+        targetids = []
+        for ispec in ispecs: 
+            print('  petal %i' % ispec) 
+            fexp = os.path.join(dir, 'sim_cmx_spectra.exp%i.petal%i.texp%.fs.fits'
+                    % (expid, ispec, exptime)) 
+
+            # get target id 
+            f_coadd = os.path.join(dir_coadd, 'coadd-%i-%i-%i-%s.fits' % (tileid, date, ispec, str(expid).zfill(8)))
+            coadd = fitsio.read(f_coadd)
+            
+            is_BGS  = (coadd['CMX_TARGET'] & cmx_targetmask.cmx_mask.mask('SV0_BGS')) != 0
+            gal_cut = is_BGS & (np.sum(coadd_flux, axis=1) != 0)
+            igals = np.arange(len(gal_cut))[gal_cut]
+            print('  %i BGS galaxies' % np.sum(gal_cut)) 
+    
+            targetid = coadd['TARGETID'][gal_cut] 
+            targetids.append(targetid) 
+            if os.path.isfile(fexp): continue
+
+            # get sky surface brightness for petal
+            f_sky = lambda band: os.path.join(dir_redux, 
+                    'exposures', str(date), str(expid).zfill(8),
+                    'sky-%s%i-%s.fits' % (band, ispec, str(expid).zfill(8)))
+            sky_b = desispec.io.read_sky(f_sky('b')) 
+            sky_r = desispec.io.read_sky(f_sky('r')) 
+            sky_z = desispec.io.read_sky(f_sky('z')) 
+
+            wave, sky_electrons = bs_coadd(
+                    [sky_b.wave, sky_r.wave, sky_z.wave], 
+                    [sky_b.flux, sky_r.flux, sky_z.flux]) 
+
+            # exposure time
+            _frame = desispec.io.read_frame(f_sky('b').replace('sky-', 'frame-'))
+            exptime = _frame.meta['EXPTIME']
+            print('  exp.time = %.fs' % exptime) 
+
+            # get which are good fibers from coadd file
+            is_good = (coadd['FIBERSTATUS'] == 0)
+            is_sky  = (coadd['CMX_TARGET'] & cmx_targetmask.cmx_mask.mask('SKY')) != 0
+            good_sky = is_good & is_sky
+            
+            # get throughput for the cameras 
+            config = desisim.simexp._specsim_config_for_wave(wave, dwave_out=0.8, specsim_config_file='desi')
+            instrument = specsim.instrument.initialize(config, True)
+            throughput = np.amax([instrument.cameras[0].throughput, instrument.cameras[1].throughput, instrument.cameras[2].throughput], axis=0)
+
+            desi_fiber_area = 1.862089 # fiber area 
+
+            # calculate sky brightness
+            sky_bright = np.median(sky_electrons[good_sky,:], axis=0) / throughput / instrument.photons_per_bin / exptime * 1e17
+
+            # select BGS spectra
+            coadd_wave = fitsio.read(f_coadd, ext=2)
+            coadd_flux = fitsio.read(f_coadd, ext=3)
+            coadd_ivar = fitsio.read(f_coadd, ext=4)
+
+            # source flux is the smoothed CMX spetra
+            source_flux = np.zeros((len(igals), len(wave)))
+            for i in range(len(igals)): 
+                source_flux[i,:] = np.clip(np.interp(wave, coadd_wave,
+                    medfilt(coadd_flux[igals[i],:], 101)), 0, None) 
+
+            # simulate the exposures using the spectral simulation pipeline  
+            fdesi = FM.fakeDESIspec()
+            bgs = fdesi.simExposure(
+                    wave, 
+                    source_flux * fibloss, # scale by fiber acceptance fraction 
+                    exptime=exptime, 
+                    airmass=airmass, 
+                    Isky=[wave, sky_bright], 
+                    dwave_out=0.8, 
+                    filename=fexp) 
+
+            frr = run_redrock(fexp, overwrite=False)
+
+        # read in single exposure coadd and redrock output 
+
+        # match VI target id to sim exposure target ids 
+    
+        # compare the two redshift success rates 
+
+    return None 
+
+
 def tnom(dchi2=40.):
     ''' Calculate z-success rate for nominal dark time exposure with different
     tnom exposure times. For each tnom, use the z-success rate to determine
@@ -209,7 +345,7 @@ def tnom(dchi2=40.):
     np.random.seed(0) 
     
     # nominal exposure times
-    texps = [100 + 10 * i for i in range(11)]
+    texps = [100 + 10 * i for i in range(11)][::2]
    
     # true redshift and r-magnitude 
     _, _, meta = source_spectra() 
@@ -227,7 +363,6 @@ def tnom(dchi2=40.):
                 overwrite=False)
         frr_noms.append(frr_nom) 
 
-    raise ValueError
     rmags = np.linspace(17, 20, 31)
 
     fig = plt.figure(figsize=(6,6))
@@ -250,21 +385,22 @@ def tnom(dchi2=40.):
         for _r in rmags: 
             brighter = (r_mag < _r) 
             zs_rmag.append(np.sum(zs_nom[brighter]) / np.sum(brighter))
-
-        rlim = np.min(rmags[(np.array(zs_rmag) < 0.95) & (rmags > 18)])
+    
+        crit = (np.array(zs_rmag) < 0.95) & (rmags > 18) 
+        if np.sum(crit) > 0: 
+            rlim = np.min(rmags[crit])
+        else: 
+            rlim = np.max(rmags) 
+        print('--- tnom = %.fs ---' % texp) 
+        print('  total z-success = %.2f' % (np.sum(zs_nom)/float(len(zs_nom))))
+        print('  95percent complete rlim = %.1f' % rlim) 
 
         wmean, rate, err_rate = UT.zsuccess_rate(r_mag, zs_nom, range=[15,22], 
                 nbins=28, bin_min=10) 
-        sub.errorbar(wmean, rate, err_rate, fmt='.C%i' % i, 
-                elinewidth=2, markersize=10, 
-                label=r'%.fs; $r_{\rm lim}=%.1f$' % (texp, rlim))
-
-        print('--- tnom = %.fs ---' % texp) 
-        print('  total z-success = %.2f' % (np.sum(zs_nom)/float(len(zs_nom))))
-        print('  95% complete rlim = %.1f' % rlim) 
+        sub.plot(wmean, rate, label=r'%.fs; $r_{\rm lim}= %.1f$' % (texp, rlim))
     
     sub.text(19., 1.05, r'$\Delta \chi^2 = %.f$' % dchi2, fontsize=20)
-    sub.legend(loc='lower left', ncol=3, handletextpad=0.1, fontsize=15)
+    sub.legend(loc='lower left', handletextpad=0.1, fontsize=15)
     sub.set_xlabel(r'Legacy $r$ magnitude', fontsize=20)
     sub.set_xlim([16., 20.5]) 
     sub.set_ylabel(r'redrock $z$ success rate', fontsize=20)
@@ -272,10 +408,11 @@ def tnom(dchi2=40.):
     sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
     fig.savefig(os.path.join(dir, 'zsuccess.tnom.png'),
             bbox_inches='tight') 
+    plt.close() 
 
     fig = plt.figure(figsize=(6,6))
     sub = fig.add_subplot(111)
-    sub.plot([16, 21], [1., 1.], c='k', ls=':') 
+    sub.plot([18, 25], [1., 1.], c='k', ls=':') 
     
     # nominal exposure z-success rate as a function of fiber magnitude 
     for i, texp, frr_nom in zip(range(len(texps)), texps, frr_noms): 
@@ -288,15 +425,14 @@ def tnom(dchi2=40.):
         # likely an issue with the emission line 
         zs_nom[r_mag < 18.2] = True
 
-        wmean, rate, err_rate = UT.zsuccess_rate(r_fib, zs_nom, range=[15,22], 
+        wmean, rate, err_rate = UT.zsuccess_rate(r_fib, zs_nom, range=[18,23], 
                 nbins=28, bin_min=10) 
-        sub.errorbar(wmean, rate, err_rate, fmt='.C%i' % i, 
-                elinewidth=2, markersize=10, label=r'%.fs' % texp)
+        sub.plot(wmean, rate, err_rate, label=r'%.fs' % texp)
 
-    sub.text(19., 1.05, r'$\Delta \chi^2 = %.f$' % dchi2, fontsize=20)
+    sub.text(21., 1.05, r'$\Delta \chi^2 = %.f$' % dchi2, fontsize=20)
     sub.legend(loc='lower left', ncol=3, handletextpad=0.1, fontsize=15)
     sub.set_xlabel(r'Legacy $r$ fiber magnitude', fontsize=20)
-    sub.set_xlim([16., 20.5]) 
+    sub.set_xlim([18., 22.5]) 
     sub.set_ylabel(r'redrock $z$ success rate', fontsize=20)
     sub.set_ylim([0.6, 1.1])
     sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
@@ -614,5 +750,7 @@ def bs_coadd(waves, sbrights):
 
 if __name__=="__main__": 
     #texp_factor_wavelength()
-    #tnom()
-    validate_spectral_pipeline()
+    tnom()
+    #validate_spectral_pipeline()
+    #validate_cmx_zsuccess_specsim_discrepancy()
+
