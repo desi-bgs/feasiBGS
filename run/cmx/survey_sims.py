@@ -208,6 +208,8 @@ def validate_spectral_pipeline_source():
     galaxies.
     '''
     import glob 
+    from scipy.signal import medfilt
+    from scipy.interpolate import interp1d 
     from desitarget.cmx import cmx_targetmask
     from pydl.pydlutils.spheregroup import spherematch
 
@@ -215,7 +217,11 @@ def validate_spectral_pipeline_source():
 
     tileid  = 70502  #[66014, 70502] #66014 is with low transparency
     date    = 20200225
-    expids  = [52112, 52113, 52114, 52115, 52116]
+    expids  = [52112]#, 52113, 52114, 52115, 52116] # terrible FWHM 
+
+    #tileid  = 66014 # low transparency
+    #date    = 20200314
+    #expids  = [55432]
     
     dir_gfa = '/global/cfs/cdirs/desi/users/ameisner/GFA/conditions'
     dir_redux = "/global/cfs/cdirs/desi/spectro/redux/daily"
@@ -240,7 +246,7 @@ def validate_spectral_pipeline_source():
     g12_dec = g12_dec[cut_gama] 
     g12_z   = g12['gama-spec']['z'][cut_gama] 
 
-    g12_rfib        = UT.flux2mag(g12['legacy-photo']['apflux_r'][:,1])[cut_gama]
+    g12_rfib        = UT.flux2mag(g12['legacy-photo']['fiberflux_r'])[cut_gama]
     g12_rmag_gama   = g12['gama-photo']['r_model'][cut_gama] # r-band magnitude from GAMA (SDSS) photometry
 
     print('%i galaxies in GAMA G12 + Legacy' % len(g12_ra)) 
@@ -252,6 +258,14 @@ def validate_spectral_pipeline_source():
         gfa = fitsio.read(os.path.join(dir_gfa,
             'offline_all_guide_ccds_thru_20200315.fits')) 
         isexp = (gfa['EXPID'] == expid)
+
+        fwhm = gfa['FWHM_ASEC'][isexp]
+        print('  (FWHM) = %f' % np.median(fwhm[~np.isnan(fwhm)]))
+
+        transp = gfa['TRANSPARENCY'][isexp]
+        transp = np.median(transp[~np.isnan(transp)])
+        print('  (TRANSP) = %f' % transp) 
+
         fibloss = gfa['TRANSPARENCY'][isexp] * gfa['FIBER_FRACFLUX'][isexp]
         fibloss = np.median(fibloss[~np.isnan(fibloss)])
         print('  fiber loss = (TRANSP) x (FFRAC) = %f' % fibloss) 
@@ -279,10 +293,12 @@ def validate_spectral_pipeline_source():
                     0.000277778)
             m_gama = match[0] 
             m_coadd = match[1] 
-            match_gama.append(match[0]) 
-            coadd_fluxes.append(coadd_flux[gal_cut,:][m_coadd]) 
+
+            match_gama.append(m_gama) 
+            coadd_fluxes.append(coadd_flux[gal_cut,:][m_coadd])
 
         match_gama = np.concatenate(match_gama) 
+        coadd_fluxes = np.concatenate(coadd_fluxes, axis=0)
         print('  %i matches to G12' % len(match_gama))
 
         # generate spectra for the following overlapping galaxies
@@ -302,30 +318,41 @@ def validate_spectral_pipeline_source():
                 mag_em=g12_rmag_gama[match_gama]
                 )
 
+        igals = np.random.choice(np.arange(len(match_gama))[magnorm_flag], size=5, replace=False)
 
-        raise ValueError
-        fig = plt.figure(figsize=(15,15))
+        fig = plt.figure(figsize=(15,20))
 
         for i, igal in enumerate(igals):
-            sub = fig.add_subplot(3,1,i+1)
+            sub = fig.add_subplot(5,1,i+1)
+            #sub.plot(coadd_wave, medfilt(coadd_fluxes[igal,:], 101), c='k',
+            #        ls=':', lw=0.5, label='smoothed (coadd flux)') 
 
-            sub.plot(coadd_wave, coadd_flux[gal_cut,:][igal,:], c='C0', label='coadd') 
+            sub.plot(coadd_wave, coadd_fluxes[igal,:] * transp * 0.775 ,
+                    c='C0', lw=0.1) 
+            sub.plot(coadd_wave, medfilt(coadd_fluxes[igal,:], 101) * transp * 0.775 , c='C0', 
+                    label='(coadd flux) x (TRANSP) x (0.775)') 
+            sub.plot(coadd_wave, coadd_fluxes[igal,:] * fibloss, 
+                    c='C1', lw=0.1)
+            sub.plot(coadd_wave, medfilt(coadd_fluxes[igal,:], 101) * fibloss, c='C1', 
+                    label='(coadd flux) x (TRANSP) x (FIBER FRACFLUX)') 
 
-            for band in ['b', 'r', 'z']: 
-                sub.plot(sim.wave[band], sim.flux[band][igal,:] / fibloss, c='C1',
-                        label='sim / fib.loss') 
+            sub.plot(s_wave, s_flux[igal,:] * transp, c='k', ls='--',
+                    label='(sim source flux) x (TRANSP)') 
 
             sub.set_xlim(3600, 9800)
-            if i < 2: sub.set_xticklabels([]) 
-            if i == 1: sub.set_ylabel('flux [$10^{-17} erg/s/cm^2/A$]', fontsize=25) 
-            sub.set_ylim(-1., None)
+            if i < 4: sub.set_xticklabels([]) 
+            if i == 1: sub.set_ylabel('inciddent flux [$10^{-17} erg/s/cm^2/A$]', fontsize=25) 
+            if expid == 55432: 
+                sub.set_ylim(-0.5, 3.)
+            else: 
+                sub.set_ylim(-0.5, 10.)
+            #sub.set_ylim(1e-1, None)
+            #sub.set_yscale('log') 
         sub.legend(loc='upper right', handletextpad=0.1, fontsize=20)
         sub.set_xlabel('wavelength', fontsize=25) 
         fig.savefig(os.path.join(dir, 
-            'valid.spectral_pipeline_zsuccess_flux.exp%i.petal%i.png' %
-            (expid, ispec)), bbox_inches='tight') 
+            'valid.spectral_pipeline_source_flux.exp%i.png' % expid), bbox_inches='tight') 
         plt.close() 
-
     return None 
 
 
