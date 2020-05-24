@@ -202,7 +202,7 @@ def validate_spectral_pipeline():
     return None 
 
 
-def validate_spectral_pipeline_source(): 
+def validate_spectral_pipeline_GAMA_source(): 
     ''' compare the fiber flux scaled source spectra from spectral simulations
     pipeline to fiber loss corrected cframes CMX data for overlapping GAMA G12
     galaxies.
@@ -352,6 +352,143 @@ def validate_spectral_pipeline_source():
         sub.set_xlabel('wavelength', fontsize=25) 
         fig.savefig(os.path.join(dir, 
             'valid.spectral_pipeline_source_flux.exp%i.png' % expid), bbox_inches='tight') 
+        plt.close() 
+    return None 
+
+
+def validate_spectral_pipeline_source(): 
+    ''' compare the color-matched and fiber flux scaled source spectra from the
+    spectral simulation to the fiber loss corrected cframes CMX data. This is
+    because the GAMA comparison was a bust. 
+    '''
+    import glob 
+    from scipy.signal import medfilt
+    from scipy.interpolate import interp1d 
+    from scipy.spatial import cKDTree as KDTree
+    from desitarget.cmx import cmx_targetmask
+    from pydl.pydlutils.spheregroup import spherematch
+
+    np.random.seed(0) 
+
+    tileid = 66003 
+    date = 20200315
+    expids = [55654, 55655, 55656]
+    
+    dir_gfa     = '/global/cfs/cdirs/desi/users/ameisner/GFA/conditions'
+    dir_redux   = "/global/cfs/cdirs/desi/spectro/redux/daily"
+    dir_coadd   = '/global/cfs/cdirs/desi/users/chahah/bgs_exp_coadd/'
+
+    # read VI redshifts, which will be used for constructing the source spectra
+    fvi = os.path.join('/global/cfs/cdirs/desi/sv/vi/TruthTables/',
+            'truth_table_BGS_v1.2.csv') 
+    vi_id, ztrue, qa_flag = np.genfromtxt(fvi, delimiter=',', skip_header=1, unpack=True, 
+            usecols=[0, 2, 3]) 
+    good_z = (qa_flag >= 2.5) 
+    vi_id = vi_id[good_z].astype(int)
+    ztrue = ztrue[good_z]
+            
+    mbgs = FM.BGStree()
+
+    for expid in expids: 
+        print('--- %i ---' % expid) 
+        # get fiber acceptance fraction for exposure from GFA
+        gfa = fitsio.read(os.path.join(dir_gfa,
+            'offline_all_guide_ccds_thru_20200315.fits')) 
+        isexp = (gfa['EXPID'] == expid)
+
+        fwhm = gfa['FWHM_ASEC'][isexp]
+        print('  (FWHM) = %f' % np.median(fwhm[~np.isnan(fwhm)]))
+
+        transp = gfa['TRANSPARENCY'][isexp]
+        transp = np.median(transp[~np.isnan(transp)])
+        print('  (TRANSP) = %f' % transp) 
+
+        fibloss = gfa['TRANSPARENCY'][isexp] * gfa['FIBER_FRACFLUX'][isexp]
+        fibloss = np.median(fibloss[~np.isnan(fibloss)])
+        print('  fiber loss = (TRANSP) x (FFRAC) = %f' % fibloss) 
+    
+        # spectrographs available for the exposure
+        ispecs = np.sort([int(os.path.basename(fframe).split('-')[1].replace('z', '')) 
+                for fframe in glob.glob(os.path.join(dir_redux, 
+                    'exposures', str(date), str(expid).zfill(8),
+                    'frame-z*.fits'))])
+
+        coadd_fluxes, s_fluxes = [], [] 
+        for ispec in ispecs:  
+            # read coadd file 
+            f_coadd = os.path.join(dir_coadd, 'coadd-%i-%i-%i-%s.fits' % (tileid, date, ispec, str(expid).zfill(8)))
+            coadd = fitsio.read(f_coadd)
+            coadd_wave = fitsio.read(f_coadd, ext=2)
+            coadd_flux = fitsio.read(f_coadd, ext=3)
+
+            is_BGS  = (coadd['CMX_TARGET'] & cmx_targetmask.cmx_mask.mask('SV0_BGS')) != 0
+            gal_cut = is_BGS & (np.sum(coadd_flux, axis=1) != 0)
+    
+            targetid = coadd['TARGETID'][gal_cut] 
+            rmag = UT.flux2mag(coadd['FLUX_R'], method='log')[gal_cut]
+            gmag = UT.flux2mag(coadd['FLUX_G'], method='log')[gal_cut]
+            rfib = UT.flux2mag(coadd['FIBERFLUX_R'], method='log')[gal_cut]
+
+            _, m_vi, m_coadd = np.intersect1d(vi_id, targetid, return_indices=True) 
+            print('  %i matches to VI' % len(m_vi))
+
+            # match to templates 
+            temp_rmag = mbgs.meta['SDSS_UGRIZ'].data[:,2]
+            temp_gmag = mbgs.meta['SDSS_UGRIZ'].data[:,1]
+
+            temp_meta = np.vstack([ 
+                mbgs.meta['Z'].data,
+                temp_rmag, 
+                temp_gmag - temp_rmag]).T 
+            tree = KDTree(temp_meta) 
+            
+            # match CMX galaxies to templates 
+            _, match_temp = tree.query(np.vstack([
+                ztrue[m_vi], rmag[m_coadd], (gmag - rmag)[m_coadd]]).T)
+            # in some cases there won't be a match from  KDTree.query
+            # we flag these with -999 
+            has_match = ~(match_temp >= len(mbgs.meta['TEMPLATEID']))
+
+            s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=15000) 
+            s_flux, s_wave, magnorm_flag = s_bgs.Spectra(
+                    rfib[m_coadd][has_match], 
+                    ztrue[m_vi][has_match],
+                    np.repeat(100.0, np.sum(has_match)),
+                    seed=1, 
+                    templateid=match_temp[has_match],
+                    emflux=None, 
+                    mag_em=None)
+            coadd_fluxes.append(coadd_flux[gal_cut][m_coadd][has_match])
+            s_fluxes.append(s_flux)
+
+        coadd_fluxes = np.concatenate(coadd_fluxes, axis=0) 
+        s_fluxes = np.concatenate(s_fluxes, axis=0) 
+
+        igals = np.random.choice(np.arange(s_fluxes.shape[0]), size=5, replace=False)
+
+        fig = plt.figure(figsize=(15,20))
+        for i, igal in enumerate(igals): 
+            sub = fig.add_subplot(5,1,i+1)
+            sub.plot(coadd_wave, coadd_fluxes[igal,:] * transp * 0.775, c='C0', lw=0.1) 
+            sub.plot(coadd_wave, medfilt(coadd_fluxes[igal,:], 101) * transp * 0.775 , c='C0', 
+                    label='(coadd flux) x (TRANSP) x (0.775)') 
+            sub.plot(coadd_wave, coadd_fluxes[igal,:] * fibloss, c='C1', lw=0.1)
+            sub.plot(coadd_wave, medfilt(coadd_fluxes[igal,:], 101) * fibloss, c='C1', 
+                    label='(coadd flux) x (TRANSP) x (FIBER FRACFLUX)') 
+
+            sub.plot(s_wave, s_fluxes[igal,:] * transp, c='k', ls='--',
+                    label='(sim source flux) x (TRANSP)') 
+
+            sub.set_xlim(3600, 9800)
+            if i < 4: sub.set_xticklabels([]) 
+            if i == 1: sub.set_ylabel('inciddent flux [$10^{-17} erg/s/cm^2/A$]', fontsize=25) 
+            sub.set_ylim(-0.5, 6)
+
+        sub.legend(loc='upper right', handletextpad=0.1, fontsize=20)
+        sub.set_xlabel('wavelength', fontsize=25) 
+        fig.savefig(os.path.join(dir, 
+            'valid.spectral_pipeline_source.exp%i.png' % expid),
+            bbox_inches='tight') 
         plt.close() 
     return None 
 
@@ -1062,5 +1199,6 @@ if __name__=="__main__":
     #tnom()
     #validate_spectral_pipeline()
     validate_spectral_pipeline_source()
+    #validate_spectral_pipeline_GAMA_source()
     #validate_cmx_zsuccess_specsim_discrepancy()
 
