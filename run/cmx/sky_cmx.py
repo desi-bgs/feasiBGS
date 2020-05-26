@@ -77,12 +77,11 @@ def compile_skies():
     for k in ['airmass', 'moon_ill', 'moon_alt', 'moon_sep', 'sun_alt',
             'sun_sep', 'sky_sb_b', 'sky_sb_r', 'sky_sb_z',
             'tileid', 'date', 'expid', 'spectrograph', 'mjd', 'transparency',
-            'transp_min', 'transp_max', 'exptime']:  
+            'transp_min', 'transp_max', 'fwhm', 'exptime']:  
         sky_data[k] = [] 
 
     for i, _cmx in enumerate(cmx): 
         _tileid, _date, _exp, _spec = _cmx 
-
         print('--- %i, %i, %i, %i ---' % (_tileid, _date, _exp, _spec))
 
         f_coadd = os.path.join(dir_coadd, 'coadd-%i-%i-%i-%s.fits' %
@@ -135,6 +134,9 @@ def compile_skies():
             transp_min = 0.
             transp_max = 1.
             transp_mid = 1.
+        # FWHM  
+        _fwhm = gfa['FWHM_ASEC'][m_gfa]
+        fwhm = np.median(_fwhm[np.isfinite(_fwhm)]) 
         
         # these values more or less agree with the GFA values 
         _airmass, _moon_ill, _moon_alt, _moon_sep, _sun_alt, _sun_sep = \
@@ -154,6 +156,7 @@ def compile_skies():
         sky_data['transparency'].append(np.repeat(transp_mid, len(_airmass)))
         sky_data['transp_min'].append(np.repeat(transp_min, len(_airmass)))
         sky_data['transp_max'].append(np.repeat(transp_max, len(_airmass)))
+        sky_data['fwhm'].append(np.repeat(fwhm, len(_airmass)))
         sky_data['exptime'].append(np.repeat(exptime, len(_airmass)))
     
         # sky surface brightness
