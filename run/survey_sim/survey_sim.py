@@ -48,7 +48,7 @@ os.environ['DESISURVEY_OUTPUT'] = os.path.join(os.environ['CSCRATCH'],
         'desisurvey_output')
 
 
-def stats_surveysim(name): 
+def stats_surveysim(name, bgs_footprint=None): 
     ''' generate some plots assessing the surveysim run 
 
     notes 
@@ -64,8 +64,11 @@ def stats_surveysim(name):
     # read in stats surveysim output  
     f_stats = os.path.join(os.environ['DESISURVEY_OUTPUT'], 
             'stats_%s.fits' % name)
-    stats = surveysim.stats.SurveyStatistics(restore=f_stats)
-
+    stats = surveysim.stats.SurveyStatistics(restore=f_stats,
+            bgs_footprint=bgs_footprint)
+    print('------------------------------------------------------------') 
+    print(f_exp) 
+    print('------------------------------------------------------------') 
     print('Survey runs {} to {} and observes {} tiles with {} exposures.'.format(
           get_date(np.min(exposures['mjd'])),
           get_date(np.max(exposures['mjd'])), 
@@ -73,7 +76,7 @@ def stats_surveysim(name):
 
     print('Number of nights: {}'.format(len(stats._data)))
     stats.summarize()
-    
+
     # -- plot SNR(actual) / SNR (goal) histogram 
     fig = plt.figure(figsize=(5,5))
     sub = fig.add_subplot(111) 
@@ -96,6 +99,18 @@ def stats_surveysim(name):
             bbox_inches='tight') 
     plt.close() 
 
+    passnum = stats.tiles.program_passes['BRIGHT'][-1]
+    actual = np.cumsum(stats._data['completed'], axis=0) 
+    npass = stats.tiles.pass_ntiles[passnum]
+    passidx = stats.tiles.pass_index[passnum]
+    bgs_complete = (actual[:,passidx] / npass) == 1.
+    if np.sum(bgs_complete) > 0: 
+        dt = 1 + np.arange(len(stats._data))
+        print('BGS finishes 3rd passs on day %i of %i' % (dt[bgs_complete].min(), dt[-1]))
+        print('  %.f percent margin' % (100.*(dt[-1] - dt[bgs_complete].min())/dt[-1]))
+    else: 
+        print('BGS does not finish 3rd passs') 
+
     # plot survey completion as a function of time 
     fig, sub = stats.plot() 
     sub[1].text(0.98, 0.98, name.upper(), ha='right', va='top',
@@ -105,20 +120,23 @@ def stats_surveysim(name):
     plt.close() 
 
     # plot exposure time as a function of obsering parameters
-    fig = plot_bgs_obs(exposures)  
-    fig.savefig(os.path.join(_dir, 'figs', '%s.bgs_obs.png' % name),
+    fig = plot_bgs_obs(exposures, bgs_footprint=bgs_footprint)  
+    fig[0].savefig(os.path.join(_dir, 'figs', '%s.bgs_obs.png' % name),
+            bbox_inches='tight')
+    fig[1].savefig(os.path.join(_dir, 'figs', '%s.bgs_exp_hist.png' % name),
             bbox_inches='tight')
     plt.close() 
     return None 
 
 
-def plot_bgs_obs(exposures): 
+def plot_bgs_obs(exposures, bgs_footprint=None): 
     ''' given exposures select BGS exposures and plot them as a function of
     various observational parameters
     '''
     # get observing conditions 
     isbgs, airmass, moon_ill, moon_alt, moon_sep, sun_alt, sun_sep =\
-            _get_obs_param(exposures['TILEID'], exposures['MJD']) 
+            _get_obs_param(exposures['TILEID'], exposures['MJD'],
+                    bgs_footprint=bgs_footprint) 
     # check that airmasses are somewhat consistent 
     discrepant = (np.abs(airmass - exposures['AIRMASS'][isbgs]) > 0.1)
     if np.sum(discrepant) > 0: 
@@ -131,7 +149,8 @@ def plot_bgs_obs(exposures):
             'moon separation', 'sun altitude', 'sun separation'] 
     lims = [(1.,2.), (0., 3.), (0., 1.), (-30., 90.), (30., 180.), 
             (-90., 0.), (30., 180.)]
-
+    
+    figs = []
     fig = plt.figure(figsize=(12,7))
     bkgd = fig.add_subplot(111, frameon=False) 
     for i, prop, lbl, lim in zip(range(len(props)), props, lbls, lims): 
@@ -150,14 +169,24 @@ def plot_bgs_obs(exposures):
     bkgd.tick_params(labelcolor='none', top=False, bottom=False, left=False, right=False)
     bkgd.set_ylabel('exposure time [min]', fontsize=25) 
     fig.subplots_adjust(hspace=0.3)
-    return fig 
+    figs.append(fig) 
+    
+    # -- plot total exposure time of tiles histogram 
+    fig = plt.figure(figsize=(5,5))
+    sub = fig.add_subplot(111) 
+    sub.hist(exposures['EXPTIME'][isbgs] / 60, range=(0, 60), bins=30)
+    sub.axvline(np.median(exposures['EXPTIME'][isbgs] / 60), c='r');
+    sub.set_xlabel('Exposure Time [min]')
+    sub.set_xlim(0., 60.) 
+    figs.append(fig)
+    return figs 
 
 
-def _get_obs_param(tileid, mjd):
+def _get_obs_param(tileid, mjd, bgs_footprint=None):
     ''' get observing condition given tileid and time of observation 
     '''
     # read tiles and get RA and Dec
-    tiles = desisurvey.tiles.get_tiles()
+    tiles = desisurvey.tiles.get_tiles(bgs_footprint=bgs_footprint)
     indx = np.array([list(tiles.tileID).index(id) for id in tileid]) 
     # pass number
     tile_passnum = tiles.passnum[indx]
@@ -195,11 +224,17 @@ def _get_obs_param(tileid, mjd):
     return isbgs, airmass, moon_ill, moon_alt, moon_sep, sun_alt, sun_sep
 
 
-def run_surveysim(name, fconfig, twilight=False, brightsky=False): 
-    ''' run surveysim for specified configuration file 
+def run_surveysim(name, fconfig, twilight=False, brightsky=False,
+        reduced_footprint=None): 
+    ''' run surveyinit and surveysim for specified configuration file 
+
+    updates
+    -------
+    * 05/28/2020: surveyinit had to be included to account for modified tile
+      files.
     '''
     fconfig = os.path.join(_dir, fconfig)
-    
+
     flag_twilight = ''
     if twilight: 
         flag_twilight = ' --twilight' 
@@ -208,10 +243,14 @@ def run_surveysim(name, fconfig, twilight=False, brightsky=False):
     if brightsky: 
         flag_brightsky = ' --brightsky' 
 
-    print('surveysim --name %s --config-file %s%s%s' % 
-            (name, fconfig, flag_twilight, flag_brightsky)) 
-    os.system('surveysim --name %s --config-file %s%s%s' % 
-            (name, fconfig, flag_twilight, flag_brightsky)) 
+    flag_redfoot = '' 
+    if reduced_footprint is not None: 
+        flag_redfoot = ' --bgs_footprint %i' % reduced_footprint
+
+    print('surveysim --name %s --config-file %s%s%s%s' % 
+            (name, fconfig, flag_twilight, flag_brightsky, flag_redfoot))
+    os.system('surveysim --name %s --config-file %s%s%s%s' % 
+            (name, fconfig, flag_twilight, flag_brightsky, flag_redfoot)) 
     return None 
 
 
@@ -243,13 +282,18 @@ if __name__=="__main__":
     fconfig     = sys.argv[2]
     twilight    = sys.argv[3] == 'True'
     brightsky   = sys.argv[4] == 'True'
+    try: 
+        redfoot = int(sys.argv[5]) 
+    except IndexError: 
+        redfoot = None 
 
     if twilight: name += '.twilight'
     if brightsky: name += '.brightsky'
-
-    # check survey init
+    if redfoot is not None: name += '.bgs%i' % redfoot
+    # check that surveyinit exists and run otherwise (takes forever) 
     #surveyinit()
     # run surveysim
-    #run_surveysim(name, fconfig, twilight=twilight, brightsky=brightsky) 
+    run_surveysim(name, fconfig, twilight=twilight, brightsky=brightsky,
+            reduced_footprint=redfoot) 
     # get summary statistics of surveysim run
-    stats_surveysim(name)
+    stats_surveysim(name, bgs_footprint=redfoot)
