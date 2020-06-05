@@ -1096,7 +1096,7 @@ def tnom(dchi2=40.):
     return None 
     
 
-def texp_factor_wavelength(): 
+def texp_factor_wavelength(emlines=True): 
     ''' Q: Should the exposure time correction factor be determined by sky
     surface brightness ratio at 5000A or 6500A? 
 
@@ -1114,12 +1114,19 @@ def texp_factor_wavelength():
 
     Whichever redshift success rate is coser to the nominal dark exposure z
     success rate will determine the exposure factor
+
+    updates
+    -------
+    * David Schlegel was surprised that 6500A agreed better. He finds that
+      5000A agrees better. He suggested I run this test without emission lines 
     '''
     np.random.seed(0) 
     # generate spectra for nominal dark sky exposure as reference
-    spec_nom = nomdark_spectra(150) 
+    spec_nom = nomdark_spectra(150, emlines=emlines) 
     # run redrock on nominal dark sky exposure spectra 
-    frr_nom = run_redrock(os.path.join(dir, 'exp_spectra.nominal_dark.150s.fits'), overwrite=False)
+    frr_nom = run_redrock(os.path.join(dir, 
+        'exp_spectra.nominal_dark%s.150s.fits' % ['.noemission', ''][emlines]), 
+        overwrite=False)
     
     # read in CMX sky data 
     skies = cmx_skies()
@@ -1149,19 +1156,24 @@ def texp_factor_wavelength():
                 )
     
         # generate exposure spectra for expid CMX sky  
-        _fspec_b = os.path.join(dir, 'exp_spectra.exp%i.fexp_b.fits' % expid)
-        _fspec_r = os.path.join(dir, 'exp_spectra.exp%i.fexp_r.fits' % expid)
+        _fspec_b = os.path.join(dir, 'exp_spectra.exp%i%s.fexp_b.fits' %
+                (expid, ['.noemission', ''][emlines]))
+        _fspec_r = os.path.join(dir, 'exp_spectra.exp%i%s.fexp_r.fits' %
+                (expid, ['.noemission', ''][emlines]))
+
         spec_b = exp_spectra(
                 Isky,           # sky surface brightness 
                 150. * fexp_b,  # exposure time 
                 1.1,            # same airmass 
-                _fspec_b    
+                _fspec_b,
+                emlines=emlines
                 )
         spec_r = exp_spectra(
                 Isky, 
                 150. * fexp_r, 
                 1.1,
-                _fspec_r
+                _fspec_r,
+                emlines=emlines
                 )
         # run redrock on the exposure spectra 
         frr_b = run_redrock(_fspec_b, overwrite=False)
@@ -1185,7 +1197,7 @@ def texp_factor_wavelength():
                 bbox_inches='tight') 
         plt.close() 
     
-    _, _, meta = source_spectra() 
+    _, _, meta = source_spectra(emlines=emlines) 
     ztrue = meta['zred']  # true redshifts 
     r_mag = meta['r_mag'] 
     dchi2 = 40. # minimum delta chi2
@@ -1207,9 +1219,11 @@ def texp_factor_wavelength():
     zs_b, zs_r = [], []  
     for expid in expids:
         rr_b = fitsio.read(os.path.join(dir,
-            'zbest.exp_spectra.exp%i.fexp_b.fits' % expid)) 
+            'zbest.exp_spectra.exp%i%s.fexp_b.fits' % 
+            (expid, ['.noemission', ''][emlines])))
         rr_r = fitsio.read(os.path.join(dir,
-            'zbest.exp_spectra.exp%i.fexp_r.fits' % expid)) 
+            'zbest.exp_spectra.exp%i%s.fexp_r.fits' % 
+            (expid, ['.noemission', ''][emlines])))
 
         _zs_b = UT.zsuccess(rr_b['Z'], ztrue, rr_b['ZWARN'],
                 deltachi2=rr_b['DELTACHI2'], min_deltachi2=dchi2)
@@ -1243,8 +1257,9 @@ def texp_factor_wavelength():
     sub.set_ylabel(r'redrock $z$ success rate', fontsize=20)
     sub.set_ylim([0.6, 1.1])
     sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
-    fig.savefig(os.path.join(dir, 'zsuccess.exp_spectra.fexp_br.png'),
-            bbox_inches='tight') 
+    fig.savefig(os.path.join(dir, 
+        'zsuccess.exp_spectra%s.fexp_br.png' % ['.noemission', ''][emlines]),
+        bbox_inches='tight') 
     return None 
 
 
@@ -1259,7 +1274,7 @@ def cmx_skies():
     return skies
 
 
-def source_spectra(): 
+def source_spectra(emlines=True): 
     ''' read GAMA-matched fiber-magnitude scaled BGS source spectra 
     These source spectra are created for GAMA objects. their spectra is 
     constructed from continuum that's template matched to the broadband
@@ -1267,25 +1282,98 @@ def source_spectra():
     Then the spectra is scaled down to the r-band fiber magnitude. They 
     therefore do not require fiber acceptance fractions. 
     '''
-    # read in source
-    fsource = h5py.File(os.path.join(dir, 'GALeg.g15.sourceSpec.1000.seed0.hdf5'), 'r')
-    wave_s = fsource['wave'][...]
-    flux_s = fsource['flux'][...]
+    fsource = os.path.join(dir, 
+            'GALeg.g15.sourceSpec%s.1000.seed0.hdf5' % ['.noemission', ''][emlines])
+
+    if not os.path.isfile(fsource): 
+        seed = 0 
+        np.random.seed(seed) 
+        # read in GAMA-Legacy catalog with galaxies in both GAMA and Legacy surveys
+        cata = Cat.GamaLegacy()
+        gleg = cata.Read('g15', dr_gama=3, dr_legacy=7, silent=True)  
+        
+        # extract meta-data of galaxies 
+        redshift        = gleg['gama-spec']['z']
+        absmag_ugriz    = cata.AbsMag(gleg, kcorr=0.1, H0=70, Om0=0.3, galext=False) # ABSMAG k-correct to z=0.1
+        r_mag_apflux    = UT.flux2mag(gleg['legacy-photo']['apflux_r'][:,1]) # aperture flux
+        r_mag_gama      = gleg['gama-photo']['r_petro'] # r-band magnitude from GAMA (SDSS) photometry
+        ha_gama         = gleg['gama-spec']['ha_flux'] # halpha line flux
+
+        ngal = len(redshift) # number of galaxies
+        vdisp = np.repeat(100.0, ngal) # velocity dispersions [km/s]
+
+        # match GAMA galaxies to templates 
+        bgs3 = FM.BGStree()
+        match = bgs3._GamaLegacy(gleg)
+        hasmatch = (match != -999)
+        criterion = hasmatch 
+        
+        # randomly pick a few more than 5000 galaxies from the catalog that have 
+        # matching templates because some of the galaxies will have issues where the 
+        # emission line is brighter than the photometric magnitude.  
+        subsamp = np.random.choice(np.arange(ngal)[criterion], int(1.1 * 1000), replace=False) 
+
+        # generate noiseless spectra for these galaxies 
+        s_bgs = FM.BGSsourceSpectra(wavemin=1500.0, wavemax=15000) 
+        # emission line fluxes from GAMA data  
+        if emlines: 
+            emline_flux = s_bgs.EmissionLineFlux(gleg, index=subsamp, dr_gama=3, silent=True) # emission lines from GAMA 
+            mag_em = r_mag_gama[subsamp]
+        else: 
+            emline_flux = None 
+            mag_em = None 
+
+        flux, wave, magnorm_flag = s_bgs.Spectra(
+                r_mag_apflux[subsamp], 
+                redshift[subsamp],
+                vdisp[subsamp], 
+                seed=1, 
+                templateid=match[subsamp], 
+                emflux=emline_flux, 
+                mag_em=mag_em, 
+                silent=True)
+
+        # only keep 1000 galaxies
+        isubsamp = np.random.choice(np.arange(len(subsamp))[magnorm_flag], 1000, replace=False) 
+        subsamp = subsamp[isubsamp]
+        
+        # save to file  
+        fsub = h5py.File(fsource, 'w') 
+        fsub.create_dataset('zred', data=redshift[subsamp])
+        fsub.create_dataset('absmag_ugriz', data=absmag_ugriz[:,subsamp]) 
+        fsub.create_dataset('r_mag_apflux', data=r_mag_apflux[subsamp]) 
+        fsub.create_dataset('r_mag_gama', data=r_mag_gama[subsamp]) 
+        for grp in gleg.keys(): 
+            group = fsub.create_group(grp) 
+            for key in gleg[grp].keys(): 
+                group.create_dataset(key, data=gleg[grp][key][subsamp])
+        fsub.create_dataset('flux', data=flux[isubsamp, :])
+        fsub.create_dataset('wave', data=wave)
+        fsub.close()
+
+    # read in source spectra
+    source = h5py.File(fsource, 'r')
+
+    wave_s = source['wave'][...]
+    flux_s = source['flux'][...]
     
     meta = {} 
     for k in ['r_mag_apflux', 'r_mag_gama', 'zred', 'absmag_ugriz']: 
-        meta[k] = fsource[k][...]
-    meta['r_mag'] = UT.flux2mag(fsource['legacy-photo']['flux_r'][...], method='log') 
+        meta[k] = source[k][...]
+    meta['r_mag'] = UT.flux2mag(source['legacy-photo']['flux_r'][...], method='log') 
+    source.close()
 
-    fsource.close()
     return wave_s, flux_s, meta
 
 
-def nomdark_spectra(texp): 
+def nomdark_spectra(texp, emlines=True): 
     ''' spectra observed during nominal dark sky for 150s. This will
     serve as the reference spectra for a number of tests. 
     '''
-    fexp = os.path.join(dir, 'exp_spectra.nominal_dark.%.fs.fits' % texp) 
+    if emlines: 
+        fexp = os.path.join(dir, 'exp_spectra.nominal_dark.%.fs.fits' % texp) 
+    else: 
+        fexp = os.path.join(dir, 'exp_spectra.nominal_dark.noemission.%.fs.fits' % texp) 
 
     if os.path.isfile(fexp): 
         bgs = desispec.io.read_spectra(fexp) 
@@ -1304,7 +1392,7 @@ def nomdark_spectra(texp):
         Isky = [wave, nominal_surface_brightness_dict['dark']] 
         
         # read in source spectra 
-        wave_s, flux_s, _ = source_spectra() 
+        wave_s, flux_s, _ = source_spectra(emlines=emlines) 
 
         # simulate the exposures and save to file 
         fdesi = FM.fakeDESIspec()
@@ -1318,7 +1406,7 @@ def nomdark_spectra(texp):
     return bgs 
 
 
-def exp_spectra(Isky, exptime, airmass, fexp, overwrite=False): 
+def exp_spectra(Isky, exptime, airmass, fexp, emlines=True, overwrite=False): 
     ''' spectra observed at the specified 
     - sky surface brightness 
     - exposure time 
@@ -1331,7 +1419,7 @@ def exp_spectra(Isky, exptime, airmass, fexp, overwrite=False):
         from desimodel.io import load_throughput
 
         # read in source spectra 
-        wave_s, flux_s, _ = source_spectra() 
+        wave_s, flux_s, _ = source_spectra(emlines=emlines) 
 
         # simulate the exposures and save to file 
         fdesi = FM.fakeDESIspec()
@@ -1405,10 +1493,11 @@ def bs_coadd(waves, sbrights):
 
 if __name__=="__main__": 
     #texp_factor_wavelength()
+    texp_factor_wavelength(emlines=False) # without emission lines 
     #tnom()
     #validate_spectral_pipeline()
     #validate_spectral_pipeline_source()
     #validate_spectral_pipeline_GAMA_source()
     #validate_cmx_zsuccess_specsim_discrepancy()
-    validate_cmx_zsuccess(dchi2=40.)
+    #validate_cmx_zsuccess(dchi2=40.)
 
