@@ -1132,7 +1132,7 @@ def texp_factor_wavelength(emlines=True):
     skies = cmx_skies()
     # select CMX exposures when the sky was substantially brighter than dark time
     # arbitrarily chose 3x brighter 
-    bright = (skies['sky_ratio_b'] > 3) 
+    bright = (skies['sky_ratio_5000'] > 3) 
     expids = np.random.choice(np.unique(skies['expid'][bright]), size=5,
             replace=False) 
 
@@ -1141,11 +1141,6 @@ def texp_factor_wavelength(emlines=True):
     for expid in expids:
         print('--- expid = %i ---' % expid) 
         is_exp = (skies['expid'] == expid) 
-        # get median sky ratios for the exposure 
-        fexp_b = np.median(skies['sky_ratio_b'][is_exp]) 
-        fexp_r = np.median(skies['sky_ratio_r'][is_exp]) 
-        print('  fexp_b = %.2f' % fexp_b) 
-        print('  fexp_r = %.2f' % fexp_r) 
         # get median sky surface brightnesses for exposure 
         Isky = bs_coadd(
                 [skies['wave_b'], skies['wave_r'], skies['wave_z']], 
@@ -1154,49 +1149,44 @@ def texp_factor_wavelength(emlines=True):
                     np.median(skies['sky_sb_r'][is_exp], axis=0), 
                     np.median(skies['sky_sb_z'][is_exp], axis=0)]
                 )
-    
-        # generate exposure spectra for expid CMX sky  
-        _fspec_b = os.path.join(dir, 'exp_spectra.exp%i%s.fexp_b.fits' %
-                (expid, ['.noemission', ''][emlines]))
-        _fspec_r = os.path.join(dir, 'exp_spectra.exp%i%s.fexp_r.fits' %
-                (expid, ['.noemission', ''][emlines]))
 
-        spec_b = exp_spectra(
-                Isky,           # sky surface brightness 
-                150. * fexp_b,  # exposure time 
-                1.1,            # same airmass 
-                _fspec_b,
-                emlines=emlines
-                )
-        spec_r = exp_spectra(
-                Isky, 
-                150. * fexp_r, 
-                1.1,
-                _fspec_r,
-                emlines=emlines
-                )
-        # run redrock on the exposure spectra 
-        frr_b = run_redrock(_fspec_b, overwrite=False)
-        frr_r = run_redrock(_fspec_r, overwrite=False)
-
-        # plot comparing the exp spectra to the nominal dark spectra 
         fig = plt.figure(figsize=(15,5)) 
         sub = fig.add_subplot(111)
         sub.plot(Isky[0], Isky[1], c='C0', lw=0.5) 
         for band in ['b', 'r', 'z']: 
             sub.plot(spec_nom.wave[band], spec_nom.flux[band][0,:], c='k', lw=1) 
-        for band in ['b', 'r', 'z']: 
-            sub.plot(spec_b.wave[band], spec_b.flux[band][0,:], c='C0', lw=1) 
-        for band in ['b', 'r', 'z']: 
-            sub.plot(spec_r.wave[band], spec_r.flux[band][0,:], c='C1', lw=1) 
+    
+        # get median sky ratios for the exposure 
+        for i, _w in enumerate([4000, 5000, 6000, 7000]): 
+            _fexp = np.median(skies['sky_ratio_%i' % _w ][is_exp]) 
+            print('  fexp at %iA = %.2f' % (_w, _fexp))
+
+            # generate exposure spectra for expid CMX sky  
+            _fspec = os.path.join(dir, 'exp_spectra.exp%i%s.fexp_%i.fits' %
+                (expid, ['.noemission', ''][emlines], _w))
+
+            _spec = exp_spectra(
+                    Isky,           # sky surface brightness 
+                    150. * _fexp,   # exposure time 
+                    1.1,            # same airmass 
+                    _fspec,
+                    emlines=emlines
+                    )
+            # run redrock on the exposure spectra 
+            frr = run_redrock(_fspec, overwrite=False)
+
+            # plot comparing the exp spectra to the nominal dark spectra 
+            for band in ['b', 'r', 'z']: 
+                sub.plot(_spec.wave[band], _spec.flux[band][0,:], c='C%i' % i, lw=1) 
         sub.set_xlabel('wavelength', fontsize=20) 
         sub.set_xlim(3.6e3, 9.8e3) 
         sub.set_ylabel('flux', fontsize=20) 
         sub.set_ylim(0., 10.) 
-        fig.savefig(_fspec_b.replace('fexp_b.fits', 'fexp_br.png'),
-                bbox_inches='tight') 
+        fig.savefig(_fspec_b.replace('.fexp_%i.fits' % _w, '.png'), bbox_inches='tight') 
         plt.close() 
     
+    raise ValueError 
+
     _, _, meta = source_spectra(emlines=emlines) 
     ztrue = meta['zred']  # true redshifts 
     r_mag = meta['r_mag'] 
@@ -1216,41 +1206,50 @@ def texp_factor_wavelength(emlines=True):
             nbins=28, bin_min=10) 
     _plt_nom = sub.errorbar(wmean, rate, err_rate, fmt='.k', elinewidth=2, markersize=10)
 
-    zs_b, zs_r = [], []  
+    zs_4000, zs_5000, zs_6000, zs_7000 = [], [], [], [] 
     for expid in expids:
-        rr_b = fitsio.read(os.path.join(dir,
-            'zbest.exp_spectra.exp%i%s.fexp_b.fits' % 
-            (expid, ['.noemission', ''][emlines])))
-        rr_r = fitsio.read(os.path.join(dir,
-            'zbest.exp_spectra.exp%i%s.fexp_r.fits' % 
-            (expid, ['.noemission', ''][emlines])))
+        zss = [] 
+        for i, _w in enumerate([4000, 5000, 6000, 7000]): 
+            rr = fitsio.read(os.path.join(dir,
+                'zbest.exp_spectra.exp%i%s.fexp_%i.fits' % 
+                (expid, ['.noemission', ''][emlines], _w)))
 
-        _zs_b = UT.zsuccess(rr_b['Z'], ztrue, rr_b['ZWARN'],
-                deltachi2=rr_b['DELTACHI2'], min_deltachi2=dchi2)
-        _zs_r = UT.zsuccess(rr_r['Z'], ztrue, rr_r['ZWARN'],
-                deltachi2=rr_r['DELTACHI2'], min_deltachi2=dchi2)
-        zs_b.append(_zs_b)
-        zs_r.append(_zs_r) 
-        print('  fexp_b z-success = %.2f' % (np.sum(_zs_b)/float(len(_zs_b))))
-        print('  fexp_r z-success = %.2f' % (np.sum(_zs_r)/float(len(_zs_r))))
+            _zs = UT.zsuccess(rr['Z'], ztrue, rr['ZWARN'],
+                    deltachi2=rr_b['DELTACHI2'], min_deltachi2=dchi2)
+            zss.append(_zs)
+            
+            print('  fexp at %i z-success = %.2f' % (_w, np.sum(_zs)/float(len(_zs))))
+            wmean, rate, err_rate = UT.zsuccess_rate(r_mag, _zs, range=[15,22], 
+                    nbins=28, bin_min=10) 
+            _plt, = sub.plot(wmean, rate, c='C%i' % i)
 
-        wmean, rate, err_rate = UT.zsuccess_rate(r_mag, _zs_b, range=[15,22], 
-                nbins=28, bin_min=10) 
-        _plt_b, = sub.plot(wmean, rate, c='C0')
-        wmean, rate, err_rate = UT.zsuccess_rate(r_mag, _zs_r, range=[15,22], 
-                nbins=28, bin_min=10) 
-        _plt_r, = sub.plot(wmean, rate, c='C1')
-    zs_b = np.concatenate(zs_b) 
-    zs_r = np.concatenate(zs_r) 
+            if expid == expids[0]: 
+                if i == 0: _plts = [_plt_nom]
+                _plts.append(_plt) 
+
+        zs_4000.append(zss[0])
+        zs_5000.append(zss[1])
+        zs_6000.append(zss[2])
+        zs_7000.append(zss[3])
+
+    zs_4000 = np.concatenate(zs_4000) 
+    zs_5000 = np.concatenate(zs_5000) 
+    zs_6000 = np.concatenate(zs_6000) 
+    zs_6000 = np.concatenate(zs_6000) 
     print('-----------------------')
     print('nominal z-success = %.2f' % (np.sum(zs_nom)/float(len(zs_nom))))
-    print('fexp_b z-success = %.2f ' % (np.sum(zs_b)/float(len(zs_b))))
-    print('fexp_r z-success = %.2f ' % (np.sum(zs_r)/float(len(zs_r))))
+    print('fexp at 4000A z-success = %.2f ' % (np.sum(zs_4000)/float(len(zs_4000))))
+    print('fexp at 5000A z-success = %.2f ' % (np.sum(zs_5000)/float(len(zs_5000))))
+    print('fexp at 6000A z-success = %.2f ' % (np.sum(zs_6000)/float(len(zs_6000))))
+    print('fexp at 6000A z-success = %.2f ' % (np.sum(zs_7000)/float(len(zs_7000))))
 
     sub.text(19., 1.05, r'$\Delta \chi^2 = %.f$' % dchi2, fontsize=20)
-    sub.legend([_plt_nom, _plt_b, _plt_r], 
-            ['nominal dark 150s', r'CMX exp. $f_{\rm exp}[5000A]$',
-                r'CMX exp. $f_{\rm exp}[6500A]$'], 
+    sub.legend(_plts, 
+            ['nominal dark 150s', 
+                r'CMX exp. $f_{\rm sky}[4000A]$',
+                r'CMX exp. $f_{\rm sky}[5000A]$',
+                r'CMX exp. $f_{\rm sky}[6000A]$',
+                r'CMX exp. $f_{\rm sky}[7000A]$'], 
             loc='lower left', handletextpad=0.1, fontsize=15)
     sub.set_xlabel(r'Legacy $r$ magnitude', fontsize=20)
     sub.set_xlim([16., 20.5]) 
