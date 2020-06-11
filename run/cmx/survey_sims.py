@@ -1121,6 +1121,16 @@ def texp_factor_wavelength(emlines=True):
       5000A agrees better. He suggested I run this test without emission lines 
     '''
     np.random.seed(0) 
+    
+    import desisim.simexp
+    from desimodel.io import load_throughput
+    wavemin = load_throughput('b').wavemin - 10.0
+    wavemax = load_throughput('z').wavemax + 10.0
+    wave = np.arange(round(wavemin, 1), wavemax, 0.8) * u.Angstrom
+    config = desisim.simexp._specsim_config_for_wave(wave.to('Angstrom').value, dwave_out=0.8, specsim_config_file='desi')
+    nominal_surface_brightness_dict = config.load_table(
+            config.atmosphere.sky, 'surface_brightness', as_dict=True)
+    Isky_nom = [wave, nominal_surface_brightness_dict['dark']] 
     # generate spectra for nominal dark sky exposure as reference
     spec_nom = nomdark_spectra(150, emlines=emlines) 
     # run redrock on nominal dark sky exposure spectra 
@@ -1130,11 +1140,14 @@ def texp_factor_wavelength(emlines=True):
     
     # read in CMX sky data 
     skies = cmx_skies()
-    # select CMX exposures when the sky was substantially brighter than dark time
-    # arbitrarily chose 3x brighter 
-    bright = (skies['sky_ratio_5000'] > 3) 
-    expids = np.random.choice(np.unique(skies['expid'][bright]), size=5,
-            replace=False) 
+    # select CMX exposures when the sky was brighter than dark time. In
+    # principle we should focus on bright exposures (i.e. 2.5x nominal).
+    # we also remove exposures from 20200314 which has strange sky fluxes.
+    bright = (((skies['sky_ratio_5000'] > 1.) | (skies['sky_ratio_7000'] > 1.)) 
+            & (skies['date'] != 20200314)) 
+    expids = np.unique(skies['expid'][bright])
+    print('%i exposures with sky ratios > 1 and not taken during March 14' % len(expids))
+    #np.random.choice(np.unique(skies['expid'][bright]), size=5, replace=False) 
 
     # generate exposure spectra for select CMX sky surface brightnesses with
     # exposure times scaled by (1) sky ratio at 5000A (2) sky ratio at 6500A
@@ -1150,14 +1163,21 @@ def texp_factor_wavelength(emlines=True):
                     np.median(skies['sky_sb_z'][is_exp], axis=0)]
                 )
 
-        fig = plt.figure(figsize=(15,5)) 
-        sub = fig.add_subplot(111)
+        fig = plt.figure(figsize=(15,10)) 
+        sub = fig.add_subplot(211)
+        sub.plot(Isky_nom[0], Isky_nom[1], c='k', lw=0.5) 
         sub.plot(Isky[0], Isky[1], c='C0', lw=0.5) 
+        sub.set_xlabel('wavelength', fontsize=20) 
+        sub.set_xlim(3.6e3, 9.8e3) 
+        sub.set_ylabel('flux', fontsize=20) 
+        sub.set_ylim(0., 10.) 
+
+        sub = fig.add_subplot(212)
         for band in ['b', 'r', 'z']: 
             sub.plot(spec_nom.wave[band], spec_nom.flux[band][0,:], c='k', lw=1) 
     
         # get median sky ratios for the exposure 
-        for i, _w in enumerate([4000, 5000, 6000, 7000]): 
+        for i, _w in enumerate([5000, 6000, 7000][::-1]): 
             _fexp = np.median(skies['sky_ratio_%i' % _w ][is_exp]) 
             print('  fexp at %iA = %.2f' % (_w, _fexp))
 
@@ -1177,15 +1197,18 @@ def texp_factor_wavelength(emlines=True):
 
             # plot comparing the exp spectra to the nominal dark spectra 
             for band in ['b', 'r', 'z']: 
-                sub.plot(_spec.wave[band], _spec.flux[band][0,:], c='C%i' % i, lw=1) 
+                lbl = None 
+                if band == 'b': 
+                    lbl = ('at %iA' % _w)
+                sub.plot(_spec.wave[band], _spec.flux[band][0,:], c='C%i' % i,
+                        lw=1, label=lbl) 
         sub.set_xlabel('wavelength', fontsize=20) 
         sub.set_xlim(3.6e3, 9.8e3) 
         sub.set_ylabel('flux', fontsize=20) 
         sub.set_ylim(0., 10.) 
-        fig.savefig(_fspec_b.replace('.fexp_%i.fits' % _w, '.png'), bbox_inches='tight') 
+        sub.legend(loc='upper right', fontsize=20, ncol=3) 
+        fig.savefig(_fspec.replace('.fexp_%i.fits' % _w, '.png'), bbox_inches='tight') 
         plt.close() 
-    
-    raise ValueError 
 
     _, _, meta = source_spectra(emlines=emlines) 
     ztrue = meta['zred']  # true redshifts 
@@ -1206,16 +1229,17 @@ def texp_factor_wavelength(emlines=True):
             nbins=28, bin_min=10) 
     _plt_nom = sub.errorbar(wmean, rate, err_rate, fmt='.k', elinewidth=2, markersize=10)
 
-    zs_4000, zs_5000, zs_6000, zs_7000 = [], [], [], [] 
+    zs_5000, zs_6000, zs_7000 = [], [], []
     for expid in expids:
+        print('--- expid = %i ---' % expid) 
         zss = [] 
-        for i, _w in enumerate([4000, 5000, 6000, 7000]): 
+        for i, _w in enumerate([5000, 6000, 7000]): 
             rr = fitsio.read(os.path.join(dir,
                 'zbest.exp_spectra.exp%i%s.fexp_%i.fits' % 
                 (expid, ['.noemission', ''][emlines], _w)))
 
             _zs = UT.zsuccess(rr['Z'], ztrue, rr['ZWARN'],
-                    deltachi2=rr_b['DELTACHI2'], min_deltachi2=dchi2)
+                    deltachi2=rr['DELTACHI2'], min_deltachi2=dchi2)
             zss.append(_zs)
             
             print('  fexp at %i z-success = %.2f' % (_w, np.sum(_zs)/float(len(_zs))))
@@ -1227,26 +1251,22 @@ def texp_factor_wavelength(emlines=True):
                 if i == 0: _plts = [_plt_nom]
                 _plts.append(_plt) 
 
-        zs_4000.append(zss[0])
-        zs_5000.append(zss[1])
-        zs_6000.append(zss[2])
-        zs_7000.append(zss[3])
+        zs_5000.append(zss[0])
+        zs_6000.append(zss[1])
+        zs_7000.append(zss[2])
 
-    zs_4000 = np.concatenate(zs_4000) 
     zs_5000 = np.concatenate(zs_5000) 
     zs_6000 = np.concatenate(zs_6000) 
-    zs_6000 = np.concatenate(zs_6000) 
+    zs_7000 = np.concatenate(zs_7000) 
     print('-----------------------')
     print('nominal z-success = %.2f' % (np.sum(zs_nom)/float(len(zs_nom))))
-    print('fexp at 4000A z-success = %.2f ' % (np.sum(zs_4000)/float(len(zs_4000))))
     print('fexp at 5000A z-success = %.2f ' % (np.sum(zs_5000)/float(len(zs_5000))))
     print('fexp at 6000A z-success = %.2f ' % (np.sum(zs_6000)/float(len(zs_6000))))
-    print('fexp at 6000A z-success = %.2f ' % (np.sum(zs_7000)/float(len(zs_7000))))
+    print('fexp at 7000A z-success = %.2f ' % (np.sum(zs_7000)/float(len(zs_7000))))
 
     sub.text(19., 1.05, r'$\Delta \chi^2 = %.f$' % dchi2, fontsize=20)
     sub.legend(_plts, 
             ['nominal dark 150s', 
-                r'CMX exp. $f_{\rm sky}[4000A]$',
                 r'CMX exp. $f_{\rm sky}[5000A]$',
                 r'CMX exp. $f_{\rm sky}[6000A]$',
                 r'CMX exp. $f_{\rm sky}[7000A]$'], 
@@ -1257,8 +1277,130 @@ def texp_factor_wavelength(emlines=True):
     sub.set_ylim([0.6, 1.1])
     sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
     fig.savefig(os.path.join(dir, 
-        'zsuccess.exp_spectra%s.fexp_br.png' % ['.noemission', ''][emlines]),
+        'zsuccess.exp_spectra%s.fsky.png' % ['.noemission', ''][emlines]),
         bbox_inches='tight') 
+    return None 
+
+
+def _SNR_test(): 
+    ''' Q: Why is scaling the exposure time by the sky brightness ratio scaling
+    not producing spectra with roughly the same SNR? 
+
+    The SNR of the spectra is approximately 
+        SNR = S x sqrt(texp/sky)
+    This means that if the sky is twice as bright but you increase texp by 2,
+    you would get the same SNR. This, however, does not seem to be the case for
+    the SNR for the `exp_spectra` output. 
+
+    In this script I will generate spectra with uniform sky brightness  
+
+    '''
+    np.random.seed(0) 
+
+    import desisim.simexp
+    from desimodel.io import load_throughput
+    wavemin = load_throughput('b').wavemin - 10.0
+    wavemax = load_throughput('z').wavemax + 10.0
+    wave = np.arange(round(wavemin, 1), wavemax, 0.8) * u.Angstrom
+
+    # get throughput for the cameras 
+    import specsim.instrument
+    from specsim.simulator import Simulator
+    config = desisim.simexp._specsim_config_for_wave(wave.value, dwave_out=0.8, specsim_config_file='desi')
+    instrument = specsim.instrument.initialize(config, True)
+    throughput = np.amax([instrument.cameras[0].throughput, instrument.cameras[1].throughput, instrument.cameras[2].throughput], axis=0)
+
+    fig = plt.figure(figsize=(20,15)) 
+    sub0 = fig.add_subplot(321)
+    sub1 = fig.add_subplot(323)
+    sub2 = fig.add_subplot(325)
+    sub3 = fig.add_subplot(322)
+    sub4 = fig.add_subplot(324)
+    sub5 = fig.add_subplot(326)
+    for ii, i in enumerate([0, 5, 10]): 
+        # read in source spectra 
+        print('sky = %i' % (i+1)) 
+        wave_s, flux_s, _ = source_spectra(emlines=False) 
+        #'''
+        _fspec = os.path.join(dir, 'exp_spectra.snr_test.sky%i.fits' % (i+1))
+        Isky = [wave, np.ones(len(wave)) * (i + 1.)]
+        _spec = exp_spectra(
+                Isky,           # sky surface brightness 
+                150. * (i + 1.),   # exposure time 
+                1.1,            # same airmass 
+                _fspec,
+                emlines=False
+                )
+        # plot comparing the exp spectra to the nominal dark spectra 
+        for band in ['b', 'r', 'z']: 
+            lbl = None 
+            if band == 'b': lbl = ('sky = %i, texp = %.f' % ((i+1), 150.*(i+1.)))
+            sub0.plot(_spec.wave[band], _spec.flux[band][0,:], c='C%i' % ii, lw=1, label=lbl) 
+            sub1.plot(_spec.wave[band], _spec.flux[band][1,:], c='C%i' % ii, lw=1, label=lbl) 
+            sub2.plot(_spec.wave[band], _spec.flux[band][2,:], c='C%i' % ii, lw=1, label=lbl) 
+            sub3.plot(_spec.wave[band], _spec.ivar[band][0,:], c='C%i' % ii, lw=1, label=lbl) 
+            sub4.plot(_spec.wave[band], _spec.ivar[band][1,:], c='C%i' % ii, lw=1, label=lbl) 
+            sub5.plot(_spec.wave[band], _spec.ivar[band][2,:], c='C%i' % ii, lw=1, label=lbl) 
+        sub0.plot(wave_s, flux_s[0,:], c='k', lw=1, ls='--') 
+        sub1.plot(wave_s, flux_s[1,:], c='k', lw=1, ls='--') 
+        sub2.plot(wave_s, flux_s[2,:], c='k', lw=1, ls='--') 
+        '''
+            # barebone specsim pipeline for comparison 
+            desi = Simulator(config, num_fibers=flux_s.shape[0])
+            desi.observation.exposure_time = 150. * (i + 1.) * u.s
+            desi.atmosphere._surface_brightness_dict[desi.atmosphere.condition] = \
+                    np.ones(len(desi.atmosphere._wavelength)) * (i + 1.) * \
+                    desi.atmosphere.surface_brightness.unit
+            desi.atmosphere._extinct_emission = False
+            desi.atmosphere._moon = None 
+            desi.atmosphere.airmass = 1.1
+            
+            source_flux = np.array([np.clip(np.interp(wave, wave_s, _flux_s), 0, None) for _flux_s in flux_s])
+            desi.simulate(source_fluxes=source_flux * 1e-17 * desi.simulated['source_flux'].unit) 
+
+            random_state = np.random.RandomState(0)
+            desi.generate_random_noise(random_state, use_poisson=True)
+
+            scale=1e17
+
+            waves, fluxes, ivars, ivars_electron = [], [], [], [] 
+            lbl = ('sky=%i' % (i+1))
+            for table in desi.camera_output:
+                print('  source', table['num_source_electrons'][0][:5]) 
+                print('  sky', table['num_sky_electrons'][0][:5]) 
+                print('  dark', table['num_dark_electrons'][0][:5]) 
+                print('  RN', table['read_noise_electrons'][0][:5]**2) 
+                _wave = table['wavelength'].astype(float)
+                _flux = (table['observed_flux']+table['random_noise_electrons']*table['flux_calibration']).T.astype(float)
+                _flux = _flux * scale
+
+                _ivar = table['flux_inverse_variance'].T.astype(float)
+                _ivar = _ivar / scale**2
+
+                sub0.plot(_wave, _flux[0], c='C%i' % ii, lw=1, label=lbl) 
+                sub1.plot(_wave, _flux[1], c='C%i' % ii, lw=1, label=lbl) 
+                sub2.plot(_wave, _flux[2], c='C%i' % ii, lw=1, label=lbl) 
+                sub3.plot(_wave, _ivar[0], c='C%i' % ii, lw=1, label=lbl) 
+                sub4.plot(_wave, _ivar[1], c='C%i' % ii, lw=1, label=lbl) 
+                sub5.plot(_wave, _ivar[2], c='C%i' % ii, lw=1, label=lbl) 
+                lbl = None 
+        '''
+            
+    sub2.set_xlabel('wavelength', fontsize=20) 
+    sub0.set_xlim(3.6e3, 9.8e3) 
+    sub1.set_xlim(3.6e3, 9.8e3) 
+    sub2.set_xlim(3.6e3, 9.8e3) 
+    sub3.set_xlim(3.6e3, 9.8e3) 
+    sub4.set_xlim(3.6e3, 9.8e3) 
+    sub5.set_xlim(3.6e3, 9.8e3) 
+    sub1.set_ylabel('flux', fontsize=20) 
+    sub4.set_ylabel('ivar', fontsize=20) 
+    sub0.set_ylim(0., 10.) 
+    sub1.set_ylim(0., 10.) 
+    sub2.set_ylim(0., 10.) 
+    sub0.legend(loc='upper right', fontsize=15) 
+    fig.savefig(os.path.join(dir, 'snr_test.png'), bbox_inches='tight') 
+    plt.close() 
     return None 
 
 
@@ -1449,7 +1591,7 @@ def run_redrock(fspec, overwrite=False):
             "#SBATCH -q regular", 
             '#SBATCH -J rr_%s' % os.path.basename(fspec).replace('.fits', ''),
             '#SBATCH -o _rr_%s.o' % os.path.basename(fspec).replace('.fits', ''),
-            "#SBATCH -t 00:30:00", 
+            "#SBATCH -t 00:10:00", 
             "", 
             "export OMP_NUM_THREADS=1", 
             "export OMP_PLACES=threads", 
@@ -1491,8 +1633,9 @@ def bs_coadd(waves, sbrights):
 
 
 if __name__=="__main__": 
+    _SNR_test()
     #texp_factor_wavelength()
-    texp_factor_wavelength(emlines=False) # without emission lines 
+    #texp_factor_wavelength(emlines=False) # without emission lines 
     #tnom()
     #validate_spectral_pipeline()
     #validate_spectral_pipeline_source()
