@@ -1119,6 +1119,9 @@ def texp_factor_wavelength(emlines=True):
     -------
     * David Schlegel was surprised that 6500A agreed better. He finds that
       5000A agrees better. He suggested I run this test without emission lines 
+    * 06/11/2020: Read noise term in the SNR calculation cannot be ignored when
+      our nominal exposure time is low. New fsky values calculated for CMX
+      exposures including read noise. 
     '''
     np.random.seed(0) 
     
@@ -1143,10 +1146,13 @@ def texp_factor_wavelength(emlines=True):
     # select CMX exposures when the sky was brighter than dark time. In
     # principle we should focus on bright exposures (i.e. 2.5x nominal).
     # we also remove exposures from 20200314 which has strange sky fluxes.
-    bright = (((skies['sky_ratio_5000'] > 1.) | (skies['sky_ratio_7000'] > 1.)) 
+    #bright = (((skies['sky_ratio_5000'] > 1.) | (skies['sky_ratio_7000'] > 1.)) 
+    #        & (skies['date'] != 20200314)) 
+    #print('%i exposures with sky ratios > 1 and not taken during March 14' % len(expids))
+    bright = (((skies['fsky_5000'] > 1.5) | (skies['fsky_7000'] > 1.5)) 
             & (skies['date'] != 20200314)) 
-    expids = np.unique(skies['expid'][bright])
-    print('%i exposures with sky ratios > 1 and not taken during March 14' % len(expids))
+    expids = np.unique(skies['expid'][bright])[:5]
+    print('%i exposures with fsky > 1.5 and not taken during March 14' % len(expids))
     #np.random.choice(np.unique(skies['expid'][bright]), size=5, replace=False) 
 
     # generate exposure spectra for select CMX sky surface brightnesses with
@@ -1177,9 +1183,10 @@ def texp_factor_wavelength(emlines=True):
             sub.plot(spec_nom.wave[band], spec_nom.flux[band][0,:], c='k', lw=1) 
     
         # get median sky ratios for the exposure 
-        for i, _w in enumerate([5000, 6000, 7000][::-1]): 
-            _fexp = np.median(skies['sky_ratio_%i' % _w ][is_exp]) 
+        for i, _w in enumerate([5000, 7000]): 
+            _fexp = np.median(skies['fsky_%i' % _w ][is_exp]) 
             print('  fexp at %iA = %.2f' % (_w, _fexp))
+            print('  sky ratio = %.2f' % (np.median(skies['sky_ratio_%i' % _w][is_exp])))
 
             # generate exposure spectra for expid CMX sky  
             _fspec = os.path.join(dir, 'exp_spectra.exp%i%s.fexp_%i.fits' %
@@ -1193,7 +1200,7 @@ def texp_factor_wavelength(emlines=True):
                     emlines=emlines
                     )
             # run redrock on the exposure spectra 
-            frr = run_redrock(_fspec, overwrite=False)
+            frr = run_redrock(_fspec, qos='debug')
 
             # plot comparing the exp spectra to the nominal dark spectra 
             for band in ['b', 'r', 'z']: 
@@ -1229,11 +1236,11 @@ def texp_factor_wavelength(emlines=True):
             nbins=28, bin_min=10) 
     _plt_nom = sub.errorbar(wmean, rate, err_rate, fmt='.k', elinewidth=2, markersize=10)
 
-    zs_5000, zs_6000, zs_7000 = [], [], []
+    zs_5000, zs_7000 = [], []
     for expid in expids:
         print('--- expid = %i ---' % expid) 
         zss = [] 
-        for i, _w in enumerate([5000, 6000, 7000]): 
+        for i, _w in enumerate([5000, 7000]): 
             rr = fitsio.read(os.path.join(dir,
                 'zbest.exp_spectra.exp%i%s.fexp_%i.fits' % 
                 (expid, ['.noemission', ''][emlines], _w)))
@@ -1252,23 +1259,19 @@ def texp_factor_wavelength(emlines=True):
                 _plts.append(_plt) 
 
         zs_5000.append(zss[0])
-        zs_6000.append(zss[1])
-        zs_7000.append(zss[2])
+        zs_7000.append(zss[1])
 
     zs_5000 = np.concatenate(zs_5000) 
-    zs_6000 = np.concatenate(zs_6000) 
     zs_7000 = np.concatenate(zs_7000) 
     print('-----------------------')
     print('nominal z-success = %.2f' % (np.sum(zs_nom)/float(len(zs_nom))))
     print('fexp at 5000A z-success = %.2f ' % (np.sum(zs_5000)/float(len(zs_5000))))
-    print('fexp at 6000A z-success = %.2f ' % (np.sum(zs_6000)/float(len(zs_6000))))
     print('fexp at 7000A z-success = %.2f ' % (np.sum(zs_7000)/float(len(zs_7000))))
 
     sub.text(19., 1.05, r'$\Delta \chi^2 = %.f$' % dchi2, fontsize=20)
     sub.legend(_plts, 
             ['nominal dark 150s', 
                 r'CMX exp. $f_{\rm sky}[5000A]$',
-                r'CMX exp. $f_{\rm sky}[6000A]$',
                 r'CMX exp. $f_{\rm sky}[7000A]$'], 
             loc='lower left', handletextpad=0.1, fontsize=15)
     sub.set_xlabel(r'Legacy $r$ magnitude', fontsize=20)
@@ -1574,7 +1577,7 @@ def exp_spectra(Isky, exptime, airmass, fexp, emlines=True, overwrite=False):
     return bgs 
 
 
-def run_redrock(fspec, overwrite=False): 
+def run_redrock(fspec, qos='regular', overwrite=False): 
     ''' run redrock on given spectra file
     '''
     frr = os.path.join(os.path.dirname(fspec), 
@@ -1588,7 +1591,7 @@ def run_redrock(fspec, overwrite=False):
             "#!/bin/bash", 
             "#SBATCH -N 1", 
             "#SBATCH -C haswell", 
-            "#SBATCH -q regular", 
+            "#SBATCH -q %s" % qos, 
             '#SBATCH -J rr_%s' % os.path.basename(fspec).replace('.fits', ''),
             '#SBATCH -o _rr_%s.o' % os.path.basename(fspec).replace('.fits', ''),
             "#SBATCH -t 00:10:00", 
@@ -1633,8 +1636,8 @@ def bs_coadd(waves, sbrights):
 
 
 if __name__=="__main__": 
-    _SNR_test()
-    #texp_factor_wavelength()
+    #_SNR_test()
+    texp_factor_wavelength()
     #texp_factor_wavelength(emlines=False) # without emission lines 
     #tnom()
     #validate_spectral_pipeline()
