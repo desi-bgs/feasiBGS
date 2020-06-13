@@ -1000,7 +1000,10 @@ def tnom(dchi2=40.):
     np.random.seed(0) 
     
     # nominal exposure times
-    texps = [100 + 10 * i for i in range(11)][::2]
+    if dchi2 == 40: 
+        texps = [100 + 10 * i for i in range(11)][::2]
+    elif dchi2 == 100: 
+        texps = [200 + 10 * i for i in range(11)][::2]
    
     # true redshift and r-magnitude 
     _, _, meta = source_spectra() 
@@ -1061,7 +1064,7 @@ def tnom(dchi2=40.):
     sub.set_ylabel(r'redrock $z$ success rate', fontsize=20)
     sub.set_ylim([0.6, 1.1])
     sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
-    fig.savefig(os.path.join(dir, 'zsuccess.tnom.png'),
+    fig.savefig(os.path.join(dir, 'zsuccess.tnom.dchi2_%i.png' % dchi2),
             bbox_inches='tight') 
     plt.close() 
 
@@ -1091,7 +1094,7 @@ def tnom(dchi2=40.):
     sub.set_ylabel(r'redrock $z$ success rate', fontsize=20)
     sub.set_ylim([0.6, 1.1])
     sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
-    fig.savefig(os.path.join(dir, 'zsuccess.tnom.r_fib.png'),
+    fig.savefig(os.path.join(dir, 'zsuccess.tnom.r_fib.dchi2_%i.png' % dchi2),
             bbox_inches='tight') 
     return None 
     
@@ -1637,9 +1640,10 @@ def bs_coadd(waves, sbrights):
 
 if __name__=="__main__": 
     #_SNR_test()
-    texp_factor_wavelength()
+    #texp_factor_wavelength()
     #texp_factor_wavelength(emlines=False) # without emission lines 
-    #tnom()
+    #tnom(dchi2=40)
+    tnom(dchi2=100)
     #validate_spectral_pipeline()
     #validate_spectral_pipeline_source()
     #validate_spectral_pipeline_GAMA_source()
