@@ -224,7 +224,7 @@ def _get_obs_param(tileid, mjd, bgs_footprint=None):
     return isbgs, airmass, moon_ill, moon_alt, moon_sep, sun_alt, sun_sep
 
 
-def run_surveysim(name, fconfig, twilight=False, brightsky=False,
+def run_surveysim(name, fconfig, twilight=False, brightsky=False, deepfirst=False,
         reduced_footprint=None): 
     ''' run surveyinit and surveysim for specified configuration file 
 
@@ -242,15 +242,20 @@ def run_surveysim(name, fconfig, twilight=False, brightsky=False,
     flag_brightsky = ''
     if brightsky: 
         flag_brightsky = ' --brightsky' 
+    
+    # adjusted rules that prioritize deep-first and overlap with HSC 
+    flag_rules = ''
+    if deepfirst: 
+        flag_rules = ' --rules /global/homes/c/chahah/projects/feasiBGS/run/survey_sim/rules_depth_hsc.yml'
 
     flag_redfoot = '' 
     if reduced_footprint is not None: 
         flag_redfoot = ' --bgs_footprint %i' % reduced_footprint
-
-    print('surveysim --name %s --config-file %s%s%s%s' % 
-            (name, fconfig, flag_twilight, flag_brightsky, flag_redfoot))
-    os.system('surveysim --name %s --config-file %s%s%s%s' % 
-            (name, fconfig, flag_twilight, flag_brightsky, flag_redfoot)) 
+    
+    print('surveysim --name %s --config-file %s%s%s%s%s' % 
+            (name, fconfig, flag_rules, flag_twilight, flag_brightsky, flag_redfoot))
+    os.system('surveysim --name %s --config-file %s%s%s%s%s' % 
+            (name, fconfig, flag_rules, flag_twilight, flag_brightsky, flag_redfoot)) 
     return None 
 
 
@@ -282,18 +287,20 @@ if __name__=="__main__":
     fconfig     = sys.argv[2]
     twilight    = sys.argv[3] == 'True'
     brightsky   = sys.argv[4] == 'True'
+    deepfirst   = sys.argv[5] == 'True'
     try: 
-        redfoot = int(sys.argv[5]) 
+        redfoot = int(sys.argv[6]) 
     except IndexError: 
         redfoot = None 
 
     if twilight: name += '.twilight'
     if brightsky: name += '.brightsky'
+    if deepfirst: name += '.deepfirst'
     if redfoot is not None: name += '.bgs%i' % redfoot
     # check that surveyinit exists and run otherwise (takes forever) 
     #surveyinit()
     # run surveysim
     run_surveysim(name, fconfig, twilight=twilight, brightsky=brightsky,
-            reduced_footprint=redfoot) 
+            deepfirst=deepfirst, reduced_footprint=redfoot) 
     # get summary statistics of surveysim run
     stats_surveysim(name, bgs_footprint=redfoot)
