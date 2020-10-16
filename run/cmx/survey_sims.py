@@ -1001,7 +1001,7 @@ def tnom(dchi2=40.):
     
     # nominal exposure times
     if dchi2 == 40: 
-        texps = [100 + 10 * i for i in range(11)][::2]
+        texps = [100 + 20 * i for i in range(11)][::2]
     elif dchi2 == 100: 
         texps = [200 + 10 * i for i in range(11)][::2]
    
@@ -1640,10 +1640,10 @@ def bs_coadd(waves, sbrights):
 
 if __name__=="__main__": 
     #_SNR_test()
-    #texp_factor_wavelength()
+    texp_factor_wavelength()
     #texp_factor_wavelength(emlines=False) # without emission lines 
     #tnom(dchi2=40)
-    tnom(dchi2=100)
+    #tnom(dchi2=100)
     #validate_spectral_pipeline()
     #validate_spectral_pipeline_source()
     #validate_spectral_pipeline_GAMA_source()

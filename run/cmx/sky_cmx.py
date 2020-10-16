@@ -142,6 +142,8 @@ def compile_skies():
         _airmass, _moon_ill, _moon_alt, _moon_sep, _sun_alt, _sun_sep = \
                 _get_obs_param(coadd['TARGET_RA'][good_sky],
                         coadd['TARGET_DEC'][good_sky], mjd_mid)
+        print(_sun_alt)
+        print(_sun_sep)
 
         print('%.f exptime' % exptime)
         print('%i sky fibers' % np.sum(is_sky)) 

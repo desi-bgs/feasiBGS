@@ -12,7 +12,8 @@ import fitsio
 import numpy as np 
 
 
-dir_redux = "/global/cfs/cdirs/desi/spectro/redux/daily" 
+#dir_redux = "/global/cfs/cdirs/desi/spectro/redux/daily" 
+dir_redux = "/global/cfs/cdirs/desi/spectro/redux/andes" 
 dir_output = "/global/cfs/cdirs/desi/users/chahah/bgs_exp_coadd"
 
 
@@ -46,6 +47,7 @@ def coadd(tileid, date, exp, spec):
     fcoadd = os.path.join(dir_output, 
             'coadd-%s-%s-%s-%s.fits' % (str(tileid), date, spec, exp.zfill(8)))
     cmd = 'desi_coadd_spectra --coadd-cameras -i %s -o %s' % (cframe, fcoadd)
+    print('  >>> %s' % cmd)
     os.system(cmd) 
     return None 
 
@@ -192,6 +194,7 @@ if __name__=="__main__":
     bgs_minisv_tiles    = [70500, 70502, 70510]
     bgs_sv0_tiles       = [66000, 66014, 66003]
     bgs_tiles = bgs_minisv_tiles + bgs_sv0_tiles 
+    bgs_tiles = [66003]
     
     for tile in bgs_tiles: 
         dates = get_dates(tile)
@@ -201,5 +204,5 @@ if __name__=="__main__":
                 spectographs = get_spectograph(tile, date, exp)
                 for spec in spectographs: 
                     #coadd(tile, date, exp, spec)
-                    #rr_coadd(tile, date, exp, spec)
-                    get_ztrue(tile, date, exp, spec, clobber=True)
+                    rr_coadd(tile, date, exp, spec)
+                    #get_ztrue(tile, date, exp, spec, clobber=True)
