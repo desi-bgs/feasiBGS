@@ -9,9 +9,6 @@ from itertools import chain, combinations_with_replacement
 # -- astropy --
 import astropy.units as u
 from astropy.time import Time
-# -- astroplan -- 
-from astroplan import Observer
-from astroplan import download_IERS_A
 # -- specsim -- 
 import specsim
 from specsim.atmosphere import Moon 
@@ -148,6 +145,7 @@ def Isky_parker(airmass, ecl_lat, gal_lat, gal_lon, tai, sun_alt, sun_sep, moon_
         moon separation angle: 0 - 180 deg 
     
     '''
+    from astroplan import Observer
     from astropy.coordinates import EarthLocation
     X = airmass    # air mass 
     beta = ecl_lat # ecliptic latitude ( used for zodiacal light contribution ) 
@@ -197,6 +195,7 @@ def Isky_parker_radecobs(ra, dec, obs_time):
     ''' wrapper for Isky_parker, where the input parameters are calculated based
     on RA, Dec, and obs_time 
     '''
+    from astroplan import download_IERS_A
     from astropy.coordinates import EarthLocation, SkyCoord, AltAz, get_sun, get_moon
  
     download_IERS_A()
