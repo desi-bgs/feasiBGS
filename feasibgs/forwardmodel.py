@@ -636,7 +636,7 @@ class fakeDESIspec(object):
         # sky surface brightness  
         if Isky is not None: 
             wave_sky, bright_sky = Isky[0], Isky[1] 
-            sky_surface_brightness = np.interp(wave, wave_sky, bright_sky) * sky_surface_brightness.unit
+            sky_surface_brightness = np.interp(wave.to_value(), wave_sky, bright_sky) * sky_surface_brightness.unit
         
         #- Create simulator
         desi = SimulatorHacked(config, num_fibers=nspec, camera_output=psfconvolve)
