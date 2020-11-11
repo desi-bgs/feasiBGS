@@ -14,6 +14,9 @@ author: ChangHoon Hahn
 import os 
 import h5py 
 import numpy as np 
+# --- feasibgs ---
+from . import util as UT 
+
 assert os.environ['NERSC_HOST'] == 'cori'
 
 
@@ -32,7 +35,6 @@ def simulated_GAMA_source_spectra(emlines=True):
             'GALeg.g15.sourceSpec%s.1000.seed0.hdf5' % ['.noemission', ''][emlines])
 
     if not os.path.isfile(fsource): 
-        from . import util as UT 
         from . import catalogs as Cat 
         from . import forwardmodel as FM 
         seed = 0 
