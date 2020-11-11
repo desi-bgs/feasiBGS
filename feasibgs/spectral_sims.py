@@ -28,7 +28,7 @@ def simulated_GAMA_source_spectra(emlines=True):
     Then the spectra is scaled down to the r-band fiber magnitude. They 
     therefore do not require fiber acceptance fractions. 
     '''
-    fsource = os.path.join(dir, 
+    fsource = os.path.join(dir_spec_sim, 
             'GALeg.g15.sourceSpec%s.1000.seed0.hdf5' % ['.noemission', ''][emlines])
 
     if not os.path.isfile(fsource): 
