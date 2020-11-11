@@ -195,7 +195,7 @@ def cmx_skies():
         f.close() 
 
     # read in CMX sky data 
-    fskies = h5py.File(f_cms_skies, 'r')
+    fskies = h5py.File(f_cmx_skies, 'r')
     skies = {}
     for k in fskies.keys(): 
         skies[k] = fskies[k][...]
