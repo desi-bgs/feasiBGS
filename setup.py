@@ -3,7 +3,7 @@ from distutils.core import setup
 
 __version__ = '0.1'
 
-setup(name = 'feasiBGS',
+setup(name = 'feasibgs',
       version = __version__,
       description = 'package for investigating the feasibility of the DESI-BGS',
       author='ChangHoon Hahn',
@@ -12,9 +12,6 @@ setup(name = 'feasiBGS',
       platforms=['*nix'],
       license='GPL',
       requires = ['numpy', 'matplotlib', 'scipy'],
-      provides = ['feasiBGS'],
-      packages = ['feasibgs'],
-      scripts=['feasibgs/skymodel.py', 'feasibgs/catalogs.py',
-          'feasibgs/forwardmodel.py', 'feasibgs/util.py', 'feasibgs/cmx.py',
-          'feasibgs/spectral_sims.py']
+      provides = ['feasibgs'],
+      packages = ['feasibgs']
       )
