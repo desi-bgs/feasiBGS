@@ -8,6 +8,7 @@ import h5py
 import fitsio
 import numpy as np 
 # -- desihub -- 
+import desisim.simexp
 import specsim.instrument
 from desispec.io import read_sky
 from desimodel.io import load_throughput
