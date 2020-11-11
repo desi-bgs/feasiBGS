@@ -10,6 +10,7 @@ import numpy as np
 # -- desihub -- 
 import desisim.simexp
 import specsim.instrument
+from specsim.simulator import Simulator
 from desispec.io import read_sky
 from desimodel.io import load_throughput
 from desitarget.cmx import cmx_targetmask
