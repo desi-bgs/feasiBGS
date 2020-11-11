@@ -1288,6 +1288,118 @@ def texp_factor_wavelength(emlines=True):
     return None 
 
 
+def reproduce_vi_zsuccess(): 
+    ''' **validating the spectral sims pipeline** I will test the spectral
+    simulation pipeline by trying to reproduce the redshift success rate of VI
+    Round 1 Tile 66003. I will construct spectral sims using Tile 66003
+    exposure sky brightness and exposure times then run redrock on them. 
+    '''
+    np.random.seed(0) 
+
+    Isky_nom = _Isky_nominal_dark()
+
+    # read in CMX sky data 
+    skies = cmx_skies()
+    # select VI exposures of Tile 66003
+    vi_tile = (skies['tileid'] == 66003) 
+    uniq_exps = np.unique(skies['expid'][vi_tile])
+    print('%i exposures with TILEID=66003' % len(uniq_exps))
+    print(uniq_exps) 
+
+    for expid in uniq_exps:
+        print('\n--- expid = %i ---' % expid) 
+        is_exp = (skies['expid'] == expid) 
+        # get median sky surface brightnesses for exposure 
+        Isky = bs_coadd(
+                [skies['wave_b'], skies['wave_r'], skies['wave_z']], 
+                [
+                    np.median(skies['sky_sb_b'][is_exp], axis=0), 
+                    np.median(skies['sky_sb_r'][is_exp], axis=0), 
+                    np.median(skies['sky_sb_z'][is_exp], axis=0)]
+                )
+        # median airmass
+        airmass_exp = np.median(skies['airmass'][is_exp])
+        print('  median airmass = %.2f' % airmass_exp) 
+        # exposure time of exposure 
+        texp = skies['exptime'][is_exp][0]
+        print('  exposure time = %.1f' % texp) 
+        assert np.all(skies['exptime'][is_exp] == texp)
+
+        # generate exposure spectra for expid CMX sky  
+        _fspec = os.path.join(dir, 'exp_spectra.exp%i%s.texp%.f.fits' %
+                (expid, '.noemission', texp))
+
+        _spec = exp_spectra(
+                Isky,           # sky surface brightness 
+                texp,   # exposure time 
+                airmass_exp,            # same airmass 
+                _fspec,
+                emlines=False
+                )
+        # run redrock on the exposure spectra 
+        frr = run_redrock(_fspec, qos='debug')
+
+    _, _, meta = source_spectra(emlines=False) 
+    ztrue = meta['zred']  # true redshifts 
+    r_mag = meta['r_mag'] 
+    dchi2 = 40. # minimum delta chi2
+    
+    # read redrock outputs for each exposure
+    zs_exps = []
+    for expid in expids:
+        print('--- expid = %i ---' % expid) 
+        rr = fitsio.read(os.path.join(dir, 'zbest.exp_spectra.exp%i%s.texp%.f.fits' % 
+            (expid, '.noemission', texp)))
+
+        _zs = UT.zsuccess(rr['Z'], ztrue, rr['ZWARN'],
+                deltachi2=rr['DELTACHI2'], min_deltachi2=dchi2)
+        zs_exps.append(_zs)  
+
+
+    dir_coadd = '/global/cfs/cdirs/desi/users/chahah/bgs_exp_coadd/'
+
+    fig = plt.figure(figsize=(18,6))
+
+    for i, expid, zs in zip(range(len(expids)), expids, zs_exps):  
+        sub = fig.add_subplot(1, 3, i+1)
+        sub.plot([16, 21], [1., 1.], c='k', ls=':') 
+
+        # load VI z success rate for single exposure 
+        wmean, rate, err_rate = np.loadtxt(os.path.join(dir_coadd,
+            'vi_zsuccess.dchi2_40.coadd-66003-20200315-%i.txt' % expid)) 
+        sub.errorbar(wmean, rate, err_rate, fmt='.k', label='VI $z$ success')
+    
+        wmean, rate, err_rate = UT.zsuccess_rate(r_mag, zs, range=[15,22], 
+                    nbins=28, bin_min=10) 
+        sub.plot(wmean, rate, c='C%i' % i, label='Spectral Sim.')
+        if i == 2: sub.legend(loc='lower left', handletextpad=0.1, fontsize=15)
+
+        if i == 1: sub.set_xlabel(r'Legacy $r$ magnitude', fontsize=20)
+        sub.set_xlim([16., 20.5]) 
+        if i == 0: 
+            sub.text(19., 1.05, r'$\Delta \chi^2 = %.f$' % dchi2, fontsize=20)
+            sub.set_ylabel(r'redrock $z$ success rate', fontsize=20)
+        sub.set_ylim([0.6, 1.1])
+        sub.set_yticks([0.6, 0.7, 0.8, 0.9, 1.]) 
+    fig.savefig(os.path.join(dir, 'reproduce_vi_zsuccess.png'), bbox_inches='tight') 
+    return None 
+
+
+def _Isky_nominal_dark(): 
+    ''' surface brightness of nominal dark sky 
+    '''
+    import desisim.simexp
+    from desimodel.io import load_throughput
+    wavemin = load_throughput('b').wavemin - 10.0
+    wavemax = load_throughput('z').wavemax + 10.0
+    wave = np.arange(round(wavemin, 1), wavemax, 0.8) * u.Angstrom
+    config = desisim.simexp._specsim_config_for_wave(wave.to('Angstrom').value, dwave_out=0.8, specsim_config_file='desi')
+    nominal_surface_brightness_dict = config.load_table(
+            config.atmosphere.sky, 'surface_brightness', as_dict=True)
+    return [wave, nominal_surface_brightness_dict['dark']] 
+
+
+
 def _SNR_test(): 
     ''' Q: Why is scaling the exposure time by the sky brightness ratio scaling
     not producing spectra with roughly the same SNR? 
@@ -1640,7 +1752,7 @@ def bs_coadd(waves, sbrights):
 
 if __name__=="__main__": 
     #_SNR_test()
-    texp_factor_wavelength()
+    #texp_factor_wavelength()
     #texp_factor_wavelength(emlines=False) # without emission lines 
     #tnom(dchi2=40)
     #tnom(dchi2=100)
@@ -1649,4 +1761,6 @@ if __name__=="__main__":
     #validate_spectral_pipeline_GAMA_source()
     #validate_cmx_zsuccess_specsim_discrepancy()
     #validate_cmx_zsuccess(dchi2=40.)
+
+    reproduce_vi_zsuccess()
 
