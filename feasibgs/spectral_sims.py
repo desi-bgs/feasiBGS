@@ -115,3 +115,32 @@ def simulated_GAMA_source_spectra(emlines=True):
     source.close()
 
     return wave_s, flux_s, meta
+
+
+def nominal_dark_sky(): 
+    ''' load nominal dark sky surface brightness 
+
+    Returns
+    -------
+    wave : array_like[Nwave,]
+        wavelength in Angstroms with 0.8A width. Astropy object
+
+    surface_brightness : array_like[Nwave,]
+        nominal dark sky surface brightness in units of
+        1e-17 erg/A/s/arcsec^2/cm^2
+    '''
+    import astropy.units as u
+    import desisim.simexp
+    from desimodel.io import load_throughput
+
+    wavemin = load_throughput('b').wavemin - 10.0
+    wavemax = load_throughput('z').wavemax + 10.0
+    wave = np.arange(round(wavemin, 1), wavemax, 0.8) * u.Angstrom
+
+    # read nominal dark sky surface brightness
+    config = desisim.simexp._specsim_config_for_wave(wave.to('Angstrom').value, dwave_out=0.8, specsim_config_file='desi')
+
+    nominal_surface_brightness_dict = config.load_table(config.atmosphere.sky, 'surface_brightness', as_dict=True)
+    surface_brightness = nominal_surface_brightness_dict['dark']
+
+    return wave, surface_brightness
