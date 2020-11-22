@@ -992,7 +992,7 @@ def validate_cmx_zsuccess(dchi2=40.):
     return None 
 
 
-def tnom(dchi2=40.):
+def tnom(dchi2=40., emlines=True):
     ''' Calculate z-success rate for nominal dark time exposure with different
     tnom exposure times. For each tnom, use the z-success rate to determine
     r_lim, the r magnitude that gets 95% completeness. 
@@ -1016,9 +1016,12 @@ def tnom(dchi2=40.):
     for texp in texps: 
         spec_nom = nomdark_spectra(texp) 
         # run redrock on nominal dark sky exposure spectra 
-        frr_nom = run_redrock(
-                os.path.join(dir, 'exp_spectra.nominal_dark.%.fs.fits' % texp), 
-                overwrite=False)
+        if emlines: 
+            fnom = os.path.join(dir, 'exp_spectra.nominal_dark.%.fs.fits' % texp)
+        else: 
+            fnom = os.path.join(dir, 'exp_spectra.nominal_dark.noemission.%.fs.fits' % texp) 
+
+        frr_nom = run_redrock(fnom, overwrite=False)
         frr_noms.append(frr_nom) 
 
     rmags = np.linspace(17, 20, 31)
@@ -1397,7 +1400,6 @@ def _Isky_nominal_dark():
     nominal_surface_brightness_dict = config.load_table(
             config.atmosphere.sky, 'surface_brightness', as_dict=True)
     return [wave, nominal_surface_brightness_dict['dark']] 
-
 
 
 def _SNR_test(): 
