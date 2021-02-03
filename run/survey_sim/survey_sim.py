@@ -39,6 +39,9 @@ mpl.rcParams['legend.frameon'] = False
 import warnings, astropy._erfa.core
 warnings.filterwarnings('ignore', category=astropy._erfa.core.ErfaWarning)
 
+from astropy.utils.iers import conf
+conf.auto_max_age = None
+
 # --- some global variables ---
 kpno = EarthLocation.of_site('kitt peak')
 # parent dir
